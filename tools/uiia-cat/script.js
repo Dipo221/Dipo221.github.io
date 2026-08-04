@@ -2,7 +2,19 @@ const STORAGE_KEY = "uiia-cat-count";
 
 const STILL_SRC = "cat-still.png";
 const SPIN_SRC = "cat-spin.gif";
-const SPIN_LOOP_MS = 1830; // cat-spin.gif 轉一圈的長度
+const AUDIO_SRC = "uiia.mp3";
+
+/*
+ * 音檔裡有三聲「uiia」，中間有明顯靜音。與其切成三個檔案，
+ * 這裡整段載入一次、用 start(when, offset, duration) 播指定區間：
+ * 只需要一次請求、不必重新編碼，切點也只是兩個數字，隨時可調。
+ * 下面的秒數都落在三段之間的靜音處。
+ */
+const SEGMENTS = [
+  [0.0, 1.75],
+  [2.84, 5.12],
+  [6.2, 8.45],
+];
 
 const catButton = document.getElementById("cat");
 const catImg = document.getElementById("cat-img");
@@ -37,27 +49,7 @@ function renderCount() {
 
 countEl.textContent = count.toLocaleString();
 
-/* ---------- 「uiia」聲音合成 ---------- */
-/*
- * 用共振峰（formant）合成人聲母音：鋸齒波當聲源，三個並聯的
- * bandpass 濾波器掃過 u → i → i → a 的共振峰頻率，就會唸出「uiia」。
- */
-
-const VOWEL_FORMANTS = {
-  u: [320, 800, 2240],
-  i: [270, 2300, 3010],
-  a: [730, 1090, 2440],
-};
-
-// [在整段音的相對位置, 母音]
-const VOWEL_SEQUENCE = [
-  [0.0, "u"],
-  [0.3, "i"],
-  [0.62, "i"],
-  [1.0, "a"],
-];
-
-const FORMANT_GAINS = [1, 0.55, 0.25];
+/* ---------- 聲音 ---------- */
 
 let audioCtx = null;
 let outputBus = null;
@@ -73,7 +65,6 @@ function ensureAudio() {
 
   audioCtx = new Ctor();
 
-  // 連點時多個聲音會疊加，用壓縮器擋住破音
   const compressor = audioCtx.createDynamicsCompressor();
   compressor.threshold.value = -12;
   compressor.ratio.value = 12;
@@ -83,66 +74,80 @@ function ensureAudio() {
   return audioCtx;
 }
 
-function playUiia(rate) {
-  const ctx = ensureAudio();
-  if (!ctx) return;
+// 位元組先抓下來，等第一次點擊（使用者操作）再解碼，避免自動播放限制
+const audioBytes = fetch(AUDIO_SRC)
+  .then((res) => (res.ok ? res.arrayBuffer() : null))
+  .catch(() => null);
 
-  const t0 = ctx.currentTime + 0.01;
-  const dur = 0.75 / rate;
-  const end = t0 + dur;
+let decodedBuffer = null;
+let decoding = null;
 
-  const voice = ctx.createGain();
-  voice.connect(outputBus);
-  voice.gain.setValueAtTime(0, t0);
-  voice.gain.linearRampToValueAtTime(0.5, t0 + 0.05);
-  voice.gain.setValueAtTime(0.5, t0 + dur * 0.72);
-  voice.gain.linearRampToValueAtTime(0.0001, end);
+function getBuffer() {
+  if (decodedBuffer) return Promise.resolve(decodedBuffer);
+  if (!decoding) {
+    decoding = audioBytes
+      .then((bytes) => {
+        const ctx = ensureAudio();
+        if (!bytes || !ctx) return null;
+        // decodeAudioData 會吃掉這塊 ArrayBuffer，複製一份留底
+        return ctx.decodeAudioData(bytes.slice(0));
+      })
+      .then((buffer) => (decodedBuffer = buffer))
+      .catch(() => null);
+  }
+  return decoding;
+}
 
-  // 聲源：帶點起伏的鋸齒波
-  const f0 = 400 * rate;
-  const osc = ctx.createOscillator();
-  osc.type = "sawtooth";
-  osc.frequency.setValueAtTime(f0 * 0.85, t0);
-  osc.frequency.linearRampToValueAtTime(f0 * 1.2, t0 + dur * 0.45);
-  osc.frequency.linearRampToValueAtTime(f0 * 0.95, end);
+let currentVoice = null;
 
-  // 顫音，聽起來比較像叫聲而不是電子音
-  const vibrato = ctx.createOscillator();
-  vibrato.frequency.value = 7;
-  const vibratoDepth = ctx.createGain();
-  vibratoDepth.gain.value = f0 * 0.035;
-  vibrato.connect(vibratoDepth);
-  vibratoDepth.connect(osc.frequency);
+function playSegment(index) {
+  const [start, end] = SEGMENTS[index];
 
-  FORMANT_GAINS.forEach((gainValue, formantIndex) => {
-    const bandpass = ctx.createBiquadFilter();
-    bandpass.type = "bandpass";
-    bandpass.Q.value = 9;
+  getBuffer().then((buffer) => {
+    const ctx = ensureAudio();
+    if (!buffer || !ctx) return;
 
-    VOWEL_SEQUENCE.forEach(([position, vowel], stepIndex) => {
-      const at = t0 + dur * position;
-      const freq = VOWEL_FORMANTS[vowel][formantIndex];
-      if (stepIndex === 0) bandpass.frequency.setValueAtTime(freq, at);
-      else bandpass.frequency.linearRampToValueAtTime(freq, at);
-    });
+    // 一次只留一聲，連點時直接接上下一段而不是疊在一起
+    stopCurrentVoice();
+
+    const duration = end - start;
+    const now = ctx.currentTime;
 
     const gain = ctx.createGain();
-    gain.gain.value = gainValue;
+    gain.connect(outputBus);
+    // 切點雖然在靜音處，還是淡入淡出一下比較保險
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(1, now + 0.015);
+    gain.gain.setValueAtTime(1, now + duration - 0.03);
+    gain.gain.linearRampToValueAtTime(0.0001, now + duration);
 
-    osc.connect(bandpass);
-    bandpass.connect(gain);
-    gain.connect(voice);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(gain);
+    source.start(0, start, duration);
+
+    const voice = { source, gain };
+    currentVoice = voice;
+    source.onended = () => {
+      if (currentVoice === voice) currentVoice = null;
+    };
   });
+}
 
-  osc.start(t0);
-  vibrato.start(t0);
-  osc.stop(end + 0.05);
-  vibrato.stop(end + 0.05);
+function stopCurrentVoice() {
+  if (!currentVoice) return;
+  const { source, gain } = currentVoice;
+  const now = audioCtx.currentTime;
+  gain.gain.cancelScheduledValues(now);
+  gain.gain.setValueAtTime(gain.gain.value, now);
+  gain.gain.linearRampToValueAtTime(0.0001, now + 0.02);
+  source.stop(now + 0.03);
+  currentVoice = null;
 }
 
 /* ---------- 旋轉 ---------- */
 /*
- * 旋轉本身是 GIF 在動，所以這裡只負責在靜止圖與旋轉 GIF 之間切換。
+ * 旋轉本身是 GIF 在動，這裡只負責在靜止圖與旋轉 GIF 之間切換。
  * 連點時不重播 GIF，只把停止時間往後延 —— 旋轉動畫沒有「正確的起始幀」，
  * 從哪一格接下去看起來都一樣順。
  */
@@ -151,7 +156,7 @@ const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").match
 
 let spinTimer = null;
 
-function spin() {
+function spin(durationMs) {
   if (reduceMotion) return;
 
   if (catImg.getAttribute("src") !== SPIN_SRC) {
@@ -161,24 +166,7 @@ function spin() {
   spinTimer = setTimeout(() => {
     catImg.setAttribute("src", STILL_SRC);
     spinTimer = null;
-  }, SPIN_LOOP_MS);
-}
-
-/* ---------- 連點強度 ---------- */
-/* 連續快點會讓叫聲越來越高，停手就慢慢降回原音高。 */
-
-let energy = 0;
-let lastClickAt = 0;
-
-function bumpEnergy() {
-  const now = performance.now();
-  const gap = now - lastClickAt;
-  lastClickAt = now;
-
-  if (gap < 700) energy = Math.min(energy + 0.25, 1);
-  else energy = Math.max(0, energy - gap / 2000);
-
-  return energy;
+  }, durationMs);
 }
 
 /* ---------- 互動 ---------- */
@@ -188,8 +176,12 @@ catButton.addEventListener("click", () => {
   saveCount(count);
   renderCount();
 
-  playUiia(1 + bumpEnergy() * 0.5);
-  spin();
+  // 第 1 次點播第 1 段、第 2 次第 2 段⋯⋯第 4 次再回到第 1 段
+  const index = (count - 1) % SEGMENTS.length;
+  const [start, end] = SEGMENTS[index];
+
+  playSegment(index);
+  spin((end - start) * 1000); // 貓咪轉到這一聲結束為止
 
   catImg.classList.add("pop");
   setTimeout(() => catImg.classList.remove("pop"), 120);
