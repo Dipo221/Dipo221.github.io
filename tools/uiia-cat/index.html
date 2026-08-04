@@ -6,6 +6,8 @@
   <title>uiia cat</title>
   <link rel="stylesheet" href="../../style.css" />
   <link rel="stylesheet" href="style.css" />
+  <!-- 先抓好旋轉用的 GIF，第一次點擊才不會卡一下 -->
+  <link rel="preload" as="image" href="cat-spin.gif" />
 </head>
 <body>
   <header class="hero">
@@ -18,48 +20,15 @@
   <main class="container">
     <div class="stage">
       <button id="cat" class="cat-button" aria-label="點擊讓貓咪旋轉並發出聲音">
-        <svg class="cat-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <!-- 耳朵 -->
-          <path d="M46 66 L38 20 L82 42 Z" fill="#9aa4b0" />
-          <path d="M154 66 L162 20 L118 42 Z" fill="#9aa4b0" />
-          <path d="M50 60 L45 32 L74 46 Z" fill="#e8a0ac" />
-          <path d="M150 60 L155 32 L126 46 Z" fill="#e8a0ac" />
-
-          <!-- 頭 -->
-          <ellipse cx="100" cy="108" rx="72" ry="64" fill="#aab4c0" />
-          <!-- 額頭斑紋 -->
-          <path d="M100 48 L92 74 L100 68 L108 74 Z" fill="#8f99a6" />
-          <path d="M76 52 L74 76 L84 66 Z" fill="#8f99a6" />
-          <path d="M124 52 L126 76 L116 66 Z" fill="#8f99a6" />
-
-          <!-- 臉頰 / 口鼻部 -->
-          <ellipse cx="100" cy="132" rx="52" ry="36" fill="#f2f4f7" />
-
-          <!-- 眼睛 -->
-          <ellipse cx="74" cy="104" rx="15" ry="17" fill="#2b3036" />
-          <ellipse cx="126" cy="104" rx="15" ry="17" fill="#2b3036" />
-          <circle cx="79" cy="98" r="5" fill="#ffffff" />
-          <circle cx="131" cy="98" r="5" fill="#ffffff" />
-          <circle cx="70" cy="110" r="2.5" fill="#ffffff" opacity="0.7" />
-          <circle cx="122" cy="110" r="2.5" fill="#ffffff" opacity="0.7" />
-
-          <!-- 鼻子 -->
-          <path d="M100 130 L92 122 L108 122 Z" fill="#e8879a" />
-          <!-- 嘴巴 -->
-          <path d="M100 130 L100 138" stroke="#6b7480" stroke-width="3" stroke-linecap="round" fill="none" />
-          <path d="M100 138 Q90 148 82 138" stroke="#6b7480" stroke-width="3" stroke-linecap="round" fill="none" />
-          <path d="M100 138 Q110 148 118 138" stroke="#6b7480" stroke-width="3" stroke-linecap="round" fill="none" />
-
-          <!-- 鬍鬚 -->
-          <g stroke="#dfe4ea" stroke-width="2.5" stroke-linecap="round">
-            <path d="M56 126 L16 118" />
-            <path d="M56 134 L14 136" />
-            <path d="M56 142 L18 154" />
-            <path d="M144 126 L184 118" />
-            <path d="M144 134 L186 136" />
-            <path d="M144 142 L182 154" />
-          </g>
-        </svg>
+        <img
+          id="cat-img"
+          class="cat-img"
+          src="cat-still.png"
+          alt="一隻虎斑貓"
+          width="200"
+          height="200"
+          draggable="false"
+        />
       </button>
 
       <div class="counter">

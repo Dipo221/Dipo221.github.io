@@ -1,7 +1,11 @@
 const STORAGE_KEY = "uiia-cat-count";
 
+const STILL_SRC = "cat-still.png";
+const SPIN_SRC = "cat-spin.gif";
+const SPIN_LOOP_MS = 1830; // cat-spin.gif 轉一圈的長度
+
 const catButton = document.getElementById("cat");
-const catSvg = catButton.querySelector(".cat-svg");
+const catImg = document.getElementById("cat-img");
 const countEl = document.getElementById("count");
 const resetButton = document.getElementById("reset");
 
@@ -84,7 +88,7 @@ function playUiia(rate) {
   if (!ctx) return;
 
   const t0 = ctx.currentTime + 0.01;
-  const dur = 0.62 / rate;
+  const dur = 0.75 / rate;
   const end = t0 + dur;
 
   const voice = ctx.createGain();
@@ -137,49 +141,44 @@ function playUiia(rate) {
 }
 
 /* ---------- 旋轉 ---------- */
-
-const SPIN_BOOST = 900; // 每次點擊增加的角速度（度／秒）
-const SPIN_MAX = 2600;
-const SPIN_RETAINED_PER_SEC = 0.35; // 每秒保留的角速度比例
-const SPIN_STOP_THRESHOLD = 40;
+/*
+ * 旋轉本身是 GIF 在動，所以這裡只負責在靜止圖與旋轉 GIF 之間切換。
+ * 連點時不重播 GIF，只把停止時間往後延 —— 旋轉動畫沒有「正確的起始幀」，
+ * 從哪一格接下去看起來都一樣順。
+ */
 
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-let angle = 0;
-let velocity = 0;
-let lastFrame = 0;
-let rafId = null;
-
-function frame(now) {
-  const dt = Math.min((now - lastFrame) / 1000, 0.05);
-  lastFrame = now;
-
-  if (velocity > SPIN_STOP_THRESHOLD) {
-    angle += velocity * dt;
-    velocity *= Math.pow(SPIN_RETAINED_PER_SEC, dt);
-  } else {
-    // 慢下來之後，滑回最近的整圈讓貓咪站正
-    velocity = 0;
-    const target = Math.round(angle / 360) * 360;
-    angle += (target - angle) * Math.min(dt * 8, 1);
-    if (Math.abs(target - angle) < 0.5) {
-      angle = target % 360;
-      catSvg.style.transform = "rotate(0deg)";
-      rafId = null;
-      return;
-    }
-  }
-
-  catSvg.style.transform = `rotate(${angle}deg)`;
-  rafId = requestAnimationFrame(frame);
-}
+let spinTimer = null;
 
 function spin() {
-  velocity = Math.min(velocity + SPIN_BOOST, SPIN_MAX);
-  if (rafId === null) {
-    lastFrame = performance.now();
-    rafId = requestAnimationFrame(frame);
+  if (reduceMotion) return;
+
+  if (catImg.getAttribute("src") !== SPIN_SRC) {
+    catImg.setAttribute("src", SPIN_SRC);
   }
+  clearTimeout(spinTimer);
+  spinTimer = setTimeout(() => {
+    catImg.setAttribute("src", STILL_SRC);
+    spinTimer = null;
+  }, SPIN_LOOP_MS);
+}
+
+/* ---------- 連點強度 ---------- */
+/* 連續快點會讓叫聲越來越高，停手就慢慢降回原音高。 */
+
+let energy = 0;
+let lastClickAt = 0;
+
+function bumpEnergy() {
+  const now = performance.now();
+  const gap = now - lastClickAt;
+  lastClickAt = now;
+
+  if (gap < 700) energy = Math.min(energy + 0.25, 1);
+  else energy = Math.max(0, energy - gap / 2000);
+
+  return energy;
 }
 
 /* ---------- 互動 ---------- */
@@ -189,12 +188,11 @@ catButton.addEventListener("click", () => {
   saveCount(count);
   renderCount();
 
-  // 連點時轉得越快、叫聲也越高，越像迷因原片
-  const intensity = velocity / SPIN_MAX;
-  playUiia(1 + intensity * 0.5);
-
-  if (reduceMotion) return;
+  playUiia(1 + bumpEnergy() * 0.5);
   spin();
+
+  catImg.classList.add("pop");
+  setTimeout(() => catImg.classList.remove("pop"), 120);
 });
 
 resetButton.addEventListener("click", () => {

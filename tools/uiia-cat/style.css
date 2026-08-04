@@ -18,16 +18,22 @@
   touch-action: manipulation;
 }
 
-.cat-button:active .cat-svg {
-  filter: brightness(1.12);
-}
-
-.cat-svg {
+.cat-img {
   width: min(260px, 62vw);
   height: auto;
   display: block;
-  /* JS 會覆寫 transform 來做旋轉 */
-  transform-origin: 50% 55%;
+  image-rendering: auto;
+  user-select: none;
+  transition: transform 0.12s ease-out;
+}
+
+/* 點下去的回饋，旋轉本身是 GIF 在動 */
+.cat-button:active .cat-img {
+  transform: scale(0.94);
+}
+
+.cat-img.pop {
+  transform: scale(1.06);
 }
 
 .counter {
@@ -80,7 +86,8 @@ footer a:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .count-value {
+  .count-value,
+  .cat-img {
     transition: none;
   }
 }
