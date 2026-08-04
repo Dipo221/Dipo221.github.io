@@ -1,0 +1,90 @@
+:root {
+  --bg: #2b3036;
+  --bg-elevated: #363c44;
+  --text: #f0f3f6;
+  --muted: #b6bec8;
+  --accent: #79b8ff;
+  --border: #4a515a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.container {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.hero {
+  padding: 96px 0 64px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.hero h1 {
+  font-size: 2.5rem;
+  margin: 0 0 8px;
+}
+
+.tagline {
+  color: var(--muted);
+  margin: 0;
+}
+
+main {
+  padding: 48px 0;
+}
+
+section {
+  margin-bottom: 40px;
+}
+
+h2 {
+  font-size: 1.25rem;
+  border-left: 4px solid var(--accent);
+  padding-left: 10px;
+  margin-bottom: 16px;
+}
+
+.link-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.link-list a {
+  display: inline-block;
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  text-decoration: none;
+  background: var(--bg-elevated);
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.link-list a:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+footer {
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.875rem;
+  border-top: 1px solid var(--border);
+}
