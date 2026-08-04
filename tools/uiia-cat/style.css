@@ -59,21 +59,15 @@
   color: var(--muted);
 }
 
-.reset-button {
-  padding: 6px 16px;
-  font: inherit;
-  font-size: 0.875rem;
+.counter-note {
+  margin: 0;
+  font-size: 0.8125rem;
   color: var(--muted);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: border-color 0.2s, color 0.2s;
 }
 
-.reset-button:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+/* 還沒跟伺服器對上數字時先淡化 */
+.count-value.pending {
+  opacity: 0.45;
 }
 
 footer a {

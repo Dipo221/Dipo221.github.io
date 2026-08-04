@@ -1,5 +1,3 @@
-const STORAGE_KEY = "uiia-cat-count";
-
 const STILL_SRC = "cat-still.png";
 const SPIN_SRC = "cat-spin.gif";
 const AUDIO_SRC = "uiia.mp3";
@@ -19,35 +17,62 @@ const SEGMENTS = [
 const catButton = document.getElementById("cat");
 const catImg = document.getElementById("cat-img");
 const countEl = document.getElementById("count");
-const resetButton = document.getElementById("reset");
 
 /* ---------- 計數 ---------- */
+/*
+ * 計數放在 Abacus（免費的共用計數服務）上，所有訪客共用同一個數字。
+ * GitHub Pages 是純靜態的、沒有後端，所以只能靠外部服務。
+ *
+ * 點擊時先在畫面上樂觀地 +1，再把伺服器回傳的值當作準。confirmed 是
+ * 伺服器確認過的數字，pending 是送出去還沒回來的點擊數。
+ */
 
-function loadCount() {
-  try {
-    return Number(localStorage.getItem(STORAGE_KEY)) || 0;
-  } catch {
-    return 0; // 隱私模式下 localStorage 可能不可用
-  }
-}
+const COUNTER_URL = "https://abacus.jasoncameron.dev";
+const COUNTER_NS = "dipo221-github-io";
+const COUNTER_KEY = "uiia-cat";
 
-function saveCount(value) {
-  try {
-    localStorage.setItem(STORAGE_KEY, String(value));
-  } catch {
-    /* 存不進去就算了，不影響使用 */
-  }
-}
+let confirmed = null; // 還不知道伺服器上的值時是 null
+let pending = 0;
 
-let count = loadCount();
+function renderCount(bump) {
+  countEl.textContent = confirmed === null ? "—" : (confirmed + pending).toLocaleString();
+  countEl.classList.toggle("pending", confirmed === null || pending > 0);
 
-function renderCount() {
-  countEl.textContent = count.toLocaleString();
+  if (!bump) return;
   countEl.classList.add("bump");
   setTimeout(() => countEl.classList.remove("bump"), 120);
 }
 
-countEl.textContent = count.toLocaleString();
+function acceptServerValue(value) {
+  if (typeof value !== "number") return;
+  // 多個請求可能亂序回來，只往上取
+  confirmed = confirmed === null ? value : Math.max(confirmed, value);
+}
+
+// 進站先讀目前的數字（不會增加）
+fetch(`${COUNTER_URL}/get/${COUNTER_NS}/${COUNTER_KEY}`)
+  .then((res) => (res.ok ? res.json() : { value: 0 })) // key 還沒建立時是 404
+  .then((data) => acceptServerValue(data.value))
+  .catch(() => {
+    /* 連不上就維持「—」，之後點擊成功的話數字自然會出現 */
+  })
+  .finally(() => renderCount(false));
+
+function bumpCounter() {
+  pending += 1;
+  renderCount(true);
+
+  fetch(`${COUNTER_URL}/hit/${COUNTER_NS}/${COUNTER_KEY}`)
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => data && acceptServerValue(data.value))
+    .catch(() => {
+      /* 這一下沒算到，畫面會退回伺服器的數字 */
+    })
+    .finally(() => {
+      pending -= 1;
+      renderCount(false);
+    });
+}
 
 /* ---------- 聲音 ---------- */
 
@@ -171,13 +196,16 @@ function spin(durationMs) {
 
 /* ---------- 互動 ---------- */
 
+// 播哪一段要看「這個人按了第幾下」，不能用共用計數 —— 那個數字會被
+// 別的訪客推著跳，聲音就不會照順序輪。
+let clicks = 0;
+
 catButton.addEventListener("click", () => {
-  count += 1;
-  saveCount(count);
-  renderCount();
+  bumpCounter();
 
   // 第 1 次點播第 1 段、第 2 次第 2 段⋯⋯第 4 次再回到第 1 段
-  const index = (count - 1) % SEGMENTS.length;
+  const index = clicks % SEGMENTS.length;
+  clicks += 1;
   const [start, end] = SEGMENTS[index];
 
   playSegment(index);
@@ -185,10 +213,4 @@ catButton.addEventListener("click", () => {
 
   catImg.classList.add("pop");
   setTimeout(() => catImg.classList.remove("pop"), 120);
-});
-
-resetButton.addEventListener("click", () => {
-  count = 0;
-  saveCount(count);
-  renderCount();
 });
