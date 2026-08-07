@@ -1,0 +1,436 @@
+/* 沿用首頁 style.css 的變數，這裡只補這個工具需要的顏色 */
+:root {
+  --open: #6ee7a8;
+  --open-bg: rgba(110, 231, 168, 0.12);
+  --soon: #fbbf5c;
+  --soon-bg: rgba(251, 191, 92, 0.12);
+  --broken: #f87171;
+  --broken-bg: rgba(248, 113, 113, 0.12);
+}
+
+.hero-compact {
+  padding: 56px 0 32px;
+}
+
+.clock {
+  font-size: 2.75rem;
+  font-weight: 700;
+  margin: 4px 0 8px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+h2 .count {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.85rem;
+  margin-left: 8px;
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card {
+  display: block;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--open);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.card:hover {
+  border-color: var(--accent);
+  transform: translateX(2px);
+}
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card-name {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.badge {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--open-bg);
+  color: var(--open);
+  white-space: nowrap;
+}
+
+.card-meta {
+  color: var(--muted);
+  font-size: 0.875rem;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tag {
+  font-size: 0.72rem;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+/* 快打烊：橘色，提醒一下時間不多 */
+.card.is-soon {
+  border-left-color: var(--soon);
+}
+.card.is-soon .badge {
+  background: var(--soon-bg);
+  color: var(--soon);
+}
+
+/* 已打烊：整張淡掉，讓有開的那幾家跳出來 */
+.card.is-closed {
+  border-left-color: var(--border);
+  opacity: 0.55;
+}
+.card.is-closed .badge {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.card.is-closed:hover {
+  opacity: 0.8;
+}
+
+/* 資料寫錯：紅色，而且不會被淡化——就是要看得到 */
+.card.is-broken {
+  border-left-color: var(--broken);
+}
+.card.is-broken .badge {
+  background: var(--broken-bg);
+  color: var(--broken);
+}
+.card.is-broken .card-meta {
+  color: var(--broken);
+}
+
+.notice {
+  color: var(--muted);
+  text-align: center;
+  padding: 32px 0;
+  margin: 0;
+}
+
+/* ---------- 編輯模式 ---------- */
+/* 以下全部只在 editor.js 判定為編輯模式時才會出現在畫面上 */
+
+.editor-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+}
+
+.editor-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-right: auto;
+}
+
+.btn {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #10151b;
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  color: #10151b;
+  filter: brightness(1.1);
+}
+
+.btn.is-danger:hover {
+  border-color: var(--broken);
+  color: var(--broken);
+}
+
+.editor-status:not(:empty) {
+  padding: 9px 14px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  background: var(--bg-elevated);
+  color: var(--muted);
+}
+
+.editor-status.is-ok:not(:empty) {
+  background: var(--open-bg);
+  color: var(--open);
+}
+.editor-status.is-warn:not(:empty) {
+  background: var(--soon-bg);
+  color: var(--soon);
+}
+.editor-status.is-error:not(:empty) {
+  background: var(--broken-bg);
+  color: var(--broken);
+}
+
+/* 卡片上的編輯／刪除。平常淡淡的，滑過去才明顯，免得蓋過營業狀態 */
+.card-wrap {
+  position: relative;
+}
+
+.card-tools {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.card-wrap:hover .card-tools,
+.card-tools:focus-within {
+  opacity: 1;
+}
+
+.icon-btn {
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.icon-btn.is-danger:hover {
+  border-color: var(--broken);
+  color: var(--broken);
+}
+
+/* ---------- 表單 ---------- */
+
+.editor-dialog {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: 0;
+  max-width: 520px;
+  width: calc(100% - 32px);
+}
+
+.editor-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.editor-form {
+  padding: 20px 22px 18px;
+}
+
+.editor-form h3 {
+  margin: 0 0 16px;
+  font-size: 1.1rem;
+}
+
+.field {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.field-label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.field input {
+  font: inherit;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.field-hint {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.field-check {
+  display: block;
+  font-size: 0.75rem;
+  margin-top: 4px;
+  min-height: 1.2em;
+}
+
+.field-check.is-good {
+  color: var(--open);
+}
+.field-check.is-bad {
+  color: var(--broken);
+}
+
+.search-line {
+  display: flex;
+  gap: 8px;
+}
+
+.search-line input {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.search-results:empty {
+  margin-top: 0;
+}
+
+.result {
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.result:hover {
+  border-color: var(--accent);
+}
+
+.result-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.result-address {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.result-hours {
+  font-size: 0.75rem;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.editor-actions .is-danger {
+  margin-right: auto;
+}
+
+.disclaimer {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-align: center;
+  margin-top: 40px;
+}
+
+@media (max-width: 480px) {
+  /* 手機上把標題壓扁一點：這工具多半是半夜站在路邊打開的，
+     一進來就要看到「誰還開著」，不該先滑過一個大標題 */
+  .hero-compact {
+    padding: 24px 0 20px;
+  }
+  .hero-compact h1 {
+    font-size: 1.5rem;
+  }
+  .clock {
+    font-size: 2.25rem;
+    margin: 0 0 4px;
+  }
+  main {
+    padding: 24px 0;
+  }
+  .card-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+}
+
+/* 觸控裝置沒有 hover，編輯鍵要一直看得到，否則根本按不出來。
+   改成排在卡片下方，才不會蓋住標籤。
+   兩個條件都寫是故意的：hover:none 抓真正的觸控裝置，寬度條件當保險——
+   萬一哪個瀏覽器把 hover 判斷錯了，至少手機寬度下按鈕還是點得到。 */
+@media (hover: none), (max-width: 480px) {
+  .card-tools {
+    position: static;
+    opacity: 1;
+    justify-content: flex-end;
+    margin-top: 6px;
+  }
+}

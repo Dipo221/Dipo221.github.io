@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>hours.js 測試</title>
+  <!--
+    沒有 build step 也沒有 node，所以測試就是一個網頁：打開就跑，紅的就是壞了。
+    測資大多直接抄自 OpenStreetMap 上淡水區真實店家的營業時間，
+    包含原始資料裡真的會出現的怪寫法。
+  -->
+  <link rel="stylesheet" href="../../style.css?v=2" />
+  <style>
+    body { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+    .summary { padding: 12px 16px; border-radius: 8px; font-weight: 700; margin: 16px 0; }
+    .summary.pass { background: rgba(110, 231, 168, 0.15); color: #6ee7a8; }
+    .summary.fail { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+    .group { margin-top: 22px; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+    .case { padding: 3px 0 3px 44px; position: relative; font-size: 0.88rem; line-height: 1.5; }
+    .case::before { position: absolute; left: 0; top: 4px; font-size: 0.62rem; }
+    .case.ok::before { content: "PASS"; color: #6ee7a8; }
+    .case.no::before { content: "FAIL"; color: #f87171; }
+    .case.no { background: rgba(248, 113, 113, 0.1); }
+    .detail { color: #f87171; padding-left: 44px; font-size: 0.82rem; }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="container"><h1>hours.js 測試</h1></div>
+  </header>
+  <main class="container" id="out"></main>
+  <footer class="container"><p><a href="./">← 回工具</a></p></footer>
+
+  <script src="hours.js?v=2"></script>
+  <script src="codec.js?v=1"></script>
+  <script>
+    const out = document.getElementById("out");
+    let passed = 0;
+    let failed = 0;
+
+    function group(title) {
+      const el = document.createElement("div");
+      el.className = "group";
+      el.textContent = title;
+      out.appendChild(el);
+    }
+
+    function check(label, actual, expected) {
+      const same = JSON.stringify(actual) === JSON.stringify(expected);
+      same ? passed++ : failed++;
+
+      const el = document.createElement("div");
+      el.className = "case " + (same ? "ok" : "no");
+      el.textContent = label;
+      out.appendChild(el);
+
+      if (!same) {
+        const d = document.createElement("div");
+        d.className = "detail";
+        d.textContent = `預期 ${JSON.stringify(expected)}，實際 ${JSON.stringify(actual)}`;
+        out.appendChild(d);
+      }
+    }
+
+    // 用帶 +08:00 的字串指定「台北的某個瞬間」，讀起來就是店門口的時鐘
+    function status(rule, taipeiTime) {
+      const parsed = Hours.parse(rule);
+      if (!parsed.ok) return { parseError: parsed.error };
+      return Hours.statusAt(parsed, Hours.taipeiNow(new Date(taipeiTime)));
+    }
+
+    const isOpen = (rule, t) => status(rule, t).open;
+    const left = (rule, t) => status(rule, t).minutesLeft;
+
+    /* ---------------------------------------------------------- */
+
+    group("基本營業時間");
+    {
+      const r = "Mo-Su 11:00-21:30"; // 三商巧福
+      check("週一 12:00 營業中", isOpen(r, "2026-08-10T12:00+08:00"), true);
+      check("週一 12:00 還有 9.5 小時打烊", left(r, "2026-08-10T12:00+08:00"), 570);
+      check("週一 22:00 已打烊", isOpen(r, "2026-08-10T22:00+08:00"), false);
+      check("週一 22:00 距離明天開門 13 小時", left(r, "2026-08-10T22:00+08:00"), 780);
+      check("剛好 11:00 算開", isOpen(r, "2026-08-10T11:00+08:00"), true);
+      check("剛好 21:30 算關", isOpen(r, "2026-08-10T21:30+08:00"), false);
+    }
+
+    group("跨夜營業（摩斯漢堡 Mo-Su 06:00-01:00）");
+    {
+      const r = "Mo-Su 06:00-01:00";
+      // 這組是整個工具最重要的案例：使用情境就是「半夜想吃東西」
+      check("凌晨 00:30 仍在營業（昨天那段還沒結束）", isOpen(r, "2026-08-10T00:30+08:00"), true);
+      check("凌晨 00:30 再 30 分打烊", left(r, "2026-08-10T00:30+08:00"), 30);
+      check("晚上 23:00 營業中", isOpen(r, "2026-08-10T23:00+08:00"), true);
+      check("晚上 23:00 還有 2 小時（跨過午夜）", left(r, "2026-08-10T23:00+08:00"), 120);
+      check("凌晨 02:00 已打烊", isOpen(r, "2026-08-10T02:00+08:00"), false);
+      check("凌晨 02:00 再 4 小時開門", left(r, "2026-08-10T02:00+08:00"), 240);
+      check("05:59 還沒開，剩 1 分鐘", left(r, "2026-08-10T05:59+08:00"), 1);
+    }
+
+    group("跨午夜的連續營業（竹圍永和豆漿 00:00-11:00,20:00-24:00）");
+    {
+      const r = "00:00-11:00,20:00-24:00";
+      check("晚上 23:00 營業中", isOpen(r, "2026-08-10T23:00+08:00"), true);
+      // 不合併區間的話這裡會答 60（誤以為 24:00 打烊），實際是連著開到隔天 11:00
+      check("晚上 23:00 要算到隔天 11:00 共 12 小時", left(r, "2026-08-10T23:00+08:00"), 720);
+      check("凌晨 00:30 營業中", isOpen(r, "2026-08-10T00:30+08:00"), true);
+      check("凌晨 00:30 還有 10.5 小時", left(r, "2026-08-10T00:30+08:00"), 630);
+      check("中午 12:00 已打烊", isOpen(r, "2026-08-10T12:00+08:00"), false);
+      check("中午 12:00 再 8 小時開門", left(r, "2026-08-10T12:00+08:00"), 480);
+    }
+
+    group("24 小時營業（麥當勞 24/7）");
+    {
+      check("凌晨 03:00 營業中", isOpen("24/7", "2026-08-10T03:00+08:00"), true);
+      check("中午營業中", isOpen("24/7", "2026-08-10T12:00+08:00"), true);
+      check("跨月最後一天也營業中", isOpen("24/7", "2026-08-31T23:59+08:00"), true);
+    }
+
+    group("24:00 當作一天的結束（鬍鬚張 Mo-Su 10:00-24:00）");
+    {
+      const r = "Mo-Su 10:00-24:00";
+      check("23:59 營業中，剩 1 分鐘", left(r, "2026-08-10T23:59+08:00"), 1);
+      check("隔天 00:00 已打烊", isOpen(r, "2026-08-11T00:00+08:00"), false);
+      check("隔天 00:00 再 10 小時開門", left(r, "2026-08-11T00:00+08:00"), 600);
+    }
+
+    group("公休日（Brother 布拉德 Mo 06:30-14:30; Tu off; We-Su 06:30-14:30）");
+    {
+      const r = "Mo 06:30-14:30; Tu off; We-Su 06:30-14:30";
+      check("週一 08:00 營業中", isOpen(r, "2026-08-10T08:00+08:00"), true);
+      check("週二 08:00 公休", isOpen(r, "2026-08-11T08:00+08:00"), false);
+      check("週三 08:00 營業中", isOpen(r, "2026-08-12T08:00+08:00"), true);
+      check("週二 08:00 要等到週三 06:30（22.5 小時）", left(r, "2026-08-11T08:00+08:00"), 1350);
+    }
+
+    group("每月第 N 個星期公休（虎呷飯 11:00-21:00; We[2,4] off）");
+    {
+      const r = "11:00-21:00; We[2,4] off";
+      check("8/5 第 1 個週三 營業中", isOpen(r, "2026-08-05T12:00+08:00"), true);
+      check("8/12 第 2 個週三 公休", isOpen(r, "2026-08-12T12:00+08:00"), false);
+      check("8/19 第 3 個週三 營業中", isOpen(r, "2026-08-19T12:00+08:00"), true);
+      check("8/26 第 4 個週三 公休", isOpen(r, "2026-08-26T12:00+08:00"), false);
+      check("8/13 週四 不受影響", isOpen(r, "2026-08-13T12:00+08:00"), true);
+    }
+
+    group("跨週的星期範圍（水窩咖啡 Th-Tu 09:30-20:00）");
+    {
+      const r = "Th-Tu 09:30-20:00"; // 四五六日一二營業，週三公休
+      check("週四 12:00 營業中", isOpen(r, "2026-08-13T12:00+08:00"), true);
+      check("週日 12:00 營業中", isOpen(r, "2026-08-16T12:00+08:00"), true);
+      check("週二 12:00 營業中", isOpen(r, "2026-08-11T12:00+08:00"), true);
+      check("週三 12:00 公休", isOpen(r, "2026-08-12T12:00+08:00"), false);
+    }
+
+    group("午休兩段式（Mo-Th 11:00-15:00,17:30-21:30）");
+    {
+      const r = "Mo-Th 11:00-15:00,17:30-21:30";
+      check("14:00 午餐時段營業中", isOpen(r, "2026-08-10T14:00+08:00"), true);
+      check("16:00 午休中", isOpen(r, "2026-08-10T16:00+08:00"), false);
+      check("16:00 再 90 分鐘開門", left(r, "2026-08-10T16:00+08:00"), 90);
+      check("18:00 晚餐時段營業中", isOpen(r, "2026-08-10T18:00+08:00"), true);
+      check("18:00 還有 3.5 小時", left(r, "2026-08-10T18:00+08:00"), 210);
+    }
+
+    group("星期列舉混範圍（二月拉麵 Mo,We-Su 11:00-14:00, 17:00-21:00）");
+    {
+      const r = "Mo,We-Su 11:00-14:00, 17:00-21:00";
+      check("週一 12:00 營業中", isOpen(r, "2026-08-10T12:00+08:00"), true);
+      check("週二 12:00 公休", isOpen(r, "2026-08-11T12:00+08:00"), false);
+      check("週四 12:00 營業中", isOpen(r, "2026-08-13T12:00+08:00"), true);
+    }
+
+    group("不同日不同時間（勝博殿）");
+    {
+      const r = "Mo-Th 11:00-15:00,17:30-21:30; Fr 11:30-15:00,17:30-22:00; Sa-Su 11:00-22:00";
+      check("週五 21:45 還開著（週五到 22:00）", isOpen(r, "2026-08-14T21:45+08:00"), true);
+      check("週四 21:45 已打烊（週四到 21:30）", isOpen(r, "2026-08-13T21:45+08:00"), false);
+      check("週六 16:00 營業中（假日不午休）", isOpen(r, "2026-08-15T16:00+08:00"), true);
+      check("週一 16:00 午休中", isOpen(r, "2026-08-10T16:00+08:00"), false);
+    }
+
+    group("沒寫星期就是每天（茶旅 12:00-21:00）");
+    {
+      const r = "12:00-21:00";
+      check("週一 13:00 營業中", isOpen(r, "2026-08-10T13:00+08:00"), true);
+      check("週日 13:00 營業中", isOpen(r, "2026-08-16T13:00+08:00"), true);
+      check("週日 22:00 已打烊", isOpen(r, "2026-08-16T22:00+08:00"), false);
+    }
+
+    group("時區：一律用台北時間");
+    {
+      const r = "Mo-Su 11:00-21:30";
+      // 同一個瞬間的兩種寫法，結果必須一致——人在國外看也要是對的
+      check("UTC 04:00 = 台北 12:00，營業中", isOpen(r, "2026-08-10T04:00:00Z"), true);
+      check("UTC 14:00 = 台北隔天 22:00，已打烊", isOpen(r, "2026-08-10T14:00:00Z"), false);
+      const now = Hours.taipeiNow(new Date("2026-08-09T16:30:00Z"));
+      check("UTC 16:30 換算成台北 00:30", now.label, "00:30");
+      check("換算後是週一", now.days[1].day, 1);
+    }
+
+    group("錯誤的資料要明講，不能當成沒開");
+    {
+      const bad = (s) => Hours.parse(s).ok;
+      check("9:30--20:00 多一個橫線（OSM 原始資料的 typo）", bad("Th-Tu 9:30--20:00"), false);
+      check("25:00-26:00 時間超出範圍", bad("Mo-Su 25:00-26:00"), false);
+      check("11:70 分鐘超出範圍", bad("Mo-Su 11:70-12:00"), false);
+      check("只有開始沒有結束", bad("Mo-Su 11:00"), false);
+      check("看不懂的星期", bad("Xx 11:00-12:00"), false);
+      check("空字串", bad(""), false);
+      check("正常的還是要過", bad("Mo-Su 11:00-21:30"), true);
+      check("單位數小時可以接受", bad("Mo-Su 9:30-20:00"), true);
+      check("星期小寫也可以（資料是手打的）", bad("mo-su 11:00-21:30"), true);
+      check("星期小寫算出來要一樣", isOpen("mo-fr 11:00-21:30", "2026-08-10T12:00+08:00"), true);
+      check("小寫的 off 也要認得", isOpen("mo-su 11:00-21:00; tu off", "2026-08-11T12:00+08:00"), false);
+      check("錯誤訊息看得懂", /9:30--20:00/.test(Hours.parse("Th-Tu 9:30--20:00").error), true);
+    }
+
+    group("從 Google 匯入營業時間");
+    {
+      // Google 的 period 格式：day 0 是週日
+      const P = (od, oh, om, cd, ch, cm) => ({
+        open: { day: od, hour: oh, minute: om },
+        close: { day: cd, hour: ch, minute: cm },
+      });
+      const everyDay = (fn) => ({ periods: [0, 1, 2, 3, 4, 5, 6].map(fn) });
+      const g = (x) => Hours.fromGoogle(x);
+
+      check(
+        "每天一樣 → Mo-Su",
+        g(everyDay((d) => P(d, 11, 0, d, 21, 30))),
+        "Mo-Su 11:00-21:30"
+      );
+
+      check(
+        "平日假日不同 → 分成兩段",
+        g({
+          periods: [1, 2, 3, 4, 5]
+            .map((d) => P(d, 11, 0, d, 21, 30))
+            .concat([6, 0].map((d) => P(d, 11, 0, d, 22, 0))),
+        }),
+        "Mo-Fr 11:00-21:30; Sa-Su 11:00-22:00"
+      );
+
+      check(
+        "一天兩段（午休）",
+        g({
+          periods: [1, 2, 3, 4, 5].flatMap((d) => [
+            P(d, 11, 0, d, 14, 30),
+            P(d, 17, 0, d, 21, 30),
+          ]),
+        }),
+        "Mo-Fr 11:00-14:30,17:00-21:30"
+      );
+
+      check(
+        "跨夜（打烊掛在隔天）",
+        g(everyDay((d) => P(d, 18, 0, (d + 1) % 7, 2, 0))),
+        "Mo-Su 18:00-02:00"
+      );
+
+      check(
+        "剛好午夜打烊 → 寫成 24:00 而不是 00:00",
+        g({ periods: [P(1, 10, 0, 2, 0, 0)] }),
+        "Mo 10:00-24:00"
+      );
+
+      check(
+        "24 小時營業（Google 只給沒有 close 的 period）",
+        g({ periods: [{ open: { day: 0, hour: 0, minute: 0 } }] }),
+        "24/7"
+      );
+
+      check(
+        "週二公休 → 中間斷開不併成範圍",
+        g({
+          periods: [1, 3, 4, 5, 6, 0].map((d) => P(d, 11, 0, d, 21, 0)),
+        }),
+        "Mo 11:00-21:00; We-Su 11:00-21:00"
+      );
+
+      check("沒有資料時回 null", g({ periods: [] }), null);
+      check("整包是 undefined 也不能爆掉", g(undefined), null);
+    }
+
+    group("Google 匯入後要能被自己讀回來（來回轉換）");
+    {
+      const P = (od, oh, om, cd, ch, cm) => ({
+        open: { day: od, hour: oh, minute: om },
+        close: { day: cd, hour: ch, minute: cm },
+      });
+      const everyDay = (fn) => ({ periods: [0, 1, 2, 3, 4, 5, 6].map(fn) });
+
+      // 轉出來的字串如果自己的解析器讀不回來，那這條匯入路線就是壞的
+      const roundTrip = (googleHours) => {
+        const text = Hours.fromGoogle(googleHours);
+        return { text: text, ok: Hours.parse(text).ok };
+      };
+
+      const overnight = roundTrip(everyDay((d) => P(d, 6, 0, (d + 1) % 7, 1, 0)));
+      check("跨夜的字串解析得回來", overnight.ok, true);
+      check("跨夜轉出來的內容正確", overnight.text, "Mo-Su 06:00-01:00");
+      check(
+        "而且算出來凌晨 00:30 是營業中",
+        isOpen(overnight.text, "2026-08-10T00:30+08:00"),
+        true
+      );
+
+      const lunch = roundTrip({
+        periods: [1, 2, 3, 4].flatMap((d) => [
+          P(d, 11, 0, d, 15, 0),
+          P(d, 17, 30, d, 21, 30),
+        ]),
+      });
+      check("午休兩段解析得回來", lunch.ok, true);
+      check("午休時段判定為沒開", isOpen(lunch.text, "2026-08-10T16:00+08:00"), false);
+      check("晚餐時段判定為有開", isOpen(lunch.text, "2026-08-10T18:00+08:00"), true);
+
+      const allDay = roundTrip({ periods: [{ open: { day: 0, hour: 0, minute: 0 } }] });
+      check("24/7 解析得回來", allDay.ok, true);
+      check("24/7 任何時候都算有開", isOpen(allDay.text, "2026-08-13T03:00+08:00"), true);
+
+      const midnight = roundTrip({ periods: [P(1, 10, 0, 2, 0, 0)] });
+      check("午夜打烊解析得回來", midnight.ok, true);
+      check("23:59 還開著", isOpen(midnight.text, "2026-08-10T23:59+08:00"), true);
+      check("隔天 00:30 已打烊", isOpen(midnight.text, "2026-08-11T00:30+08:00"), false);
+    }
+
+    group("base64 編解碼（存回 GitHub 用）");
+    {
+      const round = (text) => Codec.decodeBase64(Codec.encodeBase64(text));
+
+      check("純英數", round("Subway"), "Subway");
+      check("中文店名", round("鬍鬚張魯肉飯 淡水店"), "鬍鬚張魯肉飯 淡水店");
+      check("中英數混雜", round("星巴克 Starbucks 淡水金色水岸門市"), "星巴克 Starbucks 淡水金色水岸門市");
+      check("emoji（四位元組字元）", round("🐈 uiia cat 🍜"), "🐈 uiia cat 🍜");
+      check("換行與縮排要原樣保留", round('{\n  "a": 1\n}\n'), '{\n  "a": 1\n}\n');
+      check("空字串", round(""), "");
+
+      // 對照一個手算的值，確認是 UTF-8 而不是別的編碼
+      check("「淡水」的 base64 是 5reh5rC0", Codec.encodeBase64("淡水"), "5reh5rC0");
+
+      // GitHub 回來的 base64 每 60 字元會換行，atob 碰到換行會直接丟錯
+      const withNewlines = Codec.encodeBase64("淡水區有很多好吃的店家，這串要夠長才會被 GitHub 折行處理").replace(/(.{20})/g, "$1\n");
+      check(
+        "有換行的 base64 也要解得開（GitHub 就是這樣回的）",
+        Codec.decodeBase64(withNewlines),
+        "淡水區有很多好吃的店家，這串要夠長才會被 GitHub 折行處理"
+      );
+
+      // 真正會被寫回去的東西：整包 JSON
+      const sample = {
+        area: "淡水",
+        places: [
+          { name: "阿鳳阿給", hours: "Mo-Su 05:00-16:30", tags: ["小吃", "早餐"], note: "五點就開了" },
+          { name: "麥當勞 淡水中正店", hours: "24/7", tags: ["速食"] },
+        ],
+      };
+      const text = JSON.stringify(sample, null, 2) + "\n";
+      check("整包 places.json 來回不變", round(text), text);
+      check("解回來還能 JSON.parse", JSON.parse(round(text)).places[0].name, "阿鳳阿給");
+    }
+
+    group("humanizeMinutes");
+    {
+      check("95 分 → 1 小時 35 分", Hours.humanizeMinutes(95), "1 小時 35 分");
+      check("60 分 → 1 小時", Hours.humanizeMinutes(60), "1 小時");
+      check("35 分 → 35 分", Hours.humanizeMinutes(35), "35 分");
+      check("0 分 → 0 分", Hours.humanizeMinutes(0), "0 分");
+    }
+
+    /* ---------------------------------------------------------- */
+
+    const summary = document.createElement("div");
+    summary.className = "summary " + (failed ? "fail" : "pass");
+    summary.textContent = failed
+      ? `${failed} 個失敗 / 共 ${passed + failed} 個`
+      : `全部通過（${passed} 個）`;
+    out.insertBefore(summary, out.firstChild);
+    document.title = (failed ? `${failed} FAIL` : "PASS") + " — hours.js 測試";
+  </script>
+</body>
+</html>
