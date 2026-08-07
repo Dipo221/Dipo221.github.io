@@ -18,6 +18,29 @@
   margin: 4px 0 8px;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
+  /* 時鐘是進編輯模式的隱藏開關（連點五下）。連點時不要選到字、
+     也不要觸發手機的雙擊縮放，否則按起來像壞掉。 */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+/* 第三下之後才會閃，讓知道的人確認數對了；前兩下什麼都不會發生 */
+#clock.knocking {
+  animation: knock 0.22s ease;
+}
+
+@keyframes knock {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #clock.knocking {
+    animation: none;
+    opacity: 0.4;
+  }
 }
 
 h2 .count {

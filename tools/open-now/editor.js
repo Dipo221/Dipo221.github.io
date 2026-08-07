@@ -27,13 +27,73 @@
 
   const TOKEN_KEY = "open-now:github-token";
   const GOOGLE_KEY = "open-now:google-key";
+  const UNLOCK_KEY = "open-now:unlocked"; // 連點時鐘解鎖用，只存活到分頁關閉
 
   const getToken = () => localStorage.getItem(TOKEN_KEY) || "";
   const getGoogleKey = () => localStorage.getItem(GOOGLE_KEY) || "";
 
-  // 沒帶 #edit 又沒存過 token 的話，這支就整個不做事
-  const editMode = location.hash === "#edit" || !!getToken();
-  if (!editMode) return;
+  /*
+   * 隱藏入口：連點時鐘五下進編輯模式。
+   *
+   * 平常靠網址的 #edit 進入，但在沒存過 token 的裝置上（換手機、清過快取、
+   * 無痕視窗）就得記得那串網址。這個開關就是給那種時候用的。
+   *
+   * 選時鐘是因為它夠大好按，而且本來就沒有任何互動，不會跟別的行為打架。
+   * 前兩下刻意完全沒有回饋——雙擊是很常見的誤觸，那時候不該露出破綻；
+   * 第三下才開始閃，讓知道的人確認自己數對了。
+   */
+  function installSecretKnock() {
+    const clock = document.getElementById("clock");
+    if (!clock) return;
+
+    const NEEDED = 5;
+    const RESET_MS = 3000; // 太慢就從頭算，避免整天累積誤觸
+
+    let count = 0;
+    let timer = null;
+
+    clock.addEventListener("click", function () {
+      count += 1;
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        count = 0;
+        clock.classList.remove("knocking");
+      }, RESET_MS);
+
+      if (count >= 3 && count < NEEDED) {
+        clock.classList.remove("knocking");
+        void clock.offsetWidth; // 強制重排，動畫才會重頭播
+        clock.classList.add("knocking");
+      }
+
+      if (count >= NEEDED) {
+        clearTimeout(timer);
+        clock.classList.remove("knocking");
+
+        /*
+         * 用 sessionStorage 記住而不是改網址的 hash：
+         * 「設好 hash 再 reload」看似直覺，實際上會有競態——reload 有機會
+         * 用到設定之前的網址，結果就是點五下沒反應（實測踩過）。
+         * 存旗標再重載是確定性的，而且網址保持乾淨，
+         * 分頁關掉就自動失效，剛好符合「臨時解鎖」的語意。
+         */
+        sessionStorage.setItem(UNLOCK_KEY, "1");
+        location.reload();
+      }
+    });
+  }
+
+  // 三種進得來的方式：網址帶 #edit、這台裝置存過 token、或剛剛連點時鐘解鎖。
+  // 都不符合的話，除了掛上隱藏開關以外什麼都不做。
+  const editMode =
+    location.hash === "#edit" ||
+    !!getToken() ||
+    sessionStorage.getItem(UNLOCK_KEY) === "1";
+
+  if (!editMode) {
+    installSecretKnock();
+    return;
+  }
 
   let fileSha = null; // GitHub 上這個檔案目前的版本，更新時必須帶
   let loadedText = null; // 載進來時的原始內容，存檔前用來偵測衝突

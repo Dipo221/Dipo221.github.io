@@ -13,9 +13,14 @@ MingYang 的個人首頁，透過 GitHub Pages 發布於 <https://dipo221.github
 
 看淡水現在有哪些店還開著。資料是手動維護的 `tools/open-now/places.json`。
 
-**編輯**：開 <https://dipo221.github.io/tools/open-now/#edit>，可以新增／刪除／修改店家，
-存檔會直接 commit 回這個 repo（GitHub Pages 大約 30 秒後更新）。
-一般訪客看不到編輯介面。
+**編輯**：可以新增／刪除／修改店家，存檔會直接 commit 回這個 repo
+（GitHub Pages 大約 30 秒後更新）。一般訪客看不到編輯介面。
+
+三種進入方式：
+
+1. 網址加 `#edit` — <https://dipo221.github.io/tools/open-now/#edit>
+2. **連點畫面上的時鐘五下**（要連續，中間停超過 3 秒會歸零）— 忘記網址時用這個
+3. 這台裝置存過 token 的話，直接開就是編輯模式
 
 第一次要在「設定」裡填兩樣東西，都只存在該台裝置的瀏覽器，不會進 repo：
 
