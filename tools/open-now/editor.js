@@ -83,12 +83,18 @@
     });
   }
 
-  // 三種進得來的方式：網址帶 #edit、這台裝置存過 token、或剛剛連點時鐘解鎖。
-  // 都不符合的話，除了掛上隱藏開關以外什麼都不做。
+  /*
+   * 進編輯模式要明確表態：網址帶 #edit，或連點時鐘五下。
+   *
+   * 「存過 token 就自動進編輯模式」曾經是這裡的第三個條件，後來拿掉了——
+   * 那會讓自己的裝置永遠掛著編輯介面，而手機版的刪除鍵是常駐顯示的，
+   * 半夜滑著找吃的很容易誤觸。瀏覽是天天在做的事，編輯偶爾才做，
+   * 不該讓常用的那個承擔誤刪風險。
+   *
+   * token 現在只負責存檔，不再決定要不要顯示編輯介面。
+   */
   const editMode =
-    location.hash === "#edit" ||
-    !!getToken() ||
-    sessionStorage.getItem(UNLOCK_KEY) === "1";
+    location.hash === "#edit" || sessionStorage.getItem(UNLOCK_KEY) === "1";
 
   if (!editMode) {
     installSecretKnock();
@@ -622,6 +628,17 @@
   saveSettings.addEventListener("click", () => {
     const token = tokenField.input.value.trim();
     const key = keyField.input.value.trim();
+
+    /*
+     * token 會被放進 HTTP 標頭，而標頭只吃 ISO-8859-1。夾帶到全形空白或
+     * 其他看不見的字元時，瀏覽器會丟「String contains non ISO-8859-1
+     * code point」——那句話對使用者完全沒有意義，所以在這裡先擋下來講人話。
+     */
+    const strange = [token, key].find((value) => value && /[^\x20-\x7E]/.test(value));
+    if (strange) {
+      setStatus("貼進來的內容有看不見的雜字元（可能複製時多帶到東西），請重貼一次", "error");
+      return;
+    }
 
     if (token) localStorage.setItem(TOKEN_KEY, token);
     if (key) localStorage.setItem(GOOGLE_KEY, key);
