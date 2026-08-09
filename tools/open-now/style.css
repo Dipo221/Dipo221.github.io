@@ -105,6 +105,17 @@ h2 .count {
   opacity: 0.45;
 }
 
+/* 展開／收合剩下的標籤。做成虛線邊框，一眼就看得出它不是分類 */
+.chip.is-more {
+  border-style: dashed;
+  color: var(--muted);
+  background: none;
+}
+
+.chip.is-more:hover {
+  color: var(--accent);
+}
+
 .cards {
   display: flex;
   flex-direction: column;

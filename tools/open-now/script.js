@@ -10,10 +10,14 @@ const CLOSING_SOON_MINUTES = 30; // 剩多久算「快打烊」
 const REFRESH_MS = 30 * 1000; // 每半分鐘重畫一次，時間才不會停在打開頁面的那一刻
 
 /*
- * 篩選列的兩個門檻。標籤是自由填的，很容易長出一堆只對應一家店的標籤
- * （實測 15 家店就長出 14 種標籤，其中 8 種只有一家）——
- * 全部排出來的話那排按鈕會跟清單一樣高，為了少滑一點反而要多滑一排。
- * 所以只讓「篩了才有意義」的標籤佔位置，其餘仍然顯示在卡片上。
+ * 標籤是自由填的，很容易長出一堆只對應一家店的標籤（實測 29 家店長出 13 種，
+ * 其中 3 種只有一家）。只有一家店的標籤篩了等於沒篩，所以不佔篩選列的位置，
+ * 但仍然顯示在卡片上。
+ *
+ * MAX_FILTERS 只決定「預設先露出幾個」，不是資格門檻——超出的收在「更多」
+ * 後面，不會被丟掉。曾經是硬上限，結果同為 2 家店的標籤要靠名稱排序決勝，
+ * 變成加兩家火鍋按鈕就出現、加兩家泰式就不會，完全沒辦法預期。
+ * 現在的規則單純：滿 MIN_STORES_FOR_FILTER 家就一定在列上。
  */
 const MIN_STORES_FOR_FILTER = 2;
 const MAX_FILTERS = 8;
@@ -24,6 +28,7 @@ const boardEl = document.getElementById("board");
 const filtersEl = document.getElementById("filters");
 
 let activeTag = null; // null 代表「全部」
+let showAllTags = false; // 篩選列是否展開到全部標籤
 let showClosed = false; // 「已打烊」是否展開
 let closedTouched = false; // 使用者有沒有自己動過那個開關
 
@@ -54,7 +59,13 @@ function applyData(data) {
   render();
 }
 
-fetch("places.json?v=2")
+/*
+ * cache: "no-cache" 是「每次都跟伺服器確認一下」，不是「不要快取」——
+ * 沒變的話伺服器回 304，不會重下載。用預設值的話 GitHub Pages 給的
+ * max-age 會讓剛加完的店隔幾分鐘才看得到，而「加完馬上打開確認」
+ * 正是最常做的事。
+ */
+fetch("places.json", { cache: "no-cache" })
   .then((res) => {
     if (!res.ok) throw new Error("HTTP " + res.status);
     return res.json();
@@ -94,7 +105,7 @@ function mapUrl(entry) {
 /* ---------- 篩選列 ---------- */
 
 /*
- * 挑出要放進篩選列的標籤。
+ * 挑出有資格進篩選列的標籤（多到放不下時由呼叫端決定先露出幾個）。
  * 排序看的是「總共幾家店」而不是「現在幾家開著」——後者每半分鐘會變，
  * 按鈕位置跟著跳動的話很難按。數字顯示的才是現在有開的家數。
  */
@@ -110,7 +121,6 @@ function pickFilterTags(items) {
   return [...totals.entries()]
     .filter(([, count]) => count >= MIN_STORES_FOR_FILTER)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-Hant"))
-    .slice(0, MAX_FILTERS)
     .map(([tag]) => tag);
 }
 
@@ -147,13 +157,13 @@ function chip(label, count, isActive, onClick) {
 }
 
 function renderFilters(items) {
-  const tags = pickFilterTags(items);
+  const eligible = pickFilterTags(items);
 
-  // 資料改過之後選中的標籤可能已經不在列上了，讓它退回「全部」
-  if (activeTag && !tags.includes(activeTag)) activeTag = null;
+  // 資料改過之後選中的標籤可能已經不夠格了，讓它退回「全部」
+  if (activeTag && !eligible.includes(activeTag)) activeTag = null;
 
   filtersEl.innerHTML = "";
-  if (!tags.length) return; // 店太少還沒長出值得篩的標籤，就不要佔版面
+  if (!eligible.length) return; // 店太少還沒長出值得篩的標籤，就不要佔版面
 
   const openByTag = countOpenByTag(items);
   const openTotal = items.filter((x) => x.status && x.status.open).length;
@@ -164,13 +174,32 @@ function renderFilters(items) {
     render();
   };
 
+  let visible = showAllTags ? eligible : eligible.slice(0, MAX_FILTERS);
+
+  // 選中的標籤一定要看得到。收合時把它藏起來的話，畫面會變成
+  // 「明明在篩選，卻看不出在篩什麼」，而且沒辦法再點一次取消。
+  if (activeTag && !visible.includes(activeTag)) visible = visible.concat(activeTag);
+
   filtersEl.appendChild(chip("全部", openTotal, activeTag === null, () => select(null)));
 
-  for (const tag of tags) {
+  for (const tag of visible) {
     const isActive = activeTag === tag;
     filtersEl.appendChild(
       chip(tag, openByTag.get(tag) || 0, isActive, () => select(isActive ? null : tag))
     );
+  }
+
+  const hidden = eligible.length - visible.length;
+  if (hidden > 0 || showAllTags) {
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "chip is-more";
+    more.textContent = showAllTags ? "收合" : "＋" + hidden + " 更多";
+    more.addEventListener("click", () => {
+      showAllTags = !showAllTags;
+      render();
+    });
+    filtersEl.appendChild(more);
   }
 }
 
