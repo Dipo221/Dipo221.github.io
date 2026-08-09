@@ -9,16 +9,29 @@
 const CLOSING_SOON_MINUTES = 30; // 剩多久算「快打烊」
 const REFRESH_MS = 30 * 1000; // 每半分鐘重畫一次，時間才不會停在打開頁面的那一刻
 
+/*
+ * 篩選列的兩個門檻。標籤是自由填的，很容易長出一堆只對應一家店的標籤
+ * （實測 15 家店就長出 14 種標籤，其中 8 種只有一家）——
+ * 全部排出來的話那排按鈕會跟清單一樣高，為了少滑一點反而要多滑一排。
+ * 所以只讓「篩了才有意義」的標籤佔位置，其餘仍然顯示在卡片上。
+ */
+const MIN_STORES_FOR_FILTER = 2;
+const MAX_FILTERS = 8;
+
 const clockEl = document.getElementById("clock");
 const summaryEl = document.getElementById("summary");
 const boardEl = document.getElementById("board");
+const filtersEl = document.getElementById("filters");
+
+let activeTag = null; // null 代表「全部」
+let showClosed = false; // 「已打烊」是否展開
+let closedTouched = false; // 使用者有沒有自己動過那個開關
 
 const OpenNow = {
   data: null, // places.json 的完整內容（含 area、_說明，存檔時要原樣寫回去）
   entries: [], // [{ place, area, parsed, error }]
   applyData: applyData,
   render: render,
-  CLOSING_SOON_MINUTES: CLOSING_SOON_MINUTES,
 };
 window.OpenNow = OpenNow;
 
@@ -58,7 +71,7 @@ fetch("places.json?v=2")
     boardEl.appendChild(notice("讀不到 places.json（" + err.message + "）"));
   });
 
-/* ---------- 畫面 ---------- */
+/* ---------- 小工具 ---------- */
 
 function notice(text) {
   const el = document.createElement("p");
@@ -67,12 +80,101 @@ function notice(text) {
   return el;
 }
 
+function tagsOf(entry) {
+  return entry.place.tags || [];
+}
+
 function mapUrl(entry) {
   if (entry.place.map) return entry.place.map;
   // 沒有 place_id 也能連——組一個搜尋網址就好，完全不需要 API
   const query = (entry.area ? entry.area + " " : "") + entry.place.name;
   return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(query);
 }
+
+/* ---------- 篩選列 ---------- */
+
+/*
+ * 挑出要放進篩選列的標籤。
+ * 排序看的是「總共幾家店」而不是「現在幾家開著」——後者每半分鐘會變，
+ * 按鈕位置跟著跳動的話很難按。數字顯示的才是現在有開的家數。
+ */
+function pickFilterTags(items) {
+  const totals = new Map();
+
+  for (const item of items) {
+    for (const tag of tagsOf(item.entry)) {
+      totals.set(tag, (totals.get(tag) || 0) + 1);
+    }
+  }
+
+  return [...totals.entries()]
+    .filter(([, count]) => count >= MIN_STORES_FOR_FILTER)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-Hant"))
+    .slice(0, MAX_FILTERS)
+    .map(([tag]) => tag);
+}
+
+function countOpenByTag(items) {
+  const open = new Map();
+
+  for (const item of items) {
+    if (!item.status || !item.status.open) continue;
+    for (const tag of tagsOf(item.entry)) {
+      open.set(tag, (open.get(tag) || 0) + 1);
+    }
+  }
+
+  return open;
+}
+
+function chip(label, count, isActive, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "chip";
+  if (isActive) button.classList.add("is-active");
+  if (count === 0) button.classList.add("is-empty"); // 這個時間點沒得吃，變灰但還是能點
+  button.setAttribute("aria-pressed", String(isActive));
+
+  button.appendChild(document.createTextNode(label));
+
+  const badge = document.createElement("span");
+  badge.className = "chip-count";
+  badge.textContent = count;
+  button.appendChild(badge);
+
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function renderFilters(items) {
+  const tags = pickFilterTags(items);
+
+  // 資料改過之後選中的標籤可能已經不在列上了，讓它退回「全部」
+  if (activeTag && !tags.includes(activeTag)) activeTag = null;
+
+  filtersEl.innerHTML = "";
+  if (!tags.length) return; // 店太少還沒長出值得篩的標籤，就不要佔版面
+
+  const openByTag = countOpenByTag(items);
+  const openTotal = items.filter((x) => x.status && x.status.open).length;
+
+  const select = (tag) => {
+    activeTag = tag;
+    closedTouched = false; // 換了條件就重新套用預設的收合行為
+    render();
+  };
+
+  filtersEl.appendChild(chip("全部", openTotal, activeTag === null, () => select(null)));
+
+  for (const tag of tags) {
+    const isActive = activeTag === tag;
+    filtersEl.appendChild(
+      chip(tag, openByTag.get(tag) || 0, isActive, () => select(isActive ? null : tag))
+    );
+  }
+}
+
+/* ---------- 卡片 ---------- */
 
 function card(entry, status, index) {
   const wrap = document.createElement("div");
@@ -127,16 +229,25 @@ function card(entry, status, index) {
   }
   link.appendChild(meta);
 
-  const tags = (entry.place.tags || []).slice();
-  if (entry.place.note) tags.unshift(entry.place.note);
+  // 備註跟標籤分開放。以前備註也做成 chip，但標籤現在是可以篩選的分類，
+  // 長得一樣會讓人以為備註也點得動。
+  if (entry.place.note) {
+    const note = document.createElement("div");
+    note.className = "card-note";
+    note.textContent = entry.place.note;
+    link.appendChild(note);
+  }
+
+  const tags = tagsOf(entry);
   if (tags.length) {
     const row = document.createElement("div");
     row.className = "card-tags";
     for (const tag of tags) {
-      const chip = document.createElement("span");
-      chip.className = "tag";
-      chip.textContent = tag;
-      row.appendChild(chip);
+      const item = document.createElement("span");
+      item.className = "tag";
+      if (tag === activeTag) item.classList.add("is-active"); // 標出是哪個標籤讓它被篩進來的
+      item.textContent = tag;
+      row.appendChild(item);
     }
     link.appendChild(row);
   }
@@ -151,16 +262,21 @@ function card(entry, status, index) {
   return wrap;
 }
 
-function section(title, count, cards) {
-  const wrap = document.createElement("section");
+/* ---------- 區塊 ---------- */
 
+function sectionHeading(title, count) {
   const heading = document.createElement("h2");
   heading.textContent = title;
-  const n = document.createElement("span");
-  n.className = "count";
-  n.textContent = count;
-  heading.appendChild(n);
-  wrap.appendChild(heading);
+  const badge = document.createElement("span");
+  badge.className = "count";
+  badge.textContent = count;
+  heading.appendChild(badge);
+  return heading;
+}
+
+function section(title, count, cards) {
+  const wrap = document.createElement("section");
+  wrap.appendChild(sectionHeading(title, count));
 
   const list = document.createElement("div");
   list.className = "cards";
@@ -170,24 +286,77 @@ function section(title, count, cards) {
   return wrap;
 }
 
+/*
+ * 可收合的區塊。凌晨時段十幾家店裡通常只有一兩家開著，
+ * 「已打烊」會佔掉整頁八成——滑很久其實都在滑沒得吃的店。
+ */
+function collapsibleSection(title, count, buildCards, expanded, onToggle) {
+  const wrap = document.createElement("section");
+
+  const heading = document.createElement("h2");
+  heading.className = "is-collapsible";
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "section-toggle";
+  toggle.setAttribute("aria-expanded", String(expanded));
+
+  const arrow = document.createElement("span");
+  arrow.className = "arrow";
+  arrow.textContent = expanded ? "▾" : "▸";
+  toggle.appendChild(arrow);
+  toggle.appendChild(document.createTextNode(title));
+
+  const badge = document.createElement("span");
+  badge.className = "count";
+  badge.textContent = count;
+  toggle.appendChild(badge);
+
+  toggle.addEventListener("click", onToggle);
+  heading.appendChild(toggle);
+  wrap.appendChild(heading);
+
+  if (expanded) {
+    const list = document.createElement("div");
+    list.className = "cards";
+    for (const c of buildCards()) list.appendChild(c);
+    wrap.appendChild(list);
+  }
+
+  return wrap;
+}
+
+/* ---------- 主流程 ---------- */
+
 function render() {
   if (!OpenNow.data) return;
 
   const now = Hours.taipeiNow();
   clockEl.textContent = "週" + now.weekdayLabel + " " + now.label;
 
+  // 先算全部店家的狀態。篩選列的數字要看的是「所有店裡現在幾家開著」，
+  // 不能只算篩選後的，否則選了標籤數字就全變成 0 或自己。
+  const all = OpenNow.entries.map((entry, index) => ({
+    entry: entry,
+    status: entry.error ? null : Hours.statusAt(entry.parsed, now),
+    index: index,
+  }));
+
+  renderFilters(all);
+
+  const visible = activeTag
+    ? all.filter((item) => tagsOf(item.entry).includes(activeTag))
+    : all;
+
   const open = [];
   const closed = [];
   const broken = [];
 
-  OpenNow.entries.forEach((entry, index) => {
-    if (entry.error) {
-      broken.push({ entry: entry, status: null, index: index });
-      return;
-    }
-    const status = Hours.statusAt(entry.parsed, now);
-    (status.open ? open : closed).push({ entry: entry, status: status, index: index });
-  });
+  for (const item of visible) {
+    if (item.entry.error) broken.push(item);
+    else if (item.status.open) open.push(item);
+    else closed.push(item);
+  }
 
   // 有開的，剩越久排越前面——半夜找吃的，先看到來得及的那幾家比較有用
   open.sort((a, b) => b.status.minutesLeft - a.status.minutesLeft);
@@ -198,8 +367,9 @@ function render() {
     return a.status.minutesLeft - b.status.minutesLeft;
   });
 
-  summaryEl.textContent =
-    OpenNow.entries.length + " 家裡，現在有 " + open.length + " 家開著";
+  summaryEl.textContent = activeTag
+    ? visible.length + " 家「" + activeTag + "」，現在有 " + open.length + " 家開著"
+    : OpenNow.entries.length + " 家裡，現在有 " + open.length + " 家開著";
 
   boardEl.innerHTML = "";
 
@@ -208,12 +378,28 @@ function render() {
       section("現在有開", open.length, open.map((x) => card(x.entry, x.status, x.index)))
     );
   } else {
-    boardEl.appendChild(notice("現在一家都沒開 😴"));
+    boardEl.appendChild(
+      notice(activeTag ? "現在沒有「" + activeTag + "」開著 😴" : "現在一家都沒開 😴")
+    );
   }
 
   if (closed.length) {
+    // 一家都沒開的時候預設展開——不然畫面整個空掉，連「幾點會開」都看不到。
+    // 使用者自己動過開關之後就尊重他的選擇。
+    const expanded = closedTouched ? showClosed : open.length === 0;
+
     boardEl.appendChild(
-      section("已打烊", closed.length, closed.map((x) => card(x.entry, x.status, x.index)))
+      collapsibleSection(
+        "已打烊",
+        closed.length,
+        () => closed.map((x) => card(x.entry, x.status, x.index)),
+        expanded,
+        () => {
+          showClosed = !expanded;
+          closedTouched = true;
+          render();
+        }
+      )
     );
   }
 

@@ -50,6 +50,61 @@ h2 .count {
   margin-left: 8px;
 }
 
+/* ---------- 標籤篩選列 ---------- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.filters:empty {
+  margin-bottom: 0;
+}
+
+.chip {
+  font: inherit;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.chip:hover {
+  border-color: var(--accent);
+}
+
+.chip-count {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chip.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #10151b;
+  font-weight: 600;
+}
+
+.chip.is-active .chip-count {
+  color: #10151b;
+  opacity: 0.7;
+}
+
+/* 這個時段一家都沒開。淡掉但不禁用——點進去還能看到幾點開門 */
+.chip.is-empty:not(.is-active) {
+  opacity: 0.45;
+}
+
 .cards {
   display: flex;
   flex-direction: column;
@@ -102,6 +157,14 @@ h2 .count {
   font-variant-numeric: tabular-nums;
 }
 
+/* 備註是純文字，不做成 chip —— 標籤現在是可篩選的分類，
+   長得一樣會讓人以為備註也點得動 */
+.card-note {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 4px;
+}
+
 .card-tags {
   display: flex;
   flex-wrap: wrap;
@@ -115,6 +178,12 @@ h2 .count {
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 1px 6px;
+}
+
+/* 標出是哪個標籤讓這家店被篩進來的 */
+.tag.is-active {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 /* 快打烊：橘色，提醒一下時間不多 */
@@ -150,6 +219,40 @@ h2 .count {
 }
 .card.is-broken .card-meta {
   color: var(--broken);
+}
+
+/* ---------- 可收合的區塊 ---------- */
+
+h2.is-collapsible {
+  padding-left: 0;
+  border-left: none;
+  margin-bottom: 16px;
+}
+
+.section-toggle {
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 0;
+  border: none;
+  border-left: 4px solid var(--accent);
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.section-toggle .arrow {
+  color: var(--accent);
+  font-size: 0.8rem;
+  width: 1em;
+  margin-left: 10px;
+}
+
+.section-toggle:hover {
+  color: var(--accent);
 }
 
 .notice {
