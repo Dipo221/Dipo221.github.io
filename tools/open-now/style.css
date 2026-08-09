@@ -8,6 +8,17 @@
   --broken-bg: rgba(248, 113, 113, 0.12);
 }
 
+/*
+ * main 掛著 class="container"，而根目錄 style.css 裡的 .container（padding: 0 24px）
+ * 比 main（padding: 48px 0）specificity 高，所以 main 的上方留白其實從來沒生效過。
+ * 以前第一個子元素是 <h2>，靠瀏覽器給標題的預設上邊距（16.6px）撐開，剛好看不出來；
+ * 篩選列和編輯列沒有那個邊距，就直接貼到 hero 的分隔線上了。
+ * 這裡用 main.container 把 specificity 拉高才蓋得過去。
+ */
+main.container {
+  padding-top: 32px;
+}
+
 .hero-compact {
   padding: 56px 0 32px;
 }
@@ -549,8 +560,11 @@ h2.is-collapsible {
     font-size: 2.25rem;
     margin: 0 0 4px;
   }
-  main {
-    padding: 24px 0;
+  /* 同樣要用 main.container 才蓋得過 .container。
+     以前寫成 main{padding:24px 0} 是沒有作用的——幸好如此，
+     那個寫法會連左右的 24px 也一起清掉，內容會貼齊螢幕邊緣。 */
+  main.container {
+    padding-top: 20px;
   }
   .card-head {
     flex-direction: column;
