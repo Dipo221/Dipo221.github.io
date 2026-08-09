@@ -75,6 +75,10 @@ h2 .count {
 }
 
 .chip {
+  flex: 0 0 auto; /* 橫向捲動時不要被壓扁 */
+}
+
+.chip {
   font: inherit;
   font-size: 0.85rem;
   display: inline-flex;
@@ -116,15 +120,39 @@ h2 .count {
   opacity: 0.45;
 }
 
-/* 展開／收合剩下的標籤。做成虛線邊框，一眼就看得出它不是分類 */
-.chip.is-more {
-  border-style: dashed;
-  color: var(--muted);
-  background: none;
-}
+/*
+ * 窄螢幕改成單排橫向捲動。標籤一多就會換到三排，佔掉整個第一屏——
+ * 而這個工具的重點是一打開就看到有哪幾家開著。
+ *
+ * 桌機維持換行：滑鼠沒有自然的橫向捲動（要按著 shift 才行），
+ * 做成捲動反而會讓右邊的標籤變成沒人找得到。桌機版面寬，換兩排無所謂。
+ */
+@media (max-width: 720px) {
+  .filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    /* 往兩側撐滿螢幕，內距再補回來：這樣捲到底時標籤會對齊內文，
+       中間又能讓標籤被螢幕邊緣切一半，一眼看得出還有東西 */
+    margin-left: -24px;
+    margin-right: -24px;
+    padding-left: 24px;
+    padding-right: 24px;
+    /* 橫向捲到底時不要順勢觸發瀏覽器的上一頁手勢 */
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
 
-.chip.is-more:hover {
-  color: var(--accent);
+  .filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 右邊還有沒露出來的標籤時才淡出邊緣。手機看不到捲軸，
+     沒有這個提示就不知道還能往右滑；捲到底了就拿掉。 */
+  .filters.has-more-right {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+  }
 }
 
 .cards {

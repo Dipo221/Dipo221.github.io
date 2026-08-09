@@ -10,17 +10,13 @@ const CLOSING_SOON_MINUTES = 30; // 剩多久算「快打烊」
 const REFRESH_MS = 30 * 1000; // 每半分鐘重畫一次，時間才不會停在打開頁面的那一刻
 
 /*
- * 標籤是自由填的，很容易長出一堆只對應一家店的標籤（實測 29 家店長出 13 種，
- * 其中 3 種只有一家）。只有一家店的標籤篩了等於沒篩，所以不佔篩選列的位置，
- * 但仍然顯示在卡片上。
+ * 標籤是自由填的，很容易長出一堆只對應一家店的標籤（實測 30 家店長出 13 種）。
+ * 只有一家店的標籤篩了等於沒篩，所以不佔篩選列的位置，但仍然顯示在卡片上。
  *
- * MAX_FILTERS 只決定「預設先露出幾個」，不是資格門檻——超出的收在「更多」
- * 後面，不會被丟掉。曾經是硬上限，結果同為 2 家店的標籤要靠名稱排序決勝，
- * 變成加兩家火鍋按鈕就出現、加兩家泰式就不會，完全沒辦法預期。
- * 現在的規則單純：滿 MIN_STORES_FOR_FILTER 家就一定在列上。
+ * 規則就這一條：滿這個家數就一定在列上。篩選列是單排橫向捲動的，
+ * 放幾個都只佔一排，所以不需要再有「先露出幾個、其餘收起來」那層邏輯。
  */
 const MIN_STORES_FOR_FILTER = 2;
-const MAX_FILTERS = 8;
 
 const clockEl = document.getElementById("clock");
 const summaryEl = document.getElementById("summary");
@@ -28,7 +24,6 @@ const boardEl = document.getElementById("board");
 const filtersEl = document.getElementById("filters");
 
 let activeTag = null; // null 代表「全部」
-let showAllTags = false; // 篩選列是否展開到全部標籤
 let showClosed = false; // 「已打烊」是否展開
 let closedTouched = false; // 使用者有沒有自己動過那個開關
 
@@ -162,8 +157,15 @@ function renderFilters(items) {
   // 資料改過之後選中的標籤可能已經不夠格了，讓它退回「全部」
   if (activeTag && !eligible.includes(activeTag)) activeTag = null;
 
+  // 每半分鐘會重畫一次。不記住捲動位置的話，畫面會自己彈回最左邊，
+  // 手指還按在上面滑到一半就被拉回去。
+  const scrollLeft = filtersEl.scrollLeft;
+
   filtersEl.innerHTML = "";
-  if (!eligible.length) return; // 店太少還沒長出值得篩的標籤，就不要佔版面
+  if (!eligible.length) {
+    updateOverflowHint();
+    return; // 店太少還沒長出值得篩的標籤，就不要佔版面
+  }
 
   const openByTag = countOpenByTag(items);
   const openTotal = items.filter((x) => x.status && x.status.open).length;
@@ -174,34 +176,31 @@ function renderFilters(items) {
     render();
   };
 
-  let visible = showAllTags ? eligible : eligible.slice(0, MAX_FILTERS);
-
-  // 選中的標籤一定要看得到。收合時把它藏起來的話，畫面會變成
-  // 「明明在篩選，卻看不出在篩什麼」，而且沒辦法再點一次取消。
-  if (activeTag && !visible.includes(activeTag)) visible = visible.concat(activeTag);
-
   filtersEl.appendChild(chip("全部", openTotal, activeTag === null, () => select(null)));
 
-  for (const tag of visible) {
+  for (const tag of eligible) {
     const isActive = activeTag === tag;
     filtersEl.appendChild(
       chip(tag, openByTag.get(tag) || 0, isActive, () => select(isActive ? null : tag))
     );
   }
 
-  const hidden = eligible.length - visible.length;
-  if (hidden > 0 || showAllTags) {
-    const more = document.createElement("button");
-    more.type = "button";
-    more.className = "chip is-more";
-    more.textContent = showAllTags ? "收合" : "＋" + hidden + " 更多";
-    more.addEventListener("click", () => {
-      showAllTags = !showAllTags;
-      render();
-    });
-    filtersEl.appendChild(more);
-  }
+  filtersEl.scrollLeft = scrollLeft;
+  updateOverflowHint();
 }
+
+/*
+ * 右邊還有東西沒露出來時，在邊緣加一層漸層當提示。
+ * 橫向捲動最大的問題是看不出來還能捲，尤其手機上捲軸是隱藏的；
+ * 捲到底就把漸層拿掉，免得一直暗示「還有」其實沒有了。
+ */
+function updateOverflowHint() {
+  const remaining = filtersEl.scrollWidth - filtersEl.clientWidth - filtersEl.scrollLeft;
+  filtersEl.classList.toggle("has-more-right", remaining > 4);
+}
+
+filtersEl.addEventListener("scroll", updateOverflowHint, { passive: true });
+window.addEventListener("resize", updateOverflowHint);
 
 /* ---------- 卡片 ---------- */
 
