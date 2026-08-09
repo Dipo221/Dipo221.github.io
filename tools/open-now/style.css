@@ -305,6 +305,76 @@ h2.is-collapsible {
   color: var(--accent);
 }
 
+/* ---------- 隨機選一家 ---------- */
+
+.dice {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #10151b;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 10;
+  transition: transform 0.12s;
+}
+
+.dice:hover {
+  transform: scale(1.06);
+}
+
+.dice:active {
+  transform: scale(0.94);
+}
+
+.dice:disabled {
+  cursor: default;
+  transform: none;
+}
+
+.dice[hidden] {
+  display: none;
+}
+
+/* 讓浮動按鈕不要蓋住頁尾的「回首頁」 */
+footer {
+  padding-bottom: 90px;
+}
+
+/* 輪轉時掃過去的高亮。要夠明顯才看得出跑到哪了 */
+.card-wrap.is-rolling .card {
+  border-color: var(--accent);
+  background: rgba(121, 184, 255, 0.14);
+}
+
+/* 中選的那家。整圈邊框都上色，跟只有左側色條的一般卡片區隔開 */
+.card-wrap.is-winner .card {
+  border-color: var(--accent);
+  border-left-color: var(--accent);
+}
+
+.winner-mark {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* 抽到快打烊的店時，用橘色把「還剩多久」講清楚——
+   刻意不排除這種店，但也不能讓人白跑一趟 */
+.winner-mark.is-soon {
+  color: var(--soon);
+}
+
+.card-wrap.is-winner .card.is-soon {
+  border-color: var(--soon);
+}
+
 .notice {
   color: var(--muted);
   text-align: center;

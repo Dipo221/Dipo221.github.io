@@ -22,10 +22,16 @@ const clockEl = document.getElementById("clock");
 const summaryEl = document.getElementById("summary");
 const boardEl = document.getElementById("board");
 const filtersEl = document.getElementById("filters");
+const diceEl = document.getElementById("dice");
+
+// 會動的東西一律尊重這個設定，暈眩體質的人不該被強迫看跑馬燈
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 let activeTag = null; // null 代表「全部」
 let showClosed = false; // 「已打烊」是否展開
 let closedTouched = false; // 使用者有沒有自己動過那個開關
+let winnerIndex = null; // 隨機抽中的店在 entries 裡的索引
+let isRolling = false; // 輪轉動畫進行中，這時候不要重畫
 
 const OpenNow = {
   data: null, // places.json 的完整內容（含 area、_說明，存檔時要原樣寫回去）
@@ -173,6 +179,7 @@ function renderFilters(items) {
   const select = (tag) => {
     activeTag = tag;
     closedTouched = false; // 換了條件就重新套用預設的收合行為
+    winnerIndex = null; // 換了範圍，上一次抽的結果就不算數了
     render();
   };
 
@@ -207,6 +214,8 @@ window.addEventListener("resize", updateOverflowHint);
 function card(entry, status, index) {
   const wrap = document.createElement("div");
   wrap.className = "card-wrap";
+  wrap.dataset.index = index; // 輪轉動畫要靠這個把畫面上的卡片對回資料
+  if (index === winnerIndex) wrap.classList.add("is-winner");
 
   const link = document.createElement("a");
   link.className = "card";
@@ -238,6 +247,20 @@ function card(entry, status, index) {
   }
   head.appendChild(badge);
   link.appendChild(head);
+
+  /*
+   * 抽中的店掛個記號，不然捲過去之後認不出是哪一家。
+   *
+   * 快打烊的店刻意不排除（剩二十分鐘也可能來得及），但這時整張卡片會轉成橘色。
+   * 記號本身不重複「還剩幾分」——徽章已經寫了「快打烊」、下一行也已經寫了
+   * 確切分鐘數，再講一次就是同一件事說三遍。這裡只補上該採取的行動。
+   */
+  if (index === winnerIndex && !entry.error) {
+    const mark = document.createElement("div");
+    mark.className = "winner-mark" + (soon ? " is-soon" : "");
+    mark.textContent = soon ? "🎲 就吃這家 — 動作要快" : "🎲 就吃這家";
+    link.appendChild(mark);
+  }
 
   const meta = document.createElement("div");
   meta.className = "card-meta";
@@ -358,6 +381,7 @@ function collapsibleSection(title, count, buildCards, expanded, onToggle) {
 
 function render() {
   if (!OpenNow.data) return;
+  if (isRolling) return; // 輪轉到一半被重畫的話，高亮會整個消失
 
   const now = Hours.taipeiNow();
   clockEl.textContent = "週" + now.weekdayLabel + " " + now.label;
@@ -386,6 +410,15 @@ function render() {
     else closed.push(item);
   }
 
+  // 抽中的店如果打烊了（或被篩掉了）就把記號拿掉，
+  // 不然畫面會一直指著一家已經關門的店
+  if (winnerIndex !== null && !open.some((x) => x.index === winnerIndex)) {
+    winnerIndex = null;
+  }
+
+  // 一家都沒開就沒什麼好抽的
+  diceEl.hidden = open.length === 0;
+
   // 有開的，剩越久排越前面——半夜找吃的，先看到來得及的那幾家比較有用
   open.sort((a, b) => b.status.minutesLeft - a.status.minutesLeft);
   // 沒開的，快開的排前面——早上想吃東西時，最想知道誰先開
@@ -402,9 +435,13 @@ function render() {
   boardEl.innerHTML = "";
 
   if (open.length) {
-    boardEl.appendChild(
-      section("現在有開", open.length, open.map((x) => card(x.entry, x.status, x.index)))
+    const openSection = section(
+      "現在有開",
+      open.length,
+      open.map((x) => card(x.entry, x.status, x.index))
     );
+    openSection.classList.add("open-section"); // 隨機抽獎只從這一區裡挑
+    boardEl.appendChild(openSection);
   } else {
     boardEl.appendChild(
       notice(activeTag ? "現在沒有「" + activeTag + "」開著 😴" : "現在一家都沒開 😴")
@@ -438,3 +475,96 @@ function render() {
     );
   }
 }
+
+/* ---------- 隨機選一家 ---------- */
+
+/*
+ * 從「現在有開」那一區裡隨機挑一家。範圍會跟著目前選的標籤走——
+ * 點了「宵夜」就只從有開的宵夜店裡抽。
+ *
+ * 動畫是讓高亮在現有卡片上一張張跑過去再慢慢停下，而不是另外跳一個結果視窗：
+ * 這樣看得到是從哪幾家裡抽的，中選的那家也還在它原本的位置上，
+ * 旁邊幾點打烊、有哪些標籤都一併看得到。
+ *
+ * 快打烊的店不排除（那是刻意的，剩 20 分鐘也可能來得及），
+ * 但抽中時會在卡片上寫清楚還剩多久。
+ */
+
+/*
+ * 步數是固定的，不是「跑幾圈」。跑圈數的話 20 家店就要跳 40 幾次、
+ * 拖到四五秒；固定步數讓動畫長度跟店家多寡無關，都是 1.6 秒左右。
+ * 反正輪轉不需要真的走訪每一家，看起來像在掃描就夠了。
+ */
+const ROLL_STEPS = 16;
+const ROLL_FAST_MS = 55; // 起步多快
+const ROLL_SLOW_MS = 210; // 最後一步多慢
+
+function openCardWraps() {
+  const section = boardEl.querySelector(".open-section");
+  return section ? [...section.querySelectorAll(".card-wrap")] : [];
+}
+
+function settleOn(wrap) {
+  winnerIndex = Number(wrap.dataset.index);
+  render(); // 重畫一次讓「就吃這家」的記號正式掛上去
+
+  const target = boardEl.querySelector(".card-wrap.is-winner");
+  if (target) target.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+function rollRandom() {
+  if (isRolling) return;
+
+  const wraps = openCardWraps();
+  if (!wraps.length) return;
+
+  const total = wraps.length;
+  const winner = Math.floor(Math.random() * total);
+
+  // 只有一家的時候沒什麼好抽的，跑動畫只是浪費時間
+  if (total === 1 || reduceMotion) {
+    settleOn(wraps[winner]);
+    return;
+  }
+
+  isRolling = true;
+  diceEl.disabled = true;
+  winnerIndex = null;
+  for (const w of wraps) w.classList.remove("is-winner");
+
+  /*
+   * 先把中選的那家捲到畫面中央再開始跑。清單可能有二十幾家、大半在螢幕外，
+   * 不先捲的話高亮會在看不見的地方跑完，只剩最後結果突然冒出來。
+   * 先定位的話，看得到的正好是減速停下的那幾步——最有戲的一段。
+   */
+  wraps[winner].scrollIntoView({ block: "center", behavior: "auto" });
+
+  /*
+   * 序列是往回推的：從「終點往前數 ROLL_STEPS 格」開始跑，
+   * 最後一步自然落在中選的那家，不必跑完再硬跳過去（那看起來像卡住）。
+   */
+  const start = (((winner - ROLL_STEPS + 1) % total) + total) % total;
+  const gapAt = (k) =>
+    ROLL_FAST_MS + (ROLL_SLOW_MS - ROLL_FAST_MS) * Math.pow(k / ROLL_STEPS, 2.2);
+
+  let step = 0;
+  const tick = () => {
+    for (const w of wraps) w.classList.remove("is-rolling");
+    wraps[(start + step) % total].classList.add("is-rolling");
+    step += 1;
+
+    if (step < ROLL_STEPS) {
+      setTimeout(tick, gapAt(step));
+      return;
+    }
+
+    for (const w of wraps) w.classList.remove("is-rolling");
+    isRolling = false;
+    diceEl.disabled = false;
+    settleOn(wraps[winner]);
+  };
+
+  tick();
+}
+
+diceEl.addEventListener("click", rollRandom);
