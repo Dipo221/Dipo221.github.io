@@ -10,8 +10,10 @@
     data-theme 必須在第一次 paint 之前設好，晚一步就會閃一下深色。
     ?v= 是給瀏覽器快取用的版本號，改到這些檔案時記得一起加一。
   -->
+  <!-- crossorigin 不能省：字體一律走 CORS 模式，漏掉會變成抓兩次 -->
+  <link rel="preload" as="font" type="font/woff2" href="fonts/space-grotesk-latin.woff2" crossorigin />
   <script src="theme.js?v=1"></script>
-  <link rel="stylesheet" href="style.css?v=3" />
+  <link rel="stylesheet" href="style.css?v=4" />
 </head>
 <body>
   <header class="hero hero-home">

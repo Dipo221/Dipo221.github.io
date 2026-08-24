@@ -38,6 +38,8 @@ main.container {
 }
 
 .clock {
+  /* 這頁最大的字，而且主要是數字——顯示字體的效益幾乎都在這裡 */
+  font-family: var(--font-display);
   font-size: 2.75rem;
   font-weight: 700;
   margin: 4px 0 8px;
@@ -295,6 +297,9 @@ h2.is-collapsible {
 
 .section-toggle {
   font: inherit;
+  /* font: inherit 是靠父層帶字體，這裡寫死是為了標明它屬於顯示級，
+     日後 DOM 結構動了也不會悄悄掉回內文字體 */
+  font-family: var(--font-display);
   font-size: 1.25rem;
   font-weight: 700;
   display: inline-flex;

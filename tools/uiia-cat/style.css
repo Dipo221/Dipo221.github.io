@@ -43,6 +43,8 @@
 }
 
 .count-value {
+  /* 純數字，2.75rem——這頁的主角 */
+  font-family: var(--font-display);
   font-size: 2.75rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;

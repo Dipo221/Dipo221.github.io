@@ -37,6 +37,16 @@ allowed-tools: Read, Edit, Write, Grep, Glob, Bash
 
 **字階與尺寸**：`--fs-hero` `--fs-h2` `--fs-lead` `--fs-sm` `--fs-xs`、`--radius`(8px)、`--radius-pill`(999px)、`--speed`(0.15s)
 
+**字體** — 兩個 token，不隨主題變。`--font-body` 是系統字 stack（含 Noto Sans TC），
+`--font-display` 是 `"Space Grotesk", var(--font-body)`。
+
+Space Grotesk 是只含拉丁子集的 variable woff2，22KB，放在 `fonts/`，自己託管不接 Google Fonts。
+CSS 的 fallback 逐字元生效，所以拉丁與數字吃 Space Grotesk、中文自動落回系統字，不需要任何判斷邏輯。
+`--font-display` **結尾一定要接 `var(--font-body)`**，寫成 `sans-serif` 的話中文會掉到瀏覽器預設字體。
+
+只用在顯示級：`.hero h1`、`h2`、`.clock`、`.section-toggle`、`.count-value`。
+新頁面若有 2rem 以上的標題或數字也套這個。內容無界的文字（例如店名）不用套。
+
 **元件手感**（新元件沿用這些數值，不要自己挑）：
 
 | | 數值 |
@@ -79,8 +89,8 @@ localStorage key 一律 `<範圍>:<功能>`，例如 `open-now:github-token`、`
 | `01 · 章節` 這種編號 eyebrow | 只有內容真的有序才用 |
 | 標題左、內文右的兩欄 hanging header | 無。要用標籤就直接疊在標題上方 |
 
-**現況已知落差**：內文和標題都用 `-apple-system, "Segoe UI"` 系統字。
-系統字當顯示字體會讀起來像 demo page。要處理的話：標題換一套有個性的顯示字（繁中可選的不多但存在），內文維持系統字保可讀性與載入速度。
+中文標題用系統字**不算違規**。「別拿系統字當顯示字體」那條是以拉丁文為前提寫的——
+繁中字體就算切過也要 50–250KB，是拉丁的十倍。這個站的解法是拉丁換、中文不換，見第 2 節。
 
 **版面看起來空的時候，是排版問題，不是內容問題。**
 不要塞東西進去填。用構圖、留白、字階節奏解決。

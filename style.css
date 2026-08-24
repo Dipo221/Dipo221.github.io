@@ -1,4 +1,24 @@
 /* ============================================================
+   顯示字體
+
+   Space Grotesk，SIL OFL（授權全文在 fonts/OFL.txt）。
+   variable 版，300–700 全字重都在同一個 22KB 的檔裡，而且只含拉丁子集。
+
+   自己託管而不接 Google Fonts：少一次 DNS + TLS，GitHub Pages 本身就有 CDN，
+   而且這個站原本零外部依賴，能不加就不加。
+
+   url() 是相對於這個 CSS 檔的位置，不是相對於引用它的 HTML，
+   所以 tools/ 底下的頁面載 ../../style.css 也能正確解析到同一個檔。
+   ============================================================ */
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("fonts/space-grotesk-latin.woff2") format("woff2");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ============================================================
    設計 token
 
    深色是預設，淺色靠 <html data-theme="light"> 覆寫同一組變數名。
@@ -19,6 +39,15 @@
   --accent-ink: #10151b;
   /* accent 的淡化版，做高亮背景用 */
   --accent-soft: rgba(121, 184, 255, 0.14);
+
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+  /*
+   * 只有拉丁字母和數字會拿到 Space Grotesk——中文字元在它裡面找不到字身，
+   * 瀏覽器會逐字元往後找，落到 --font-body 的系統中文字。
+   * 結尾一定要接 var(--font-body) 而不是 sans-serif，
+   * 否則中文會掉到瀏覽器預設字體，跟內文不同調。
+   */
+  --font-display: "Space Grotesk", var(--font-body);
 
   /*
    * 字階。原本只有 2.5rem 和 1.25rem 兩級，中間整段是空的，
@@ -59,7 +88,7 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+  font-family: var(--font-body);
   background: var(--bg);
   color: var(--text);
   line-height: 1.6;
@@ -87,7 +116,9 @@ body {
 }
 
 .hero h1 {
+  font-family: var(--font-display);
   font-size: var(--fs-hero);
+  font-weight: 600;
   line-height: 1.15;
   margin: 0 0 10px;
   letter-spacing: -0.02em;
@@ -147,6 +178,7 @@ section:last-child {
 }
 
 h2 {
+  font-family: var(--font-display);
   font-size: var(--fs-h2);
   border-left: 4px solid var(--accent);
   padding-left: 10px;
