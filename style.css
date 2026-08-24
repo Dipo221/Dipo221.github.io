@@ -28,17 +28,31 @@
 :root {
   color-scheme: dark;
 
-  --bg: #2b3036;
-  --bg-elevated: #363c44;
-  --text: #f0f3f6;
-  --muted: #b6bec8;
-  --accent: #79b8ff;
-  --border: #4a515a;
+  /*
+   * Moody Blues：Midnight Blue #1A1D29、Charcoal Gray #3D3F4A、
+   * Slate Blue #7D8491、Silver #B1B2B5。
+   *
+   * 那組配色是四個並列的色塊，不是一套 UI 明度階梯，而介面需要六階，
+   * 所以有兩處不是原色直用：
+   *   - 卡片底 #252936 是 Midnight 提亮一階（配色裡沒有這階，
+   *     Charcoal 直接當卡片底的話次要文字疊上去只剩 2.78，讀不到）
+   *   - 次要文字把 Slate Blue 提亮到 #8D95A3。Slate 原色是中間調的
+   *     大色塊顏色，當小字在任何一個深底上都摸不到 4.5
+   *
+   * 這組沒有強調色。無彩色系統的強調靠亮度不靠色相——參考圖自己就是
+   * 這樣做的，「MOODY BLUES」那行是全圖最亮的東西。所以 accent 用近白。
+   */
+  --bg: #1a1d29;
+  --bg-elevated: #252936;
+  --text: #b1b2b5;
+  --muted: #8d95a3;
+  --accent: #edeef0;
+  --border: #3d3f4a;
 
   /* accent 拿來當底色時，壓在上面的字用這個顏色 */
-  --accent-ink: #10151b;
-  /* accent 的淡化版，做高亮背景用 */
-  --accent-soft: rgba(121, 184, 255, 0.14);
+  --accent-ink: #1a1d29;
+  /* accent 的淡化版，做高亮背景用。近白比原本的藍亮，所以透明度要壓低 */
+  --accent-soft: rgba(237, 238, 240, 0.1);
 
   --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
   /*
@@ -119,6 +133,9 @@ body {
   font-family: var(--font-display);
   font-size: var(--fs-hero);
   font-weight: 600;
+  /* 標題要是全頁最亮的東西。深色主題下 accent 是近白，
+     淺色主題下就會是那支實藍——刻意的，標題本來就該領著看 */
+  color: var(--accent);
   line-height: 1.15;
   margin: 0 0 10px;
   letter-spacing: -0.02em;
