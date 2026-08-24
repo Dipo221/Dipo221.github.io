@@ -39,20 +39,26 @@
    *   - 次要文字把 Slate Blue 提亮到 #8D95A3。Slate 原色是中間調的
    *     大色塊顏色，當小字在任何一個深底上都摸不到 4.5
    *
-   * 這組沒有強調色。無彩色系統的強調靠亮度不靠色相——參考圖自己就是
-   * 這樣做的，「MOODY BLUES」那行是全圖最亮的東西。所以 accent 用近白。
+   * 強調色是這組配色以外補的——它四個色全是中性色，沒有可以當強調的。
+   * 彩色的強調靠色相差、不靠亮度差，所以內文可以放心拉到近白，
+   * 兩者不會互搶版面；無彩色的方案做不到這件事。
+   *
+   * 選色的硬約束是 open-now 的狀態色（綠 149°、橘 37°、紅 0°）。
+   * accent 靠太近的話，「這個被強調」跟「這家快打烊了」會分不出來。
+   * 天青 195°：離最近的狀態色 46°、離底色 228° 有 33°，兩邊都夠開。
+   * 暖色系整組不能用，那個色相區間已經被狀態色佔滿了。
    */
   --bg: #1a1d29;
   --bg-elevated: #252936;
-  --text: #b1b2b5;
+  --text: #e8e9ec;
   --muted: #8d95a3;
-  --accent: #edeef0;
+  --accent: #6fd3f5;
   --border: #3d3f4a;
 
   /* accent 拿來當底色時，壓在上面的字用這個顏色 */
   --accent-ink: #1a1d29;
-  /* accent 的淡化版，做高亮背景用。近白比原本的藍亮，所以透明度要壓低 */
-  --accent-soft: rgba(237, 238, 240, 0.1);
+  /* accent 的淡化版，做高亮背景用 */
+  --accent-soft: rgba(111, 211, 245, 0.14);
 
   --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
   /*
@@ -133,8 +139,8 @@ body {
   font-family: var(--font-display);
   font-size: var(--fs-hero);
   font-weight: 600;
-  /* 標題要是全頁最亮的東西。深色主題下 accent 是近白，
-     淺色主題下就會是那支實藍——刻意的，標題本來就該領著看 */
+  /* 標題吃強調色，兩個主題都是。它不是全頁最亮的（內文才是），
+     而是全頁唯一有顏色的——這樣它領著看，又不會壓過內文的可讀性 */
   color: var(--accent);
   line-height: 1.15;
   margin: 0 0 10px;
