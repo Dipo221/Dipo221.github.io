@@ -1,0 +1,39 @@
+cat-16.png
+==========
+
+貓的像素圖不是我畫的，是別人的作品，照授權條款使用。
+
+    作品   16 bit kitty (free)
+    作者   Maze.Bit.Boutique
+    來源   https://mxmaze.itch.io/16-bit-kitty-free
+    授權   Creative Commons Attribution 4.0 International (CC BY 4.0)
+           https://creativecommons.org/licenses/by/4.0/
+
+原始檔名是 16x16-Brown.png，內容沒有修改，只有改名成 cat-16.png。
+
+規格：48x48 的圖，切成 3 欄 x 3 排、每格 16x16，共 9 格。
+每一排是一組動畫，對應關係寫在 ../sprites.js 的 manifest 裡。
+
+
+為什麼選這個
+------------
+
+這個 repo 是公開的，把圖 commit 進來就等於「散布」，
+所以素材的授權必須明確允許散布，不能只是「可以用在你的遊戲裡」。
+
+找過的其他幾個：
+
+  Catset (seethingswarm)      動畫最齊（23 種），但條款明寫
+                              "These assets are not to be openly distributed"，
+                              而且要 $19.99 —— 不能用。
+
+  2D Pixel Art Cat Sprites    免費可商用，但散布條款指向 Patreon 頁面、
+  (Elthen)                    沒有講清楚公開 repo 算不算 —— 不確定就不要用。
+
+  Cat Sprites (Shepardskin)   CC0，散布沒問題，但只有 walk/run，
+                              沒有睡覺 —— 這個遊戲主要就是在看貓睡覺。
+
+CC BY 4.0 明確允許重新散布，只要標示出處，所以選這個。
+標示除了這個檔案之外，頁尾也有一行。
+
+要換素材的話只動 ../sprites.js，遊戲邏輯不用碰 —— 當初就是為了這件事才拆出 manifest 的。

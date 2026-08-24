@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>房間裡的貓 測試</title>
+  <!--
+    沒有 build step 也沒有 node，測試就是一個網頁：打開就跑，紅的就是壞了。
+    照 tools/open-now/test.html 的形式。
+
+    這頁刻意不載 theme.js：底下的紅綠是配深色底寫死的，跟著切淺色反而讀不出來。
+  -->
+  <link rel="stylesheet" href="../../style.css?v=8" />
+  <style>
+    body { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+    .summary { padding: 12px 16px; border-radius: 8px; font-weight: 700; margin: 16px 0; }
+    .summary.pass { background: rgba(110, 231, 168, 0.15); color: #6ee7a8; }
+    .summary.fail { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+    .group { margin-top: 22px; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+    .case { padding: 3px 0 3px 44px; position: relative; font-size: 0.88rem; line-height: 1.5; }
+    .case::before { position: absolute; left: 0; top: 4px; font-size: 0.62rem; }
+    .case.ok::before { content: "PASS"; color: #6ee7a8; }
+    .case.no::before { content: "FAIL"; color: #f87171; }
+    .case.no { background: rgba(248, 113, 113, 0.1); }
+    .detail { color: #f87171; padding-left: 44px; font-size: 0.82rem; }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="container"><h1>房間裡的貓 測試</h1></div>
+  </header>
+  <main class="container" id="out"></main>
+  <footer class="container"><p><a href="./">← 回工具</a></p></footer>
+
+  <script src="world.js?v=2"></script>
+  <script src="cat.js?v=1"></script>
+  <script src="save.js?v=1"></script>
+  <script src="sprites.js?v=2"></script>
+  <script>
+    const out = document.getElementById("out");
+    let passed = 0;
+    let failed = 0;
+
+    function group(title) {
+      const el = document.createElement("div");
+      el.className = "group";
+      el.textContent = title;
+      out.appendChild(el);
+    }
+
+    function check(label, actual, expected) {
+      const same = JSON.stringify(actual) === JSON.stringify(expected);
+      same ? passed++ : failed++;
+
+      const el = document.createElement("div");
+      el.className = "case " + (same ? "ok" : "no");
+      el.textContent = label;
+      out.appendChild(el);
+
+      if (!same) {
+        const d = document.createElement("div");
+        d.className = "detail";
+        d.textContent = `預期 ${JSON.stringify(expected)}，實際 ${JSON.stringify(actual)}`;
+        out.appendChild(d);
+      }
+    }
+
+    const MIN = World.MINUTE;
+    const HR = World.HOUR;
+    const DAY = World.DAY;
+
+    // 指定「當地時間的某一小時」。energy 和 timeOfDay 都只看 getHours()
+    const at = (h) => new Date(2026, 7, 25, h, 0, 0);
+
+    // 跑 n 次 pickNext，回傳各狀態出現的比例
+    function distribution(current, energy, bond, n) {
+      const counts = {};
+      for (let i = 0; i < n; i++) {
+        const s = Cat.pickNext(current, energy, bond, Math.random);
+        counts[s] = (counts[s] || 0) + 1;
+      }
+      const out = {};
+      Object.keys(counts).forEach((k) => { out[k] = counts[k] / n; });
+      return out;
+    }
+
+    /* ---------------------------------------------------------- */
+
+    group("時段（房間光線用）");
+    {
+      const tod = (h) => World.timeOfDay(at(h));
+      check("05:00 天亮", tod(5), "dawn");
+      check("07:00 天亮", tod(7), "dawn");
+      check("08:00 進入白天", tod(8), "day");
+      check("16:00 還是白天", tod(16), "day");
+      check("17:00 進入黃昏", tod(17), "dusk");
+      check("19:00 還是黃昏", tod(19), "dusk");
+      check("20:00 入夜", tod(20), "night");
+      check("03:00 是夜裡", tod(3), "night");
+      check("04:00 仍是夜裡（天亮從 5 點才開始）", tod(4), "night");
+    }
+
+    group("活力曲線（貓是晨昏性動物）");
+    {
+      check("查表有 24 個小時", [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23].every((h) => typeof World.energy(at(h)) === "number"), true);
+      check("下午 14:00 活力最低那一段", World.energy(at(14)) <= 0.15, true);
+      check("黃昏 18:00 是全天最高", World.energy(at(18)), 1.0);
+      check("清晨 07:00 也是高峰", World.energy(at(7)) >= 0.85, true);
+      check("黃昏比下午有精神", World.energy(at(18)) > World.energy(at(14)), true);
+      check("深夜比黃昏沒精神", World.energy(at(2)) < World.energy(at(18)), true);
+    }
+
+    group("亂數：同一個種子一定給同一串");
+    {
+      const a = World.rng(12345);
+      const b = World.rng(12345);
+      check("同種子前五個值相同", [a(), a(), a(), a(), a()], [b(), b(), b(), b(), b()]);
+
+      const c = World.rng(99);
+      const d = World.rng(100);
+      check("不同種子會分岔", c() === d(), false);
+      check("值落在 0~1 之間", World.rng(7)() < 1 && World.rng(7)() >= 0, true);
+
+      /*
+       * 種子取自「上次離開的那一個小時格」。基準要抓在整點上，
+       * 不然「加 59 分鐘」本來就會跨進下一格——第一次寫這條測試就是這樣寫錯的。
+       *
+       * 另外，防洗檔真正靠的不是這個種子，是 script.js 那邊 lastSeen 會被更新成 now：
+       * 重整一次之後 elapsed 就塌成幾秒，直接落進 "none"，根本抽不到東西。
+       * 種子只是第二道保險。
+       */
+      const hourAligned = 496555 * HR;
+      check("同一小時格內的種子一樣", World.seedFrom(hourAligned), World.seedFrom(hourAligned + 59 * MIN));
+      check("跨過小時格就換種子", World.seedFrom(hourAligned) === World.seedFrom(hourAligned + 2 * HR), false);
+      check("重整之後 elapsed 塌掉，抽不到禮物", World.returnScene(3000, 42).tier, "none");
+    }
+
+    group("回訪場景：離開越久越好");
+    {
+      const tier = (ms) => World.returnScene(ms, 42).tier;
+      const bond = (ms) => World.returnScene(ms, 42).bondDelta;
+
+      check("1 分鐘 → 什麼都不發生", tier(1 * MIN), "none");
+      check("4 分 59 秒 還是不發生", tier(5 * MIN - 1000), "none");
+      check("剛好 5 分鐘 → 開始有反應", tier(5 * MIN), "brief");
+      check("30 分鐘 → 短訊息", tier(30 * MIN), "brief");
+      check("3 小時 → 睡了一場", tier(3 * HR), "nap");
+      check("20 小時 → 有禮物", tier(20 * HR), "gift");
+      check("5 天 → 等很久了", tier(5 * DAY), "longing");
+
+      check("沒離開就沒有 bond", bond(1 * MIN), 0);
+      check("睡一場 +1", bond(3 * HR), 1);
+      check("有禮物 +2", bond(20 * HR), 2);
+      check("等很久 +3", bond(5 * DAY), 3);
+
+      check("超過兩天牠會迎上來", World.returnScene(5 * DAY, 42).greet, true);
+      check("短時間不會迎上來", World.returnScene(30 * MIN, 42).greet, false);
+      check("有禮物的那格真的帶東西回來", !!World.returnScene(20 * HR, 42).gift, true);
+      check("睡一場沒有禮物", World.returnScene(3 * HR, 42).gift, null);
+      check("五分鐘內沒有訊息", World.returnScene(1 * MIN, 42).message, null);
+
+      // 同一次回訪重整不該重骰，不然使用者會為了抽好禮物一直按 F5
+      const once = World.returnScene(20 * HR, 777);
+      const again = World.returnScene(20 * HR, 777);
+      check("同種子抽到同一個禮物", once.gift.id, again.gift.id);
+      check("同種子訊息也一樣", once.message, again.message);
+    }
+
+    group("設計鐵則：bondDelta 永遠不會是負的");
+    {
+      /*
+       * 這條守的是整個遊戲存在的理由——離開要有獎勵，不能有懲罰。
+       * 哪天有人手滑把某一格改成扣分，這裡要立刻紅給他看。
+       */
+      let worst = Infinity;
+      let negatives = 0;
+      for (let seed = 0; seed < 200; seed++) {
+        for (let i = 0; i < 40; i++) {
+          const elapsed = Math.floor(Math.random() * 30 * DAY);
+          const s = World.returnScene(elapsed, seed);
+          if (s.bondDelta < worst) worst = s.bondDelta;
+          if (s.bondDelta < 0) negatives++;
+        }
+      }
+      check("8000 次隨機取樣沒有任何一次是負的", negatives, 0);
+      check("最小值就是 0", worst, 0);
+
+      // 極端輸入也不能爆掉或給出負值
+      check("0 毫秒", World.returnScene(0, 1).bondDelta, 0);
+      check("負的 elapsed（系統時間被往回調）也不能是負的", World.returnScene(-5 * HR, 1).bondDelta, 0);
+      check("一年", World.returnScene(365 * DAY, 1).bondDelta >= 0, true);
+    }
+
+    group("時間的中文寫法");
+    {
+      check("30 分鐘", World.humanize(30 * MIN), "30 分鐘");
+      check("90 分鐘講成 1 小時", World.humanize(90 * MIN), "1 小時");
+      check("3 小時", World.humanize(3 * HR), "3 小時");
+      check("50 小時講成 2 天", World.humanize(50 * HR), "2 天");
+      check("不足一分鐘也講 1 分鐘，不要出現 0", World.humanize(3000), "1 分鐘");
+    }
+
+    group("禮物：存 id、顯示時才查名字");
+    {
+      // 存檔裡只留 id，改文案不用動到舊存檔
+      check("查得到瓶蓋", World.giftLabel("cap"), "一個瓶蓋");
+      check("查得到葉子", World.giftLabel("leaf"), "一片葉子");
+      check("每個禮物都有名字", World.GIFTS.every((g) => g.id && g.label), true);
+      check("id 不重複", new Set(World.GIFTS.map((g) => g.id)).size, World.GIFTS.length);
+
+      // 舊存檔裡如果有已經被刪掉的禮物 id，不能顯示成 undefined
+      check("不認得的 id 要有退路", World.giftLabel("這個id不存在"), "一個不知道是什麼的東西");
+      check("空的 id 也不能爆", typeof World.giftLabel(undefined), "string");
+    }
+
+    group("行為：下午該睡，黃昏該動");
+    {
+      const afternoon = distribution("sit", World.energy(at(14)), 0, 4000);
+      check("下午 sleep 過半", afternoon.sleep > 0.5, true);
+      check("下午幾乎不玩", (afternoon.play || 0) < 0.06, true);
+
+      const dusk = distribution("sit", World.energy(at(18)), 0, 4000);
+      check("黃昏不會睡", (dusk.sleep || 0) < 0.02, true);
+      check("黃昏走動加玩耍過半", (dusk.walk || 0) + (dusk.play || 0) > 0.5, true);
+
+      check("下午比黃昏更常睡", afternoon.sleep > (dusk.sleep || 0), true);
+    }
+
+    group("行為：親密度改變的是行為，不是數字");
+    {
+      check("bond 0 時不會主動靠過來", Cat.bondFactor(0), 0);
+      check("bond 11 還不到門檻", Cat.bondFactor(11), 0);
+      check("bond 12 剛好是門檻，還是 0", Cat.bondFactor(12), 0);
+      check("bond 60 到頂", Cat.bondFactor(60), 1);
+      check("bond 999 不會超過 1", Cat.bondFactor(999), 1);
+      check("bond 36 在中間", Cat.bondFactor(36) > 0 && Cat.bondFactor(36) < 1, true);
+
+      const cold = distribution("sit", 1.0, 0, 3000);
+      check("生疏的時候完全不會 approach", cold.approach, undefined);
+
+      const close = distribution("sit", 1.0, 60, 3000);
+      check("熟了之後 approach 會出現", (close.approach || 0) > 0.05, true);
+    }
+
+    group("行為：吃完會理毛");
+    {
+      // 真的貓就是這樣，這個細節比多加一個功能有用
+      let allGroom = true;
+      for (let i = 0; i < 200; i++) {
+        if (Cat.pickNext("eat", Math.random(), Math.random() * 100, Math.random) !== "groom") allGroom = false;
+      }
+      check("eat 之後一定接 groom", allGroom, true);
+    }
+
+    group("行為：睡著的貓不理你，但可以摸");
+    {
+      check("睡著時逗貓棒沒用", Cat.accepts("sleep", "wand"), false);
+      check("睡著時餵食也沒用", Cat.accepts("sleep", "feed"), false);
+      check("睡著也可以摸——牠會呼嚕，這是真的", Cat.accepts("sleep", "pet"), true);
+      check("醒著時逗貓棒有用", Cat.accepts("sit", "wand"), true);
+      check("醒著時餵食有用", Cat.accepts("idle", "feed"), true);
+    }
+
+    group("行為：哪些狀態會位移（reduced-motion 要擋的就是這些）");
+    {
+      check("走路會位移", Cat.moves("walk"), true);
+      check("玩耍會位移", Cat.moves("play"), true);
+      check("靠過來會位移", Cat.moves("approach"), true);
+      check("睡覺不會", Cat.moves("sleep"), false);
+      check("理毛不會", Cat.moves("groom"), false);
+      check("不存在的狀態當作不會", Cat.moves("nonsense"), false);
+    }
+
+    group("行為：狀態長度");
+    {
+      const always0 = () => 0;
+      const always1 = () => 0.9999;
+      check("睡覺至少 20 秒", Cat.durationFor("sleep", always0), 20000);
+      check("睡覺最長不超過 90 秒", Cat.durationFor("sleep", always1) <= 90000, true);
+      check("走路比睡覺短", Cat.durationFor("walk", always0) < Cat.durationFor("sleep", always0), true);
+      check("不認得的狀態退回 idle 的長度", Cat.durationFor("nonsense", always0), 2500);
+    }
+
+    group("存檔：預設值");
+    {
+      const b = Save.blank(1000);
+      check("版本號", b.v, 1);
+      check("bond 從 0 開始", b.cat.bond, 0);
+      check("firstSeen 就是現在", b.firstSeen, 1000);
+      check("禮物清單是空陣列", b.gifts, []);
+      check("v2 的圖鑑欄位先留著", b.seenCats, []);
+
+      // 這裡刻意檢查「沒有」某些欄位——它們的缺席是設計決定，不是還沒做
+      const keys = Object.keys(b).concat(Object.keys(b.cat));
+      check("沒有飢餓值", keys.indexOf("hunger"), -1);
+      check("沒有清潔值", keys.indexOf("cleanliness"), -1);
+      check("沒有心情值", keys.indexOf("mood"), -1);
+    }
+
+    group("存檔：遷移");
+    {
+      const now = 5000;
+      check("沒有存檔就給一份新的", Save.migrate(null, now).v, 1);
+      check("空物件補齊 cat", Save.migrate({}, now).cat.bond, 0);
+      check("空物件補齊 gifts", Save.migrate({}, now).gifts, []);
+      check("字串不是存檔", Save.migrate("壞掉的東西", now).v, 1);
+
+      check("舊存檔的 bond 要留著", Save.migrate({ cat: { bond: 7 } }, now).cat.bond, 7);
+      check("補上舊存檔沒有的 sprite 欄位", Save.migrate({ cat: { bond: 7 } }, now).cat.sprite, "tabby");
+      check("負的 bond 夾回 0", Save.migrate({ cat: { bond: -5 } }, now).cat.bond, 0);
+      check("bond 是字串就當 0", Save.migrate({ cat: { bond: "x" } }, now).cat.bond, 0);
+
+      check("壞掉的 firstSeen 用現在補", Save.migrate({ firstSeen: "壞的" }, now).firstSeen, now);
+      check("NaN 的 lastSeen 也要補", Save.migrate({ lastSeen: NaN }, now).lastSeen, now);
+      check("gifts 不是陣列就重來", Save.migrate({ gifts: "不是陣列" }, now).gifts, []);
+      check("room.items 不是陣列也要修", Save.migrate({ room: { items: 5 } }, now).room.items, []);
+
+      /*
+       * 未來版本的存檔不能砍掉重來——那等於把人家養了半年的貓刪了。
+       * 策略是以預設值為底、把讀到的蓋上去，不認得的欄位原樣留著。
+       */
+      const future = Save.migrate({ v: 99, cat: { bond: 40 }, mysteryField: "v3 才有的東西" }, now);
+      check("未來版本不降版", future.v, 99);
+      check("未來版本的 bond 留著", future.cat.bond, 40);
+      check("不認得的欄位不能弄丟", future.mysteryField, "v3 才有的東西");
+    }
+
+    group("Sprite：manifest 要跟圖對得起來");
+    {
+      /*
+       * 這組守的是「manifest 說的」和「圖裡真的有的」之間的落差。
+       * 指到不存在的排或格不會報錯，只會安靜地顯示一塊空白——
+       * 那種問題用看的很難發現，所以用測試擋。
+       */
+      const m = Sprites.manifest;
+      check("已經接上素材包，不是 placeholder", Sprites.ready(), true);
+      check("3 欄 3 排", [m.cols, m.rows], [3, 3]);
+      check("每格 16x16", [m.frameW, m.frameH], [16, 16]);
+      check("圖裡的貓朝左（往右走要翻面）", m.facesLeft, true);
+
+      const rowsOk = Object.keys(m.anims).every((k) => m.anims[k].row >= 0 && m.anims[k].row < m.rows);
+      check("每個動畫的排號都在圖的範圍內", rowsOk, true);
+
+      const colsOk = Object.keys(m.anims).every((k) => m.anims[k].frames.every((c) => c >= 0 && c < m.cols));
+      check("每個動畫的格號都在圖的範圍內", colsOk, true);
+
+      const aliasOk = Object.keys(m.alias).every((k) => !!m.anims[m.alias[k]]);
+      check("每個 alias 都指到真的存在的動畫", aliasOk, true);
+
+      // 狀態機挑得出來的狀態，每一個都要有畫面可以顯示
+      const needed = ["idle", "sit", "groom", "sleep", "walk", "play", "approach", "eat"];
+      check("狀態機的 8 個狀態都有對應的圖", needed.filter((s) => !m.anims[s] && !m.alias[s]), []);
+    }
+
+    group("Sprite：取格");
+    {
+      // 期望值從 manifest 推出來，之後換素材包這組測試不用跟著改
+      const m = Sprites.manifest;
+      const ms = m.anims.idle.ms;
+      const n = m.anims.idle.frames.length;
+
+      check("第 0 毫秒是第一格", Sprites.frameFor("idle", 0).col, m.anims.idle.frames[0]);
+      check("過了一格的時間就換格", Sprites.frameFor("idle", ms + 10).col, m.anims.idle.frames[1]);
+      check("播完一輪會繞回來", Sprites.frameFor("idle", ms * n).col, m.anims.idle.frames[0]);
+      check("loop 的動畫永遠不會 done", Sprites.frameFor("idle", ms * 40).done, false);
+
+      check("睡覺用最下面那排", Sprites.frameFor("sleep", 0).row, 2);
+      check("坐著是 idle 的第一格定住", Sprites.frameFor("sit", 9999).col, m.anims.idle.frames[0]);
+
+      check("alias：groom 借用 idle", Sprites.frameFor("groom", 0).row, m.anims.idle.row);
+      check("alias：play 借用 walk", Sprites.frameFor("play", 0).row, m.anims.walk.row);
+      check("alias：approach 借用 walk", Sprites.frameFor("approach", 0).row, m.anims.walk.row);
+      check("alias：eat 借用 idle", Sprites.frameFor("eat", 0).row, m.anims.idle.row);
+      check("不認得的動畫退回 idle", Sprites.frameFor("完全沒這個東西", 0).row, m.anims.idle.row);
+
+      // 一次性動畫目前還沒用到，但邏輯要先是對的
+      m.anims.__test = { row: 0, frames: [0, 1, 2], ms: 100, loop: false };
+      check("一次性動畫播到底會停在最後一格", Sprites.frameFor("__test", 5000).col, 2);
+      check("一次性動畫播完回報 done", Sprites.frameFor("__test", 5000).done, true);
+      check("還沒播完不算 done", Sprites.frameFor("__test", 150).done, false);
+      check("還沒播完停在正確的格", Sprites.frameFor("__test", 150).col, 1);
+      delete m.anims.__test;
+    }
+
+    /* ---------------------------------------------------------- */
+
+    const summary = document.createElement("div");
+    summary.className = "summary " + (failed ? "fail" : "pass");
+    summary.textContent = failed
+      ? `${failed} 個失敗 / 共 ${passed + failed} 個`
+      : `全部通過（${passed} 個）`;
+    out.insertBefore(summary, out.firstChild);
+    document.title = (failed ? `${failed} FAIL` : "PASS") + " — 房間裡的貓 測試";
+  </script>
+</body>
+</html>

@@ -1,0 +1,437 @@
+/* ============================================================
+   房間裡的貓
+
+   只補這個工具特有的東西，底色、字體、圓角都吃根目錄 style.css 的 token。
+
+   房間內部的顏色是**遊戲自己的世界**，跟站台的深／淺主題無關——
+   下面那組 --room-* 由 data-tod 切換，data-tod 由真實時間決定。
+   房間是一扇看出去的窗，使用者切成淺色主題不該把裡面的凌晨三點變成白天。
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   時段 token
+
+   四個時段各一組。值就地寫死 hex 是不行的，所以先在這裡命名，
+   底下的元件一律引用 var()。
+   ------------------------------------------------------------ */
+.room {
+  /* 預設等同 day，避免 JS 還沒跑到時是一塊空白 */
+  --room-wall: #4a4a5c;
+  --room-floor-c: #3a3748;
+  --room-sky: #bfe3f5;
+  --room-frame: #2e2c3a;
+  --room-beam: rgba(255, 240, 200, 0.16);
+  --room-prop: #565469;
+  --cat-fur: #d8cfc4;
+}
+
+.room[data-tod="dawn"] {
+  --room-wall: #3a3550;
+  --room-floor-c: #2e2a3f;
+  --room-sky: #f0c9a8;
+  --room-frame: #262238;
+  --room-beam: rgba(255, 205, 165, 0.13);
+  --room-prop: #47425e;
+  --cat-fur: #cfc4b8;
+}
+
+.room[data-tod="dusk"] {
+  --room-wall: #3d3348;
+  --room-floor-c: #2f2a3c;
+  --room-sky: #e8a06a;
+  --room-frame: #241f33;
+  --room-beam: rgba(255, 170, 110, 0.15);
+  --room-prop: #4b4059;
+  --cat-fur: #cfc1b2;
+}
+
+.room[data-tod="night"] {
+  --room-wall: #23273a;
+  --room-floor-c: #1c1f2e;
+  --room-sky: #141828;
+  --room-frame: #171a28;
+  --room-beam: rgba(150, 195, 245, 0.07);
+  --room-prop: #2d3145;
+  --cat-fur: #a9a298;
+}
+
+/* ------------------------------------------------------------
+   房間
+   ------------------------------------------------------------ */
+.room {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  margin: 8px auto 0;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--room-wall);
+  /* 時段換過去的時候要用溶的，硬切會嚇到人 */
+  transition: background-color 1.2s linear;
+}
+
+/*
+ * 地板與牆的交界 = 地平線，固定在 24%。
+ * 貓、碗、桌子的 bottom 全部對齊這個數字，牠們才會站在同一條線上。
+ */
+.room-floor {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 24%;
+  background: var(--room-floor-c);
+  transition: background-color 1.2s linear;
+}
+
+.room-window {
+  position: absolute;
+  top: 12%;
+  right: 9%;
+  width: 30%;
+  height: 33%;
+  background: var(--room-sky);
+  border: 4px solid var(--room-frame);
+  border-radius: 2px;
+  transition: background-color 1.2s linear;
+}
+
+/* 窗框的十字。用 gradient 畫，省兩個空 div */
+.room-window::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to right, transparent calc(50% - 2px), var(--room-frame) calc(50% - 2px), var(--room-frame) calc(50% + 2px), transparent calc(50% + 2px)),
+    linear-gradient(to bottom, transparent calc(50% - 2px), var(--room-frame) calc(50% - 2px), var(--room-frame) calc(50% + 2px), transparent calc(50% + 2px));
+}
+
+/* 從窗戶斜下來的光。clip-path 畫一個平行四邊形落到地板上 */
+.room-beam {
+  position: absolute;
+  top: 12%;
+  right: 0;
+  width: 62%;
+  height: 70%;
+  background: var(--room-beam);
+  clip-path: polygon(62% 0, 100% 0, 74% 100%, 10% 100%);
+  transition: background-color 1.2s linear;
+  pointer-events: none;
+}
+
+/*
+ * 桌子。整個盒子從地平線往上長，桌面用 border-top 畫、桌腳撐滿盒子高度，
+ * 所以桌腳一定剛好落在地平線上，房間縮放時也不會脫節。
+ * （原本桌面和貓的腳同高，看起來像黏在一起。）
+ */
+.room-desk {
+  position: absolute;
+  left: 7%;
+  bottom: 24%;
+  width: 34%;
+  height: 13%;
+  border-top: 7px solid var(--room-prop);
+  transition: border-color 1.2s linear;
+}
+
+.room-desk::before,
+.room-desk::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: var(--room-prop);
+  transition: background-color 1.2s linear;
+}
+
+.room-desk::before { left: 8%; }
+.room-desk::after { right: 8%; }
+
+.bowl {
+  position: absolute;
+  left: 74%;
+  bottom: 24%;
+  width: 34px;
+  height: 12px;
+  border-radius: 0 0 17px 17px;
+  background: var(--room-prop);
+  transition: background-color var(--speed);
+}
+
+.bowl.is-full {
+  background: var(--accent);
+}
+
+/* ------------------------------------------------------------
+   貓
+
+   目前是 placeholder：一個會呼吸的色塊。
+   接上素材包之後 body[data-art="sprite"] 那組會蓋掉背景，
+   位移與呼吸的邏輯完全不用改。
+   ------------------------------------------------------------ */
+/*
+ * 位置歸 .cat、外觀歸 .cat-sprite。
+ *
+ * 分成兩層是必要的：JS 每一幀都在寫 .cat 的 transform 來移動牠，
+ * 呼吸和呼嚕如果也用 transform 就會互相蓋掉。
+ */
+.cat {
+  position: absolute;
+  left: 0;
+  bottom: 24%;
+  width: 15%;
+  aspect-ratio: 1 / 1;
+  cursor: pointer;
+  /* JS 每一幀寫 transform，這裡不能加 transition，否則會拖成橡皮筋 */
+  will-change: transform;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.cat-sprite {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background: var(--cat-fur);
+  border-radius: 22% 22% 30% 30%;
+  transform-origin: 50% 100%;
+  /*
+   * 呼吸。placeholder 模式下這是整個畫面最重要的動畫——
+   * 一隻會呼吸的貓比十個功能有用，所以連 reduced-motion 都保留它。
+   * 振幅只有 3%，是原地縮放，不是會引起前庭不適的位移。
+   */
+  animation: breathe 4s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.03); }
+}
+
+/* 睡覺時呼吸放慢、身體壓扁一點 */
+.cat[data-anim="sleep"] .cat-sprite {
+  border-radius: 40% 40% 45% 45%;
+  animation-duration: 6.5s;
+}
+
+/* 摸下去的回饋。只動 transform 和 opacity */
+.cat.is-purring .cat-sprite {
+  animation: purr 0.6s ease-in-out;
+}
+
+@keyframes purr {
+  0%, 100% { transform: scale(1); }
+  25% { transform: scale(1.05); }
+  60% { transform: scale(0.98); }
+}
+
+/*
+ * 素材包接上之後才會生效。
+ *
+ * background-position 不在站規那句「只動 transform 和 opacity」的白名單裡，
+ * 但那條的用意是別碰會觸發 layout 的屬性——background-position 只影響 paint，
+ * 不重排版面，所以這是刻意保留的例外。sprite 動畫沒有別的做法。
+ */
+body[data-art="sprite"] .cat-sprite {
+  background-color: transparent;
+  border-radius: 0;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  /*
+   * 像素圖靠自己的影格在動，不需要再疊一層 scaleY——
+   * 非整數倍的縮放會把像素邊緣拉糊，那正是 pixelated 要避免的事。
+   * 呼嚕那個短反應仍然保留（下面的 .is-purring 權重比這條高）。
+   */
+  animation: none;
+  /*
+   * background-image / -size / -position 由 script.js 設。
+   * 位置不寫在這裡是因為百分比的 background-position 不是單純的位移——
+   * 它把 0~100% 對應到「圖比容器多出來的那段」，所以第 c 格要用
+   * c / (總格數 - 1) * 100%，寫成 calc 容易錯，交給 JS 算乾淨得多。
+   */
+}
+
+/* ------------------------------------------------------------
+   訊息與操作
+   ------------------------------------------------------------ */
+.note {
+  max-width: 560px;
+  margin: 16px auto 0;
+  min-height: 1.6em;
+  color: var(--text);
+  font-size: var(--fs-lead);
+  text-align: center;
+  transition: opacity var(--speed);
+}
+
+/* 沒話講的時候留著高度，不要讓底下的按鈕跳上跳下 */
+.note.is-empty {
+  opacity: 0;
+}
+
+.actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-width: 560px;
+  margin: 18px auto 0;
+}
+
+.action {
+  /* 圓角鈕的手感照站規：radius 999px、0.9375rem。
+     padding 直接寫 6~7px 的話高度只有 38px，摸不到 44 的可點擊下限，
+     所以改用 min-height 撐開，視覺節奏維持一樣 */
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 7px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: background-color var(--speed), border-color var(--speed), transform var(--speed);
+}
+
+.action:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.action:active {
+  transform: scale(0.97);
+}
+
+.meta {
+  max-width: 560px;
+  margin: 18px auto 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  min-height: 1.4em;
+}
+
+/*
+ * 禮物。用既有的 chip 語彙（radius 999px、--fs-xs），
+ * 這是這個站本來就有的東西，不是另開一套。
+ */
+.gifts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: 560px;
+  margin: 12px auto 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gift {
+  padding: 5px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+/* ------------------------------------------------------------
+   頁尾
+   ------------------------------------------------------------ */
+.footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+footer a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+footer a:hover {
+  color: var(--accent);
+}
+
+.credit {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.motion-toggle {
+  min-height: 44px;
+  padding: 6px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: color var(--speed), border-color var(--speed);
+}
+
+.motion-toggle:hover {
+  color: var(--accent);
+  border-color: var(--border);
+}
+
+/*
+ * 對比要夠，而且絕對不能加動畫——要立刻出現。
+ * 貓本身不在這裡：牠是 div、不可聚焦，點牠只是滑鼠的順手路徑，
+ * 鍵盤與讀螢幕走的是「摸摸」那顆按鈕。
+ */
+.action:focus-visible,
+.motion-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  transition: none;
+}
+
+/* ------------------------------------------------------------
+   減少動態
+
+   停掉的是「位移」——走動才是會引起前庭不適的東西。
+   呼吸和眨眼是低振幅的原地變化，留著，那也是療癒感的來源。
+   走動本身由 script.js 擋掉，這裡處理純 CSS 的部分。
+   ------------------------------------------------------------ */
+body[data-motion="reduced"] .room,
+body[data-motion="reduced"] .room-floor,
+body[data-motion="reduced"] .room-window,
+body[data-motion="reduced"] .room-beam,
+body[data-motion="reduced"] .room-desk {
+  transition: none;
+}
+
+body[data-motion="reduced"] .cat-sprite {
+  animation-duration: 7s;
+}
+
+body[data-motion="reduced"] .cat.is-purring .cat-sprite {
+  animation: none;
+}
+
+/* ------------------------------------------------------------
+   窄螢幕
+   ------------------------------------------------------------ */
+@media (max-width: 400px) {
+  .actions {
+    gap: 8px;
+  }
+
+  .action {
+    padding: 7px 14px;
+  }
+
+  .note {
+    font-size: var(--fs-sm);
+  }
+}

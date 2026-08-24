@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>房間裡的貓</title>
+  <meta name="description" content="一隻自己過生活的貓。沒有飢餓值，離開多久回來都不會有壞事發生。" />
+  <!--
+    theme.js 要排在樣式表前面，而且不能加 defer——
+    data-theme 必須在第一次 paint 之前設好，晚一步就會閃一下深色。
+    這頁沒有切換鈕，跟著首頁選好的主題走。
+    ?v= 是給瀏覽器快取用的版本號，改到這些檔案時記得一起加一。
+  -->
+  <link rel="preload" as="font" type="font/woff2" href="../../fonts/space-grotesk-latin.woff2" crossorigin />
+  <script src="../../theme.js?v=1"></script>
+  <link rel="stylesheet" href="../../style.css?v=8" />
+  <link rel="stylesheet" href="style.css?v=4" />
+</head>
+<body>
+  <header class="hero">
+    <div class="container">
+      <h1>房間裡的貓</h1>
+      <p class="tagline">牠住在這裡。你來不來都可以。</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <!--
+      data-tod 由 script.js 依真實時間設定，跟站台的深／淺主題無關。
+      房間是一扇看出去的窗，切主題不該把裡面的夜晚變成白天。
+    -->
+    <div class="room" id="room" data-tod="day">
+      <!--
+        順序就是疊圖順序（都是 absolute、沒有 z-index）。
+        地板要排在桌子前面，否則會蓋掉桌腳；光束疊在場景上、但排在貓前面，
+        免得把貓也染上一層顏色。
+      -->
+      <div class="room-floor" aria-hidden="true"></div>
+      <div class="room-desk" aria-hidden="true"></div>
+      <div class="room-window" aria-hidden="true"></div>
+      <div class="room-beam" aria-hidden="true"></div>
+      <div class="bowl" id="bowl" aria-hidden="true"></div>
+      <!-- .cat 只管位置（JS 每幀寫 transform），外觀與反應動畫都在 .cat-sprite -->
+      <div class="cat" id="cat" data-anim="sit" role="img" aria-label="一隻貓">
+        <span class="cat-sprite" id="cat-sprite" aria-hidden="true"></span>
+      </div>
+    </div>
+
+    <p class="note is-empty" id="note" role="status" aria-live="polite"></p>
+
+    <div class="actions">
+      <button class="action" id="act-pet" type="button">摸摸</button>
+      <button class="action" id="act-feed" type="button">餵食</button>
+      <button class="action" id="act-wand" type="button">逗貓棒</button>
+    </div>
+
+    <p class="meta" id="meta"></p>
+
+    <!-- 貓叼回來的東西。沒有分數也沒有進度條，這排就是唯一看得見的累積 -->
+    <ul class="gifts" id="gifts"></ul>
+  </main>
+
+  <footer class="container">
+    <p class="footer-row">
+      <a href="../../">← 回首頁</a>
+      <!--
+        預設 hidden，由 script.js 決定要不要顯示：只有系統開了減少動畫、
+        或目前正處於減少動態時才會出現。先藏著是為了不要在 JS 跑到之前閃一下。
+      -->
+      <button class="motion-toggle" id="motion-toggle" type="button" aria-pressed="false" hidden>減少動態</button>
+    </p>
+    <!-- CC BY 4.0 要求標示出處。完整說明與選擇理由在 art/LICENSE.txt -->
+    <p class="credit">
+      貓的像素圖 <a href="https://mxmaze.itch.io/16-bit-kitty-free" target="_blank" rel="noopener">16 bit kitty</a>
+      by Maze.Bit.Boutique，授權
+      <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>
+    </p>
+  </footer>
+
+  <script src="world.js?v=2"></script>
+  <script src="cat.js?v=1"></script>
+  <script src="save.js?v=1"></script>
+  <script src="sprites.js?v=2"></script>
+  <script src="script.js?v=5"></script>
+</body>
+</html>
