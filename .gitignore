@@ -1,1 +1,4 @@
-.claude/
+# .claude/ 底下大多是本機的 session 暫存，不進版控；
+# 但 skills/ 是這個專案的設計規則，要跟著 repo 走
+.claude/*
+!.claude/skills/
