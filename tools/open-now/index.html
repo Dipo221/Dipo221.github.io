@@ -5,9 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>現在吃什麼</title>
   <meta name="description" content="看看淡水現在有哪些店還開著" />
-  <!-- ?v= 是給瀏覽器快取用的版本號，改到這些檔案時記得一起加一 -->
-  <link rel="stylesheet" href="../../style.css?v=2" />
-  <link rel="stylesheet" href="style.css?v=8" />
+  <!--
+    theme.js 要排在樣式表前面，而且不能加 defer——
+    data-theme 必須在第一次 paint 之前設好，晚一步就會閃一下深色。
+    這頁沒有切換鈕，只是跟著首頁選好的主題走。
+    ?v= 是給瀏覽器快取用的版本號，改到這些檔案時記得一起加一。
+  -->
+  <script src="../../theme.js?v=1"></script>
+  <link rel="stylesheet" href="../../style.css?v=3" />
+  <link rel="stylesheet" href="style.css?v=9" />
 </head>
 <body>
   <header class="hero hero-compact">

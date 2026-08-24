@@ -4,29 +4,56 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MingYang</title>
-  <link rel="stylesheet" href="style.css?v=2" />
+  <meta name="description" content="MingYang 的個人首頁，放一些自己會用的小工具" />
+  <!--
+    theme.js 要排在 style.css 前面，而且不能加 defer——
+    data-theme 必須在第一次 paint 之前設好，晚一步就會閃一下深色。
+    ?v= 是給瀏覽器快取用的版本號，改到這些檔案時記得一起加一。
+  -->
+  <script src="theme.js?v=1"></script>
+  <link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
-  <header class="hero">
+  <header class="hero hero-home">
     <div class="container">
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="切換主題">🌙</button>
       <h1>MingYang</h1>
-      <p class="tagline">這裡是我的個人首頁，正在建置中 🚧</p>
+      <p class="tagline">做點自己會用的小東西，放在這裡</p>
     </div>
   </header>
 
   <main class="container">
     <section id="about">
       <h2>關於我</h2>
-      <p>在TKU的人工智慧機器人碩士班打拼</p>
-      <p>在味全龍商品部擔任工讀</p>
+      <ul class="fact-list">
+        <li><span class="fact-key">研究</span>TKU 人工智慧機器人碩士班</li>
+        <li><span class="fact-key">工讀</span>味全龍 商品部</li>
+      </ul>
     </section>
 
+    <!--
+      日後工具變多要拆「趣味 / 實驗室」的話，
+      在 .tool-grid 前面插 <h3 class="tool-group">趣味</h3> 就分好了，
+      每組各包一個 .tool-grid，CSS 已經備著。
+    -->
     <section id="tools">
       <h2>小工具</h2>
-      <ul class="link-list">
-        <li><a href="tools/uiia-cat/">🐈 uiia cat</a></li>
-        <li><a href="tools/open-now/">🍜 現在吃什麼</a></li>
-      </ul>
+      <div class="tool-grid">
+        <a class="tool-card" href="tools/open-now/">
+          <span class="tool-icon" aria-hidden="true">🍜</span>
+          <span>
+            <span class="tool-name">現在吃什麼</span>
+            <span class="tool-desc">淡水現在還有哪些店開著。可以按標籤篩，選不出來就擲骰子</span>
+          </span>
+        </a>
+        <a class="tool-card" href="tools/uiia-cat/">
+          <span class="tool-icon" aria-hidden="true">🐈</span>
+          <span>
+            <span class="tool-name">uiia cat</span>
+            <span class="tool-desc">點一下貓就轉，還會叫。次數是全世界一起累積的</span>
+          </span>
+        </a>
+      </div>
     </section>
 
     <section id="links">

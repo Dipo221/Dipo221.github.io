@@ -1,10 +1,56 @@
+/* ============================================================
+   設計 token
+
+   深色是預設，淺色靠 <html data-theme="light"> 覆寫同一組變數名。
+   tools/ 底下的兩個工具都吃這裡的變數（open-now 另外補了狀態色，
+   uiia-cat 連 :root 都沒有），所以動這一段等於動全站，改之前先想一下。
+   ============================================================ */
 :root {
+  color-scheme: dark;
+
   --bg: #2b3036;
   --bg-elevated: #363c44;
   --text: #f0f3f6;
   --muted: #b6bec8;
   --accent: #79b8ff;
   --border: #4a515a;
+
+  /* accent 拿來當底色時，壓在上面的字用這個顏色 */
+  --accent-ink: #10151b;
+  /* accent 的淡化版，做高亮背景用 */
+  --accent-soft: rgba(121, 184, 255, 0.14);
+
+  /*
+   * 字階。原本只有 2.5rem 和 1.25rem 兩級，中間整段是空的，
+   * 所以排版做不出層次——內容一少就顯得單調，補齊這組是關鍵。
+   */
+  --fs-hero: clamp(2.25rem, 7vw, 3rem);
+  --fs-h2: 1.3125rem;
+  --fs-lead: 1.0625rem;
+  --fs-sm: 0.9375rem;
+  --fs-xs: 0.8125rem;
+
+  --radius: 8px;
+  --radius-pill: 999px;
+  --speed: 0.15s;
+}
+
+/*
+ * 淺色不是深色的反轉——亮綠、亮藍在白底上對比會不夠。
+ * accent 特別要注意：它同時是 open-now 篩選鈕選中時的底色。
+ */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f4f6f9;
+  --bg-elevated: #ffffff;
+  --text: #1c2128;
+  --muted: #58636f;
+  --accent: #0b6bcb;
+  --border: #d5dbe2;
+
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(11, 107, 203, 0.1);
 }
 
 * {
@@ -17,6 +63,7 @@ body {
   background: var(--bg);
   color: var(--text);
   line-height: 1.6;
+  transition: background-color 0.2s, color 0.2s;
 }
 
 .container {
@@ -25,15 +72,25 @@ body {
   padding: 0 24px;
 }
 
+/* ============================================================
+   Hero
+   ============================================================ */
+
 .hero {
-  padding: 96px 0 64px;
+  padding: 72px 0 48px;
   text-align: center;
   border-bottom: 1px solid var(--border);
 }
 
+.hero .container {
+  position: relative;
+}
+
 .hero h1 {
-  font-size: 2.5rem;
-  margin: 0 0 8px;
+  font-size: var(--fs-hero);
+  line-height: 1.15;
+  margin: 0 0 10px;
+  letter-spacing: -0.02em;
 }
 
 .tagline {
@@ -41,20 +98,164 @@ body {
   margin: 0;
 }
 
-main {
-  padding: 48px 0;
+/* 只有首頁用。頂端一層很淡的光暈，內容還少的時候撐一下場面 */
+.hero-home {
+  background: radial-gradient(70% 100% at 50% 0%, var(--accent-soft), transparent 72%);
+}
+
+.theme-toggle {
+  position: absolute;
+  top: -8px;
+  right: 24px; /* 對齊 .container 的水平 padding */
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color var(--speed), transform var(--speed);
+}
+
+.theme-toggle:hover {
+  border-color: var(--accent);
+  transform: rotate(-15deg);
+}
+
+/* ============================================================
+   版面
+   ============================================================ */
+
+/*
+ * .container（class）的 specificity 比 main（element）高，
+ * 所以單寫 main { padding } 會被 padding: 0 24px 整個蓋掉、從來沒生效過。
+ * open-now 的 style.css 也踩過同一個坑，這裡用一樣的解法把權重拉起來。
+ */
+main.container {
+  padding-top: 44px;
+  padding-bottom: 44px;
 }
 
 section {
-  margin-bottom: 40px;
+  margin-bottom: 44px;
+}
+
+section:last-child {
+  margin-bottom: 0;
 }
 
 h2 {
-  font-size: 1.25rem;
+  font-size: var(--fs-h2);
   border-left: 4px solid var(--accent);
   padding-left: 10px;
-  margin-bottom: 16px;
+  margin: 0 0 18px;
+  letter-spacing: -0.01em;
 }
+
+/*
+ * 工具日後要拆「趣味 / 實驗室」兩組時用的小標題。
+ * 現在還沒拆，樣式先備著——到時候在 .tool-grid 前面插一個 <h3> 就分好了。
+ */
+.tool-group {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 26px 0 10px;
+}
+
+.tool-group:first-of-type {
+  margin-top: 0;
+}
+
+/* ============================================================
+   關於我
+   ============================================================ */
+
+.fact-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.fact-list li {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  font-size: var(--fs-sm);
+}
+
+.fact-key {
+  flex: none;
+  width: 3.5em;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+/* ============================================================
+   工具卡片——這一區是首頁的主角
+   手感沿用 open-now 的 .card：8px 圓角、左側 3px 色條、0.15s、hover 位移 2px
+   ============================================================ */
+
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.tool-card {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color var(--speed), transform var(--speed);
+}
+
+.tool-card:hover {
+  border-color: var(--accent);
+  transform: translateX(2px);
+}
+
+.tool-icon {
+  flex: none;
+  font-size: 1.6rem;
+  line-height: 1.2;
+  transition: transform var(--speed);
+}
+
+.tool-card:hover .tool-icon {
+  transform: scale(1.15) rotate(-8deg);
+}
+
+.tool-name {
+  display: block;
+  font-weight: 600;
+  font-size: var(--fs-lead);
+  margin-bottom: 2px;
+}
+
+.tool-desc {
+  display: block;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+/* ============================================================
+   連結——刻意比工具卡片輕，它本來就不該搶戲
+   圓角對齊 open-now 的 .chip
+   ============================================================ */
 
 .link-list {
   list-style: none;
@@ -62,18 +263,19 @@ h2 {
   margin: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
 }
 
 .link-list a {
   display: inline-block;
-  padding: 8px 16px;
+  padding: 7px 15px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-pill);
   color: var(--text);
   text-decoration: none;
+  font-size: var(--fs-sm);
   background: var(--bg-elevated);
-  transition: border-color 0.2s, color 0.2s;
+  transition: border-color var(--speed), color var(--speed);
 }
 
 .link-list a:hover {
@@ -81,10 +283,42 @@ h2 {
   color: var(--accent);
 }
 
+/* ============================================================
+   頁尾
+   ============================================================ */
+
 footer {
   padding: 24px;
   text-align: center;
   color: var(--muted);
   font-size: 0.875rem;
   border-top: 1px solid var(--border);
+}
+
+/* 工具頁的「← 回首頁」原本沒有樣式，吃瀏覽器預設的藍紫色 */
+footer a {
+  color: var(--muted);
+  text-decoration: none;
+  transition: color var(--speed);
+}
+
+footer a:hover {
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body,
+  .theme-toggle,
+  .tool-card,
+  .tool-icon,
+  .link-list a,
+  footer a {
+    transition: none;
+  }
+
+  .theme-toggle:hover,
+  .tool-card:hover,
+  .tool-card:hover .tool-icon {
+    transform: none;
+  }
 }
