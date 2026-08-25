@@ -332,6 +332,15 @@ body[data-art="sprite"] .cat-sprite {
   list-style: none;
 }
 
+/*
+ * 禮物是關係層的東西，訪客連位置都不留。
+ * script.js 那邊已經不會產生內容了，這條是為了連 margin 一起收掉——
+ * 空的 <ul> 還是會佔 12px。
+ */
+body[data-role="guest"] .gifts {
+  display: none;
+}
+
 .gift {
   padding: 5px 13px;
   border: 1px solid var(--border);

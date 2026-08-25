@@ -97,13 +97,49 @@
   });
 
   /* ---------------------------------------------------------------- */
+  /* 主人模式                                                          */
+
+  const OWNER_KEY = "cat-room:owner";
+
+  /*
+   * 網址帶 #me 就記住這台裝置是主人，之後直接進來也認得。
+   * 照 open-now/editor.js 的 #edit，但改用 localStorage 而不是 sessionStorage——
+   * 那邊要的是單次分頁的編輯權限，這邊要的是「我這台電腦」。
+   *
+   * **這不是安全機制，也不需要是。**
+   * bond 和禮物本來就存在每個人自己的瀏覽器裡，陌生人就算翻原始碼
+   * 找到 #me 解鎖，看到的也只是他自己的一排 0，沒有任何屬於明陽的東西會外流。
+   * 它單純是一個顯示開關。
+   */
+  function readOwner() {
+    try {
+      if (location.hash === "#me") {
+        localStorage.setItem(OWNER_KEY, "1");
+        return true;
+      }
+      return localStorage.getItem(OWNER_KEY) === "1";
+    } catch (err) {
+      // storage 被擋掉的話至少讓這次的 #me 有效
+      return location.hash === "#me";
+    }
+  }
+
+  const isOwner = readOwner();
+  document.body.setAttribute("data-role", isOwner ? "owner" : "guest");
+
+  /* ---------------------------------------------------------------- */
   /* 存檔與回訪                                                        */
 
   const now = Date.now();
   const loaded = Save.load(now);
   const state = loaded.state;
+  const catName = World.catName(state);
 
-  const scene = World.returnScene(now - state.lastSeen, World.seedFrom(state.lastSeen));
+  const scene = World.returnScene(
+    now - state.lastSeen,
+    World.seedFrom(state.lastSeen),
+    { name: catName, owner: isOwner }
+  );
 
   // 先用舊的 lastSeen 算完場景，才可以把它更新成現在
   state.lastSeen = now;
@@ -118,19 +154,181 @@
     noteEl.classList.toggle("is-empty", !text);
   }
 
+  /*
+   * 訪客沒有領養誰，不能跟他說「有一隻貓走進來決定住下」。
+   * 開場白對他來說是介紹，不是宣告。
+   */
   if (loaded.isNew) {
-    showNote("有一隻貓自己走了進來，決定住下。");
-  } else {
+    showNote(
+      isOwner
+        ? "有一隻貓自己走了進來，決定住下。"
+        : "這是 " + catName + "。牠住在明陽的房間裡。"
+    );
+  } else if (scene.message) {
     showNote(scene.message);
+  }
+  // 訪客且沒有訊息時先留白，等開場狀態決定好再補一句「牠在幹嘛」（見 openingNote）
+
+  // 訪客看的是牠此刻在做什麼——那正是他進來想看的東西
+  const DOING = {
+    sleep: "正在睡覺",
+    groom: "正在理毛",
+    walk: "在房間裡走來走去",
+    play: "玩得正起勁",
+    sit: "坐在地上",
+    idle: "在發呆",
+    approach: "正朝你走過來",
+    eat: "在吃東西"
+  };
+
+  function describeDoing() {
+    return catName + " " + (DOING[cat.state] || DOING.idle) + "。";
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* 被摸過幾次（共用計數）                                            */
+
+  /*
+   * 跟 uiia-cat 同一個服務、同一個 namespace，key 另開一個。
+   * 只能加不能減，跟這個用途完美契合。
+   *
+   * 這是**匿名的總量計數**，跟一般的瀏覽人次計數器同一種東西：
+   * 沒有 ID、沒有 IP、沒有任何可以指認個人的資料，端點本來就是公開的。
+   *
+   * 訪客摸摸照樣送 /hit（所以記得到），但畫面上不顯示任何數字，
+   * 所以他不會意識到自己被記錄。/get 只有主人模式才打——訪客不顯示，抓了也沒用。
+   *
+   * **硬規則：這是 cat-room 唯一的對外連線，它掛掉不能影響遊戲。**
+   * 抓不到就不顯示那一段，貓照常跑，整頁離線也要能玩。
+   */
+  const COUNTER_URL = "https://abacus.jasoncameron.dev";
+  const COUNTER_NS = "dipo221-github-io";
+
+  /*
+   * 每天一把 key。
+   *
+   * Abacus 的計數器只能加、不能歸零，所以「今天被摸過幾次」不是靠重置做的——
+   * 過了台北的午夜就換一把 key，新的那把自然從 0 開始，舊的留在那裡不管它。
+   *
+   * 還沒有人摸過的那把 key 是不存在的，/get 會回 404。
+   * 底下把非 2xx 一律當成 0，所以那不是錯誤，就是「今天還沒被摸過」。
+   */
+  function petsKey() {
+    /*
+     * 前綴用 touch 而不是 pets，是為了跟開發時測出來的髒資料切開——
+     * Abacus 不能減也不能刪，cat-room-pets-* 那幾把被驗證用的點擊灌過，
+     * 沿用的話上線第一天會看到不是真的數字。
+     */
+    return "cat-room-touch-" + World.taipeiDate();
+  }
+
+  const pets = { confirmed: null, pending: 0, day: null };
+
+  function acceptCount(value) {
+    if (typeof value !== "number") return;
+    /*
+     * 只增不減，才不會被亂序回來的回應往回拉。
+     * 換日時一定要先把 confirmed 清成 null（見 syncPetsDay）——
+     * 否則數字從昨天的 7 掉到今天的 0，會被這個 Math.max 擋住，
+     * 畫面就一直停在 7。
+     */
+    pets.confirmed = pets.confirmed === null ? value : Math.max(pets.confirmed, value);
+  }
+
+  function loadCount() {
+    if (!isOwner) return;
+    const key = pets.day;
+    fetch(COUNTER_URL + "/get/" + COUNTER_NS + "/" + key)
+      .then((res) => (res.ok ? res.json() : { value: 0 }))
+      .then((data) => {
+        if (pets.day !== key) return; // 等回應的期間換日了，這筆是昨天的
+        acceptCount(data.value);
+        renderMeta();
+      })
+      .catch(() => {
+        // 服務掛了就是不顯示那一段，其他照舊
+      });
+  }
+
+  /*
+   * 換日。每分鐘跟著 syncLight 檢查一次，
+   * 所以分頁掛整晚跨過台北午夜時，數字會自己歸零重算。
+   */
+  function syncPetsDay() {
+    const key = petsKey();
+    if (pets.day === key) return;
+
+    pets.day = key;
+    pets.confirmed = null;
+    pets.pending = 0;
+    loadCount();
+    renderMeta();
+  }
+
+  // 摸摸會被連點，一秒內只算一次，免得誤觸把數字灌上去
+  let lastHitAt = 0;
+
+  function countPet() {
+    const t = Date.now();
+    if (t - lastHitAt < 1000) return;
+    lastHitAt = t;
+
+    syncPetsDay(); // 剛好在午夜按下去的話，先換到今天那把
+    const key = pets.day;
+
+    pets.pending += 1;
+    renderMeta();
+
+    fetch(COUNTER_URL + "/hit/" + COUNTER_NS + "/" + key)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && pets.day === key) acceptCount(data.value);
+      })
+      .catch(() => {
+        // 這一下沒記到就算了，不要跳錯誤打斷使用者
+      })
+      .finally(() => {
+        if (pets.day !== key) return; // 換日了，pending 已經被歸零，不要再減
+        pets.pending = Math.max(0, pets.pending - 1);
+        renderMeta();
+      });
+  }
+
+  /* ---------------------------------------------------------------- */
+
+  /*
+   * 小標＝牠住多久了。
+   *
+   * 這句講的是 Disi，不是你跟牠的關係，所以算自固定日期而不是存檔——
+   * 所有人看到同一個數字，而且清掉 localStorage 牠也不會突然變回剛搬來。
+   *
+   * 不重複寫名字：正上方的 h1 就是「Disi」，再寫一次會變成
+   * 「Disi ／ Disi 已經在這邊生活了…」。主詞由標題提供就夠了。
+   */
+  function renderTagline() {
+    const el = document.getElementById("tagline");
+    if (!el) return;
+    const days = World.daysHere(Date.now());
+    el.textContent = days < 1 ? "今天剛搬進來" : "已經在這邊生活了 " + days + " 天";
   }
 
   function renderMeta() {
     if (!metaEl) return;
-    const days = Math.floor((Date.now() - state.firstSeen) / World.DAY);
+
+    // 剩下的都是關係層與共用計數，只有主人看得到
     const parts = [];
-    if (days >= 1) parts.push("你們認識 " + days + " 天了");
-    if (state.gifts.length) parts.push("收到 " + state.gifts.length + " 件禮物");
+    if (isOwner) {
+      if (pets.confirmed !== null) {
+        const n = pets.confirmed + pets.pending;
+        // 0 次講「還沒被摸過」，不要寫成「今天被摸過 0 次」那麼像報表
+        parts.push(n === 0 ? "今天還沒被摸過" : "今天被摸過 " + n.toLocaleString() + " 次");
+      }
+      if (state.gifts.length) parts.push("收到 " + state.gifts.length + " 件禮物");
+    }
+
     metaEl.textContent = parts.join("　·　");
+    // 訪客這一行是空的。留著會空出 min-height 那段高度，直接收掉
+    metaEl.hidden = parts.length === 0;
   }
 
   /*
@@ -140,6 +338,12 @@
   function renderGifts() {
     const giftsEl = document.getElementById("gifts");
     if (!giftsEl) return;
+
+    // 禮物是關係層的東西，訪客看不到
+    if (!isOwner) {
+      giftsEl.textContent = "";
+      return;
+    }
 
     const counts = {};
     const order = [];
@@ -162,11 +366,13 @@
   }
 
   function renderProgress() {
+    renderTagline();
     renderMeta();
     renderGifts();
   }
 
   renderProgress();
+  syncPetsDay(); // 決定今天那把 key，順便把數字抓回來
 
   /* ---------------------------------------------------------------- */
   /* 房間光線                                                          */
@@ -180,6 +386,9 @@
    */
   function syncLight() {
     room.setAttribute("data-tod", World.timeOfDay(new Date()));
+    // 分頁掛整晚的話，這兩個都要跟著在台北的午夜換過去
+    renderTagline();
+    syncPetsDay();
   }
   syncLight();
   setInterval(syncLight, 60 * 1000);
@@ -187,7 +396,16 @@
   /* ---------------------------------------------------------------- */
   /* 貓                                                                */
 
-  const rand = Math.random;
+  /*
+   * 行為的亂數用「時間切片」當種子，不是 Math.random——
+   * 同一個 3 分鐘切片裡進來的人，起手會看到 Disi 在做同一件事，
+   * 這樣「大家看到的都是一樣的畫面」才算數。
+   *
+   * 進來之後兩邊的狀態機各自跑、抽到的長度不同就會慢慢分岔，
+   * 所以這是**近似不是保證同步**。要逐格一致得在切片內重播狀態機，
+   * 那個複雜度換來的差別很小，刻意不做。
+   */
+  const rand = World.rng(World.behaviourSlot(now));
 
   const cat = {
     state: "sit",
@@ -306,6 +524,15 @@
     enter(World.energy(new Date()) < 0.3 ? "sleep" : "sit", performance.now());
   }
 
+  /*
+   * 訪客沒有關係層的訊息，但也不該只看到一片空白——
+   * 補一句牠現在在幹嘛。要等 enter() 決定好開場狀態才知道要寫什麼，
+   * 所以放在這裡而不是上面跟其他文案一起。
+   */
+  if (!loaded.isNew && !scene.message) {
+    showNote(describeDoing());
+  }
+
   // 有素材包才切過去，沒有就維持 placeholder 色塊
   if (Sprites.ready()) {
     const m = Sprites.manifest;
@@ -343,14 +570,20 @@
     state.pet.count += 1;
     grantBond(1);
     react("is-purring");
-    showNote(cat.state === "sleep" ? "牠沒睜眼，但呼嚕聲變大了。" : "牠瞇起眼睛，往你的手靠過去。");
+    // 訪客也照樣送出去，他只是看不到數字
+    countPet();
+    showNote(
+      cat.state === "sleep"
+        ? catName + " 沒睜眼，但呼嚕聲變大了。"
+        : catName + " 瞇起眼睛，往你的手靠過去。"
+    );
     Save.save(state);
     renderProgress();
   }
 
   function feed() {
     if (!Cat.accepts(cat.state, "feed")) {
-      showNote("牠睡得很熟，等一下再說吧。");
+      showNote(catName + " 睡得很熟，等一下再說吧。");
       return;
     }
     state.fed.count += 1;
@@ -358,7 +591,7 @@
     grantBond(1);
     bowlEl.classList.add("is-full");
     goThenDo(0.68, "eat", performance.now()); // 碗在 74%，走過去再吃
-    showNote("牠聽到碗的聲音就過來了。");
+    showNote(catName + " 聽到碗的聲音就過來了。");
     Save.save(state);
   }
 
@@ -403,11 +636,15 @@
       return;
     }
     const away = Date.now() - state.lastSeen;
-    const back = World.returnScene(away, World.seedFrom(state.lastSeen));
+    const back = World.returnScene(away, World.seedFrom(state.lastSeen), {
+      name: catName,
+      owner: isOwner
+    });
     if (back.tier !== "none") {
       state.cat.bond += back.bondDelta;
       if (back.gift) state.gifts.push({ id: back.gift.id, at: Date.now() });
-      showNote(back.message);
+      // 訪客拿不到關係層的話，改講牠現在在幹嘛
+      showNote(back.message || describeDoing());
       renderProgress();
     }
     markSeen();

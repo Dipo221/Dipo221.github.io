@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>房間裡的貓</title>
-  <meta name="description" content="一隻自己過生活的貓。沒有飢餓值，離開多久回來都不會有壞事發生。" />
+  <title>Disi — 房間裡的貓</title>
+  <meta name="description" content="Disi 住在明陽淡水的房間裡。牠自己過生活，你可以進來看看牠在做什麼。" />
   <!--
     theme.js 要排在樣式表前面，而且不能加 defer——
     data-theme 必須在第一次 paint 之前設好，晚一步就會閃一下深色。
@@ -14,13 +14,17 @@
   <link rel="preload" as="font" type="font/woff2" href="../../fonts/space-grotesk-latin.woff2" crossorigin />
   <script src="../../theme.js?v=1"></script>
   <link rel="stylesheet" href="../../style.css?v=8" />
-  <link rel="stylesheet" href="style.css?v=4" />
+  <link rel="stylesheet" href="style.css?v=5" />
 </head>
 <body>
   <header class="hero">
     <div class="container">
-      <h1>房間裡的貓</h1>
-      <p class="tagline">牠住在這裡。你來不來都可以。</p>
+      <h1>Disi</h1>
+      <!--
+        小標的內容由 script.js 填（天數每天會變，寫死在這裡沒有意義）。
+        script.js 排在 body 尾端且是同步的，會在第一次 paint 之前跑完，所以不會閃。
+      -->
+      <p class="tagline" id="tagline"></p>
     </div>
   </header>
 
@@ -77,10 +81,10 @@
     </p>
   </footer>
 
-  <script src="world.js?v=2"></script>
+  <script src="world.js?v=4"></script>
   <script src="cat.js?v=1"></script>
   <script src="save.js?v=1"></script>
   <script src="sprites.js?v=2"></script>
-  <script src="script.js?v=5"></script>
+  <script src="script.js?v=9"></script>
 </body>
 </html>

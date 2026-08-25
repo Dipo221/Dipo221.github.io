@@ -32,7 +32,7 @@
   <main class="container" id="out"></main>
   <footer class="container"><p><a href="./">← 回工具</a></p></footer>
 
-  <script src="world.js?v=2"></script>
+  <script src="world.js?v=4"></script>
   <script src="cat.js?v=1"></script>
   <script src="save.js?v=1"></script>
   <script src="sprites.js?v=2"></script>
@@ -69,8 +69,16 @@
     const HR = World.HOUR;
     const DAY = World.DAY;
 
-    // 指定「當地時間的某一小時」。energy 和 timeOfDay 都只看 getHours()
-    const at = (h) => new Date(2026, 7, 25, h, 0, 0);
+    /*
+     * 指定「台北的某一小時」。
+     *
+     * 一定要帶 +08:00，不能用 new Date(2026, 7, 25, h, 0)——
+     * 那個建構出來的是**跑測試那台機器**的本地時間，
+     * 只因為開發機在台北才碰巧等於台北時間，換一台機器整組就紅。
+     * 寫法照 tools/open-now/test.html 的既有慣例。
+     */
+    const pad = (n) => (n < 10 ? "0" + n : "" + n);
+    const at = (h) => new Date("2026-08-25T" + pad(h) + ":00:00+08:00");
 
     // 跑 n 次 pickNext，回傳各狀態出現的比例
     function distribution(current, energy, bond, n) {
@@ -85,6 +93,156 @@
     }
 
     /* ---------------------------------------------------------- */
+
+    group("台北時間：Disi 幾點睡跟看的人在哪無關");
+    {
+      /*
+       * 這組是整個改動的地基。Disi 住在淡水的房間，
+       * 德國人在他的下午打開時台北是半夜，就該看到一隻睡著的貓。
+       */
+      check("UTC 04:00 是台北 12:00", World.taipeiHour(new Date("2026-08-25T04:00:00Z")), 12);
+      check("UTC 16:30 是台北隔天 00:30", World.taipeiHour(new Date("2026-08-25T16:30:00Z")), 0);
+      check("UTC 00:00 是台北 08:00", World.taipeiHour(new Date("2026-08-25T00:00:00Z")), 8);
+      check("帶 +08:00 的字串直接對應", World.taipeiHour(new Date("2026-08-25T14:00:00+08:00")), 14);
+      check("跨年邊界不會爆", World.taipeiHour(new Date("2025-12-31T16:00:00Z")), 0);
+
+      // 同一個瞬間的兩種寫法，結果必須一致
+      const instant = "2026-08-25T06:00:00Z"; // 台北 14:00，下午睡死那段
+      check("同一瞬間換算出同一個時段", World.timeOfDay(new Date(instant)), "day");
+      check("同一瞬間換算出同一個活力", World.energy(new Date(instant)), World.energy(at(14)));
+      check("而且那個活力是下午的低點", World.energy(new Date(instant)) <= 0.15, true);
+
+      const night = "2026-08-25T18:00:00Z"; // 台北隔天 02:00
+      check("台北凌晨兩點是 night", World.timeOfDay(new Date(night)), "night");
+      check("不管看的人在哪都一樣", World.timeOfDay(new Date(night)), World.timeOfDay(at(2)));
+    }
+
+    group("台北的日期（每日計數的 key）");
+    {
+      /*
+       * 「今天被摸過幾次」不是靠重置做的——Abacus 只能加不能歸零，
+       * 所以是每天換一把 key（cat-room-touch-YYYY-MM-DD）。
+       * key 算錯就等於數字掛在錯的一天上，這組在守那件事。
+       */
+      const d = (s) => World.taipeiDate(new Date(s));
+
+      check("格式是 YYYY-MM-DD", /^\d{4}-\d{2}-\d{2}$/.test(d("2026-08-26T05:00:00+08:00")), true);
+      check("月份和日期補到兩位數", d("2026-01-02T12:00:00+08:00"), "2026-01-02");
+
+      // 這兩條是重點：UTC 的日期跟台北的日期在邊界會不一樣
+      check("UTC 16:30 已經是台北的隔天", d("2026-08-25T16:30:00Z"), "2026-08-26");
+      check("UTC 15:30 還是台北的當天", d("2026-08-25T15:30:00Z"), "2026-08-25");
+
+      check("台北 23:59 還算今天", d("2026-08-26T23:59:00+08:00"), "2026-08-26");
+      check("台北 00:00 就換日了", d("2026-08-27T00:00:00+08:00"), "2026-08-27");
+
+      check("跨月", d("2026-08-31T23:59:00+08:00"), "2026-08-31");
+      check("跨月的下一分鐘", d("2026-09-01T00:00:00+08:00"), "2026-09-01");
+      check("跨年", d("2025-12-31T16:00:00Z"), "2026-01-01");
+
+      // 換日的判斷跟房間光線用的是同一套時間，不能各走各的
+      check(
+        "換日跟時段用同一個時區",
+        d("2026-08-25T16:30:00Z") !== d("2026-08-25T15:30:00Z"),
+        World.taipeiHour(new Date("2026-08-25T16:30:00Z")) < World.taipeiHour(new Date("2026-08-25T15:30:00Z"))
+      );
+    }
+
+    group("Disi 在這邊生活了幾天");
+    {
+      const A = World.ARRIVED;
+      const D = World.DAY;
+
+      check("搬進來當天是 0 天", World.daysHere(A), 0);
+      check("搬進來當天的深夜還是 0 天", World.daysHere(A + 23 * World.HOUR), 0);
+      check("隔天是 1 天", World.daysHere(A + D), 1);
+      check("37 天後是 37 天", World.daysHere(A + 37 * D), 37);
+
+      /*
+       * 換日要發生在**台北**的午夜，不是 UTC 的。
+       * ARRIVED 已經對齊台北午夜，所以這兩條就是在驗那個對齊沒歪。
+       */
+      const almost = A + D - 60 * 1000;       // 台北 23:59
+      const justPast = A + D + 60 * 1000;     // 台北 00:01
+      check("台北 23:59 還是前一天", World.daysHere(almost), 0);
+      check("台北 00:01 就換日了", World.daysHere(justPast), 1);
+      check("ARRIVED 落在台北的午夜整點", World.taipeiHour(new Date(A)), 0);
+
+      // 存檔清掉不該讓牠變回剛搬來，所以這個數字不能依賴任何存檔欄位
+      check("比搬進來還早的時間夾成 0，不會出現負數", World.daysHere(A - 5 * D), 0);
+    }
+
+    group("名字");
+    {
+      check("預設叫 Disi", World.CAT_NAME, "Disi");
+      check("沒有存檔就用常數", World.catName(null), "Disi");
+      check("存檔沒設名字也用常數", World.catName({ cat: { bond: 3 } }), "Disi");
+      check("存檔有設就覆寫", World.catName({ cat: { name: "小黑" } }), "小黑");
+      check("空字串當作沒設", World.catName({ cat: { name: "" } }), "Disi");
+      check("殘缺的存檔不會爆", World.catName({}), "Disi");
+
+      // 文案要真的把名字帶進去，不是寫死 Disi
+      const msg = World.returnScene(3 * HR, 42, { name: "小黑" }).message;
+      check("回訪訊息用的是傳進去的名字", msg.indexOf("小黑") >= 0, true);
+      check("而且沒有殘留寫死的 Disi", msg.indexOf("Disi"), -1);
+    }
+
+    group("訪客拿不到關係層的話");
+    {
+      /*
+       * 「你離開了 5 天，牠等你很久了」是明陽跟 Disi 之間的事，
+       * 路人不該收到那句話。但算法要完全一樣——只有 message 被拿掉。
+       */
+      const away = 5 * DAY;
+      const owner = World.returnScene(away, 42, { owner: true });
+      const guest = World.returnScene(away, 42, { owner: false });
+
+      check("主人有話", typeof owner.message, "string");
+      check("訪客沒有話", guest.message, null);
+      check("但級距一樣", guest.tier, owner.tier);
+      check("bond 一樣照加", guest.bondDelta, owner.bondDelta);
+      check("禮物一樣抽得到", guest.gift.id, owner.gift.id);
+      check("迎上來是看得到的行為，訪客也留著", guest.greet, true);
+
+      check("短時間的訪客版也不吐話", World.returnScene(30 * MIN, 42, { owner: false }).message, null);
+      check("睡一場的訪客版也不吐話", World.returnScene(3 * HR, 42, { owner: false }).message, null);
+      check("不給 opts 時預設是主人，舊呼叫端不會壞", typeof World.returnScene(3 * HR, 42).message, "string");
+
+      // 鐵則對訪客版一樣成立
+      let negatives = 0;
+      for (let seed = 0; seed < 120; seed++) {
+        for (let i = 0; i < 20; i++) {
+          const s = World.returnScene(Math.floor(Math.random() * 30 * DAY), seed, { owner: false });
+          if (s.bondDelta < 0) negatives++;
+        }
+      }
+      check("訪客版的 bondDelta 也永遠不是負的", negatives, 0);
+    }
+
+    group("行為切片：同一段時間進來看到同一件事");
+    {
+      const slot = World.behaviourSlot;
+      const THREE_MIN = 3 * MIN;
+      /*
+       * 基準要對齊切片邊界，不然「加 3 分鐘減 1 毫秒」本來就會跨進下一格。
+       * 上面 seedFrom 那組也踩過同一個坑，寫測資時先想清楚基準在哪。
+       */
+      const base = 9931111 * THREE_MIN;
+
+      check("同一個 3 分鐘切片內是同一個號碼", slot(base), slot(base + THREE_MIN - 1));
+      check("跨過切片就換號碼", slot(base) === slot(base + THREE_MIN), false);
+      check("號碼是整數", Number.isInteger(slot(base)), true);
+
+      // 同一個切片 → 同一個種子 → 同一串亂數 → 同一個開場狀態
+      const a = World.rng(slot(base));
+      const b = World.rng(slot(base + 1000));
+      check("同一切片給出同一串亂數", [a(), a(), a()], [b(), b(), b()]);
+
+      const energyAt = World.energy(at(14));
+      const s1 = Cat.pickNext("sit", energyAt, 0, World.rng(slot(base)));
+      const s2 = Cat.pickNext("sit", energyAt, 0, World.rng(slot(base + 5000)));
+      check("所以開場挑到的狀態也一樣", s1, s2);
+    }
 
     group("時段（房間光線用）");
     {
