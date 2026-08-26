@@ -35,7 +35,7 @@
   <script src="world.js?v=4"></script>
   <script src="cat.js?v=1"></script>
   <script src="save.js?v=1"></script>
-  <script src="sprites.js?v=2"></script>
+  <script src="sprites.js?v=4"></script>
   <script>
     const out = document.getElementById("out");
     let passed = 0;
@@ -492,7 +492,7 @@
        */
       const m = Sprites.manifest;
       check("已經接上素材包，不是 placeholder", Sprites.ready(), true);
-      check("3 欄 3 排", [m.cols, m.rows], [3, 3]);
+      check("3 欄 5 排", [m.cols, m.rows], [3, 5]);
       check("每格 16x16", [m.frameW, m.frameH], [16, 16]);
       check("圖裡的貓朝左（往右走要翻面）", m.facesLeft, true);
 
@@ -522,13 +522,20 @@
       check("播完一輪會繞回來", Sprites.frameFor("idle", ms * n).col, m.anims.idle.frames[0]);
       check("loop 的動畫永遠不會 done", Sprites.frameFor("idle", ms * 40).done, false);
 
-      check("睡覺用最下面那排", Sprites.frameFor("sleep", 0).row, 2);
-      check("坐著是 idle 的第一格定住", Sprites.frameFor("sit", 9999).col, m.anims.idle.frames[0]);
+      check("睡覺用第 2 排", Sprites.frameFor("sleep", 0).row, 2);
+
+      /*
+       * 坐與吃都有自己的一排。這兩條擋的是「哪天有人為了省格子
+       * 又把它們指回 idle」——那正是這兩個動作原本的樣子。
+       */
+      check("坐著有自己的一排，不是 idle 定格", Sprites.frameFor("sit", 0).row, 3);
+      check("坐著會動，不是只有一格", m.anims.sit.frames.length > 1, true);
+      check("吃東西有自己的一排", Sprites.frameFor("eat", 0).row, 4);
+      check("吃東西不是 alias", m.alias.eat, undefined);
 
       check("alias：groom 借用 idle", Sprites.frameFor("groom", 0).row, m.anims.idle.row);
       check("alias：play 借用 walk", Sprites.frameFor("play", 0).row, m.anims.walk.row);
       check("alias：approach 借用 walk", Sprites.frameFor("approach", 0).row, m.anims.walk.row);
-      check("alias：eat 借用 idle", Sprites.frameFor("eat", 0).row, m.anims.idle.row);
       check("不認得的動畫退回 idle", Sprites.frameFor("完全沒這個東西", 0).row, m.anims.idle.row);
 
       // 一次性動畫目前還沒用到，但邏輯要先是對的

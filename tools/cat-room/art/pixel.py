@@ -36,6 +36,11 @@ PAL = disi.PALETTE
 SHEET = disi.SHEET
 BG = (28, 31, 41)
 
+# 格數從資料算，不寫死。之前寫死 3x3，加一排姿勢就要改三個地方，
+# 而且漏掉的那個地方不會報錯——只會默默把新的一排畫到圖框外面。
+COLS = len(SHEET[0])
+ROWS = len(SHEET)
+
 
 def rgb(ch):
     return PAL[ch]
@@ -66,7 +71,7 @@ def sequences():
 
 
 def frames():
-    """按 manifest 的順序攤平成 9 格：3 排 x 3 欄。"""
+    """按 manifest 的順序攤平：一排一個姿勢，由左至右。"""
     out = []
     for row in SHEET:
         for name in row:
@@ -75,19 +80,19 @@ def frames():
 
 
 def build_sheet():
-    img = Image.new("RGBA", (48, 48), (0, 0, 0, 0))
+    img = Image.new("RGBA", (16 * COLS, 16 * ROWS), (0, 0, 0, 0))
     for i, (_, rows) in enumerate(frames()):
-        blit(img, rows, (i % 3) * 16, (i // 3) * 16, 1)
+        blit(img, rows, (i % COLS) * 16, (i // COLS) * 16, 1)
     img.save(os.path.join(HERE, "disi-16.png"))
 
 
 def build_proof(scale=20, pad=22):
     cell = 16 * scale + pad
-    img = Image.new("RGB", (cell * 3 + pad, cell * 3 + pad), BG)
+    img = Image.new("RGB", (cell * COLS + pad, cell * ROWS + pad), BG)
     d = ImageDraw.Draw(img)
     for i, (name, rows) in enumerate(frames()):
-        ox = pad + (i % 3) * cell
-        oy = pad + (i // 3) * cell
+        ox = pad + (i % COLS) * cell
+        oy = pad + (i // COLS) * cell
         d.rectangle([ox, oy, ox + 16 * scale, oy + 16 * scale], fill=(58, 62, 78))
         blit(img, rows, ox, oy, scale)
         for k in range(17):
@@ -103,11 +108,16 @@ def build_proof(scale=20, pad=22):
 
 
 def build_squint(scale=4, gap=6):
-    fs = frames()
-    w = len(fs) * (16 * scale + gap) + gap
-    img = Image.new("RGB", (w, 16 * scale + gap * 2), BG)
-    for i, (_, rows) in enumerate(fs):
-        blit(img, rows, gap + i * (16 * scale + gap), gap, scale)
+    """縮小並排，抓剪影用。
+
+    排法跟 sheet 一樣一排一個姿勢，不是全部擠成一長條——
+    要比的是「同一個姿勢的三格會不會抖」跟「這排跟那排認不認得出是兩件事」，
+    攤成一條的話這兩件事都要用眼睛跨半張圖去對。
+    """
+    cell = 16 * scale + gap
+    img = Image.new("RGB", (cell * COLS + gap, cell * ROWS + gap), BG)
+    for i, (_, rows) in enumerate(frames()):
+        blit(img, rows, gap + (i % COLS) * cell, gap + (i // COLS) * cell, scale)
     img.save(os.path.join(HERE, "squint.png"))
 
 

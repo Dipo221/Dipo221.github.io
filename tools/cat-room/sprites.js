@@ -15,11 +15,16 @@ const Sprites = (function () {
   "use strict";
 
   const manifest = {
-    sheet: "art/disi-16.png",
+    /*
+     * 圖的網址帶版本號，因為 rows 一變，舊圖配新 manifest 會整個錯位——
+     * 快取裡還是 3 排的舊圖時，第 3、4 排會取到圖外面，貓變成一塊空白。
+     * 加姿勢改了 disi-16.png 就要把這個號碼加一。
+     */
+    sheet: "art/disi-16.png?v=2",
     frameW: 16,
     frameH: 16,
     cols: 3,
-    rows: 3,
+    rows: 5,
 
     /*
      * 圖裡的貓臉朝左（眼睛在左邊、尾巴在右邊）。
@@ -30,10 +35,12 @@ const Sprites = (function () {
     facesLeft: true,
 
     /*
-     * 三排各一個姿勢：
+     * 一排一個姿勢：
      *   第 0 排 站著、睜眼、尾巴尖左右勾  → idle
      *   第 1 排 站著、重心上下起伏        → walk 與 run 共用
      *   第 2 排 趴著、眼睛閉成橫線        → sleep
+     *   第 3 排 坐著、尾巴尖左右勾        → sit
+     *   第 4 排 低頭吃、頭上下點          → eat
      *
      * walk 與 run 是同三格畫面、不同播放順序：
      *   walk  0-1-2-1  身體先沉、頭慢一拍跟上，回程也錯開，每段只動一個部位
@@ -50,8 +57,17 @@ const Sprites = (function () {
       walk: { row: 1, frames: [0, 1, 2, 1], ms: 150, loop: true },
       run: { row: 1, frames: [0, 1, 2], ms: 100, loop: true },
       sleep: { row: 2, frames: [0, 1, 2], ms: 800, loop: true },
-      // 坐著就是 idle 的第一格定住，這包沒有專門的坐姿
-      sit: { row: 0, frames: [0], ms: 400, loop: true }
+      /*
+       * sit 跟 idle 一樣只有尾巴在動，所以幀速也跟 idle 同一個量級。
+       * 上半身直接沿用 idle 那三格的頭與尾巴，換掉的只有肩膀以下——
+       * 坐與站在剪影上的差別全在下半身，上面跟著變只會像換了一隻貓。
+       */
+      sit: { row: 3, frames: [0, 1, 2], ms: 320, loop: true },
+      /*
+       * eat 走 0-1-2-1，跟 walk 同一種來回：0 是嘴埋進碗裡、2 是抬頭嚼。
+       * 190ms 一格、一輪 760ms，比 walk 慢一點——嚼東西的節奏比走路鬆。
+       */
+      eat: { row: 4, frames: [0, 1, 2, 1], ms: 190, loop: true }
     },
 
     /*
@@ -64,14 +80,14 @@ const Sprites = (function () {
      * 而且主動走過來是這個遊戲唯一的長線進度（見 cat.js 的 BOND_FOR_APPROACH），
      * 那件事的重點是安靜地被發現，衝過來會把氣氛打掉。
      *
-     * eat 指到 idle 是誠實的妥協：沒有低頭吃東西的格，
-     * 與其拿一個姿勢不對的格假裝，不如讓牠站在碗邊。
+     * eat 以前指到 idle，理由是沒有低頭的格、與其假裝不如讓牠站在碗邊。
+     * 素材改成自己畫的之後那個限制沒了，現在牠是真的低頭在吃。
+     * groom 還留在這裡：理毛要側過身舔，不是 idle 換個頭就有的，欠著。
      */
     alias: {
       groom: "idle",
       play: "run",
-      approach: "walk",
-      eat: "idle"
+      approach: "walk"
     }
   };
 
