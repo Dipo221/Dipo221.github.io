@@ -84,3 +84,4 @@ cd tools/cat-room/art && python pixel.py     （要 Pillow）
 `?v=` 的號碼加一，否則舊快取配新 manifest 會整張錯位。
 
 **改動紀錄**在 `tools/cat-room/CHANGELOG.md`。
+**還欠什麼**在 `tools/cat-room/TODO.md`——加新東西之前先看那支最前面那一段。
