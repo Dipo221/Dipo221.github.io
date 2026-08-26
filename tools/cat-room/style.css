@@ -369,12 +369,6 @@ footer a:hover {
   color: var(--accent);
 }
 
-.credit {
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: var(--fs-xs);
-}
-
 .motion-toggle {
   min-height: 44px;
   padding: 6px 14px;

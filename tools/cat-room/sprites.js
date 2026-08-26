@@ -1,10 +1,11 @@
 /*
  * Sprite manifest。純資料 + 兩個取格的助手。
  *
- * 換素材包只動這一支，遊戲邏輯完全不用碰。這件事很重要——
+ * 換素材包只動這一支，遊戲邏輯完全不用碰。當初拆出這層，是因為
  * 像素貓素材的授權差很多（有些明文寫「不可公開散布」，放進公開 repo 就違約），
- * 所以要保留隨時換掉的餘地。目前選的是 CC-BY 4.0 的那個，
- * 授權與出處寫在 art/LICENSE.txt。
+ * 要留隨時換掉的餘地——結果真的用上了。現在這包是自己畫的，
+ * 換掉原本那包 CC BY 素材的時候，這支以外一行都沒動。
+ * 來源、畫法與工具寫在 art/LICENSE.txt。
  *
  * sheet 設成 null 時會進入 placeholder 模式，貓變成一個會動的色塊。
  * 這不是暫時湊合——在美術定案前先把手感、時間流動、存檔跑通，
@@ -14,7 +15,7 @@ const Sprites = (function () {
   "use strict";
 
   const manifest = {
-    sheet: "art/cat-16.png",
+    sheet: "art/disi-16.png",
     frameW: 16,
     frameH: 16,
     cols: 3,
@@ -29,29 +30,46 @@ const Sprites = (function () {
     facesLeft: true,
 
     /*
-     * 這張表是看圖判讀出來的，不是素材附的說明：
-     *   第 0 排 直立、睜眼、尾巴小幅擺動   → idle
-     *   第 1 排 直立、尾巴豎起再垂下       → 當成走路（16x16 畫不出腳，靠尾巴表現在動）
-     *   第 2 排 趴著、眼睛閉成一條線       → sleep
+     * 三排各一個姿勢：
+     *   第 0 排 站著、睜眼、尾巴尖左右勾  → idle
+     *   第 1 排 站著、重心上下起伏        → walk 與 run 共用
+     *   第 2 排 趴著、眼睛閉成橫線        → sleep
+     *
+     * walk 與 run 是同三格畫面、不同播放順序：
+     *   walk  0-1-2-1  身體先沉、頭慢一拍跟上，回程也錯開，每段只動一個部位
+     *   run   0-1-2    從 2 直接跳回 0，頭與身體同時彈起
+     * 同步回彈當走路很假，當跑步剛好是奔馳騰空那一下。一組畫面兩種步態。
+     *
+     * run 的 ms 是算的不是挑的。play 在地上的速度是其他移動狀態的 2.05 倍
+     * （script.js 裡那行三元），走路一輪 4x150 = 600ms，除以 2.05 得 293ms，
+     * 所以跑步用 3x100 = 300ms，步頻才跟得上位移。動任何一邊都要重算另一邊。
+     * 同一份資料在 art/disi.py 的 PLAY，那邊是手動同步的，改這裡記得改那裡。
      */
     anims: {
       idle: { row: 0, frames: [0, 1, 2], ms: 260, loop: true },
-      walk: { row: 1, frames: [0, 1, 2], ms: 150, loop: true },
+      walk: { row: 1, frames: [0, 1, 2, 1], ms: 150, loop: true },
+      run: { row: 1, frames: [0, 1, 2], ms: 100, loop: true },
       sleep: { row: 2, frames: [0, 1, 2], ms: 800, loop: true },
       // 坐著就是 idle 的第一格定住，這包沒有專門的坐姿
       sit: { row: 0, frames: [0], ms: 400, loop: true }
     },
 
     /*
-     * 素材包沒有的動作就指到有的那個，不要硬湊。
-     * 之後換到動畫更齊的包，只要補 anims、把對應的那行從 alias 刪掉就好。
+     * 沒有專屬動畫的動作就指到有的那個，不要硬湊。補了新動畫就改對應的那行。
      *
-     * eat 指到 idle 是誠實的妥協：這包沒有低頭吃東西的格，
+     * play 指到 run 不是為了好看。play 在地上本來就跑得比較快，
+     * 之前跟 walk 共用同一套幀速，步頻跟不上位移，腳等於在打滑。
+     *
+     * approach 留在 walk 是刻意的：它的移動速度跟 walk 一樣，
+     * 而且主動走過來是這個遊戲唯一的長線進度（見 cat.js 的 BOND_FOR_APPROACH），
+     * 那件事的重點是安靜地被發現，衝過來會把氣氛打掉。
+     *
+     * eat 指到 idle 是誠實的妥協：沒有低頭吃東西的格，
      * 與其拿一個姿勢不對的格假裝，不如讓牠站在碗邊。
      */
     alias: {
       groom: "idle",
-      play: "walk",
+      play: "run",
       approach: "walk",
       eat: "idle"
     }
