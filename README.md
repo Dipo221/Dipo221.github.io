@@ -64,24 +64,35 @@ token 只負責存檔，不決定要不要顯示編輯介面，這樣平常滑�
 邏輯都在 `world.js` / `cat.js` / `save.js` / `sprites.js`，這四支不碰 DOM
 所以測得到；`script.js` 只負責接到頁面上。
 
-**改美術**：貓不是用繪圖軟體畫的，是資料算出來的。
+**房間**：16×7 格的橫幅，一整張像素圖。桌機一次看得完，手機一次看到約三分之一，
+可以左右滑，貓走遠了鏡頭會自己跟過去。四個時段不是四張圖，是同一張底圖疊一層
+`multiply` 的色（`.room::before`），`data-tod` 只換那一層。
+
+**改美術**：貓和房間都不是用繪圖軟體畫的，是資料算出來的。
 
 | | |
 |---|---|
-| `art/disi.py` | 像素資料，一格一個字元的地圖 + 七色調色盤。**改圖只改這支** |
-| `art/pixel.py` | 算成 PNG，另外吐校對圖、GIF、跑 lint |
+| `art/disi.py` | 貓的像素資料，一格一個字元的地圖 + 七色調色盤。**改貓只改這支** |
+| `art/room.py` | 房間的磚組 + 磚號表 + 十五色調色盤。**改房間只改這支** |
+| `art/pixel.py` | 兩邊都算成 PNG，另外吐校對圖、GIF、跑 lint |
 
 ```
 cd tools/cat-room/art && python pixel.py     （要 Pillow）
 ```
 
-會產出 `disi-16.png`（正式素材，唯一進版控的）、`proof.png`（放大 20 倍加格線
-座標，抓單格錯誤用）、`squint.png`（縮小並排，抓剪影）、各動作的 `.gif`
-（用遊戲裡真正的幀速，靜圖看不出抖動）。
+進版控的只有兩張：`disi-16.png` 和 `room-pano.png`，那是網頁真的會載入的素材。
+其餘都是校對用的，`.gitignore` 擋掉了——`proof.png`（放大 20 倍加格線座標，
+抓單格錯誤用）、`squint.png`（縮小並排，抓剪影）、各動作的 `.gif`（用遊戲裡真正
+的幀速，靜圖看不出抖動）、`room-tiles.png`（磚組攤開）、`room-view.png`（房間照
+筆電真實尺寸算一次，順便框出手機看得到的範圍）、`room-tod.png`（四個時段並排）。
+
+房間的磚號表分兩層：`bg` 每一格都要有（牆、地板），`obj` 用 `.` 表示不放東西
+（桌子、地毯、窗、碗）。想搬家具就改那幾行字元，不用碰 CSS。
 
 改完美術有兩件事一定要做：`sprites.js` 的 manifest 和 `art/disi.py` 的 `PLAY`
 是手動同步的，動一邊要動另一邊；動到 `disi-16.png` 的排數就要把 sprites.js 裡
-`?v=` 的號碼加一，否則舊快取配新 manifest 會整張錯位。
+`?v=` 的號碼加一，否則舊快取配新 manifest 會整張錯位。改 `room.py` 同理，
+要把 `style.css` 裡 `room-pano.png?v=` 的號碼加一。
 
 **改動紀錄**在 `tools/cat-room/CHANGELOG.md`。
 **還欠什麼**在 `tools/cat-room/TODO.md`——加新東西之前先看那支最前面那一段。

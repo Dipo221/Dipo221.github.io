@@ -11,157 +11,236 @@
 /* ------------------------------------------------------------
    時段 token
 
-   四個時段各一組。值就地寫死 hex 是不行的，所以先在這裡命名，
-   底下的元件一律引用 var()。
+   房間本體現在是一張 PNG（art/room-pano.png），顏色烤在圖裡，
+   所以牆、地板、家具那幾個 token 沒了——留著只會讓人以為改它有用。
+   時段改用**一層覆蓋在整個房間上的色片 + multiply**（見 .room::before）。
+
+   為什麼不是四張 PNG：那是四倍的素材，而且以後每動一次美術都要重算四次，
+   一定會有一張忘記跟上。為什麼不是換 token：CSS 沒有辦法替一張點陣圖換色。
+
+   色值是從舊的 --room-wall 反推的，不是重新挑的：
+   舊 day 的牆是 #4a4a5c、舊 night 是 #23273a，兩者相除就是 night 那個乘數。
+   換句話說牆的顏色跟以前一模一樣，其他表面跟著同一道光走。
+
+   代價講清楚：multiply 只能把顏色壓暗，不能把它推暖，
+   所以**窗外的天空在黃昏不會變橘**，只會跟著暗下來。
+   窗戶本來就要在待辦 A6（窗外天氣）拆成獨立的一層，那時再還牠一片天。
    ------------------------------------------------------------ */
 .room {
-  /* 預設等同 day，避免 JS 還沒跑到時是一塊空白 */
-  --room-wall: #4a4a5c;
-  --room-floor-c: #3a3748;
-  --room-sky: #bfe3f5;
-  --room-frame: #2e2c3a;
+  /* 白色乘上去等於什麼都沒做，這就是 day */
+  --room-tint: #ffffff;
   --room-beam: rgba(255, 240, 200, 0.16);
-  --room-prop: #565469;
   --cat-fur: #d8cfc4;
 }
 
 .room[data-tod="dawn"] {
-  --room-wall: #3a3550;
-  --room-floor-c: #2e2a3f;
-  --room-sky: #f0c9a8;
-  --room-frame: #262238;
+  --room-tint: #c8b7de;
   --room-beam: rgba(255, 205, 165, 0.13);
-  --room-prop: #47425e;
   --cat-fur: #cfc4b8;
 }
 
 .room[data-tod="dusk"] {
-  --room-wall: #3d3348;
-  --room-floor-c: #2f2a3c;
-  --room-sky: #e8a06a;
-  --room-frame: #241f33;
+  --room-tint: #d2b0c8;
   --room-beam: rgba(255, 170, 110, 0.15);
-  --room-prop: #4b4059;
   --cat-fur: #cfc1b2;
 }
 
 .room[data-tod="night"] {
-  --room-wall: #23273a;
-  --room-floor-c: #1c1f2e;
-  --room-sky: #141828;
-  --room-frame: #171a28;
+  --room-tint: #7986a1;
   --room-beam: rgba(150, 195, 245, 0.07);
-  --room-prop: #2d3145;
   --cat-fur: #a9a298;
 }
 
 /* ------------------------------------------------------------
    房間
+
+   16x7 塊 16px 的磚 = 256x112 的來源像素。整份版面只有這一個比例，
+   底下每一個位置都是磚格算出來的分數（一欄 = 1/16、一列 = 1/7），
+   不是隨手調到看起來對的百分比。要換家具位置就改 art/room.py 的磚號表，
+   然後把這裡對應的分數跟著改。
    ------------------------------------------------------------ */
+
+/*
+ * 房間衝出文字欄，佔滿視窗寬。
+ *
+ * 做法是把它排在 .container **外面**，不是用 margin: calc(50% - 50vw) 拉出來——
+ * 100vw 在有捲軸的桌機瀏覽器裡是含捲軸寬的，那個算式會讓整頁多出十幾 px 的
+ * 橫向捲動。排在外面就沒有那個算式，也就沒有那個坑。
+ * 代價是 main 不再吃根目錄 main.container 的上下 padding，自己補在 .room-column。
+ */
+.room-bleed {
+  /*
+   * 房間以外的東西吃掉多少高度。這是在瀏覽器裡**量出來的**
+   * （document.scrollHeight - room.clientHeight），不是照 CSS 加總估的——
+   * 估的那版是 398，實際是 434，差的 36px 就會變成一條沒必要的捲軸。
+   * art/room.py 的 LAYOUT 是同一組數字：校對圖說房間多大，瀏覽器就該是多大，
+   * 對不起來表示有一邊過期了。
+   *
+   * 兩個裝置**故意用不同的鬆緊**，因為規則本來就不一樣：
+   *
+   *   桌機 434 = 量到的全部。整頁（含頁尾）剛好不捲，那是桌機的規則。
+   *   手機 340 = 量到的 418 **扣掉頁尾那 78px**。手機本來就會上下滑，
+   *        硬要把頁尾也塞進第一屏，只會換來一隻小 11px 的貓。
+   *        340 剛好讓房間、提示、按鈕同時看得到，頁尾在下面等著。
+   *
+   * 這是一個常數，所以提示文字換行的時候會失準幾十 px。可以接受：
+   * 猜太小就多一點捲動，猜太大就少一點貓，沒有哪一邊會壞掉。
+   *
+   * 待辦 A5 和 B1（按鈕變成點房間裡的東西、提示浮進房間）做完之後
+   * 這個數字會掉大約 105px，房間就會自己長高。
+   * 所以那兩項不是裝飾，是房間變大的先決條件。
+   */
+  --chrome: 340px;
+
+  /*
+   * 房間的寬度。兩個限制都寫成寬度，規則才看得出來是同一條：
+   *
+   *   下限 768px  = 3 倍。再小貓就只有 48px，看不出在做什麼
+   *   上限 1536px = 6 倍。再大像素會大到變成一格一格的馬賽克
+   */
+  --w-by-height: clamp(768px, calc((100svh - var(--chrome)) * 16 / 7), 1536px);
+
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* 滑到底不要把整頁的上下捲動也帶著跑 */
+  overscroll-behavior-x: contain;
+  display: flex;
+  /*
+   * safe 這個關鍵字是必要的，不是保險。房間比視窗寬的時候，
+   * 純 center 會讓左右**兩邊**都溢出，而捲動只到得了右邊——
+   * 房間的左邊會變成永遠碰不到的地方。safe 在溢出時自動退回 start。
+   */
+  justify-content: safe center;
+  padding-top: 20px;
+  /*
+   * 捲軸藏起來：橫的捲軸壓在像素房間下面很難看，而且視角本來就會跟著貓跑
+   * （script.js 的 follow()），房間自己會移動，那就是「還有更多」的提示。
+   */
+  scrollbar-width: none;
+}
+
+.room-bleed::-webkit-scrollbar {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .room-bleed {
+    --chrome: 434px;
+  }
+}
+
 .room {
   position: relative;
-  width: 100%;
-  max-width: 560px;
-  margin: 8px auto 0;
-  aspect-ratio: 4 / 3;
+  /* 在 flex 容器裡不准被壓扁，寬度只能由底下那條 width 決定 */
+  flex: none;
+  aspect-ratio: 16 / 7;
+
+  /*
+   * 這兩行就是整個尺寸決策。
+   *
+   * 手機：只有高度在限制，寬度該多寬就多寬，溢出去的部分用左右滑的看。
+   * 桌機：多一條「寬度也要放得下」，所以整間一定看得完，不用捲。
+   *
+   * 差別只有 min() 裡多不多那一項——因為規則的差別本來就只有那一條。
+   * 這樣一來**列數決定貓多大、欄數只決定要滑多遠**，兩件事是拆開的。
+   */
+  width: var(--w-by-height);
+
+  background-image: url("art/room-pano.png?v=1");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  /* 非整數倍放大不要糊掉。整份美術的前提就是這一行 */
+  image-rendering: pixelated;
+
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--room-wall);
-  /* 時段換過去的時候要用溶的，硬切會嚇到人 */
-  transition: background-color 1.2s linear;
+
+  /*
+   * 站規全域是 border-box，這裡要**改回 content-box**，不是隨手覆寫。
+   *
+   * border-box 之下 aspect-ratio 算的是含框的盒子，1px 的框會把
+   * 裡面的內容框擠成 1145.4 x 500 —— 那不是 16:7，於是 100%/16 = 71.6
+   * 而 100%/7 = 71.4，貓變成 72x71 的長方形，背景圖也被橫向拉了 0.2%。
+   * 一格磚的正方形是整份美術的地基，不能被一條 1px 的框弄歪。
+   */
+  box-sizing: content-box;
+
+  /* 底下的 multiply 只能染到房間裡，不准滲到頁面背景 */
+  isolation: isolate;
+}
+
+@media (min-width: 900px) {
+  .room {
+    width: min(var(--w-by-height), calc(100% - 96px));
+  }
 }
 
 /*
- * 地板與牆的交界 = 地平線，固定在 24%。
- * 貓、碗、桌子的 bottom 全部對齊這個數字，牠們才會站在同一條線上。
+ * 時段。一整片色乘上去，把整個房間調暗調色。
+ *
+ * 疊在貓**上面**是刻意的：環境光本來就會照到貓身上，
+ * 半夜一隻亮度不變的貓會像貼上去的。舊版靠 --cat-fur 做這件事，
+ * 那只在 placeholder 色塊時期有效，接上素材之後就沒人在染貓了。
  */
-.room-floor {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 24%;
-  background: var(--room-floor-c);
-  transition: background-color 1.2s linear;
-}
-
-.room-window {
-  position: absolute;
-  top: 12%;
-  right: 9%;
-  width: 30%;
-  height: 33%;
-  background: var(--room-sky);
-  border: 4px solid var(--room-frame);
-  border-radius: 2px;
-  transition: background-color 1.2s linear;
-}
-
-/* 窗框的十字。用 gradient 畫，省兩個空 div */
-.room-window::after {
+.room::before {
   content: "";
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(to right, transparent calc(50% - 2px), var(--room-frame) calc(50% - 2px), var(--room-frame) calc(50% + 2px), transparent calc(50% + 2px)),
-    linear-gradient(to bottom, transparent calc(50% - 2px), var(--room-frame) calc(50% - 2px), var(--room-frame) calc(50% + 2px), transparent calc(50% + 2px));
-}
-
-/* 從窗戶斜下來的光。clip-path 畫一個平行四邊形落到地板上 */
-.room-beam {
-  position: absolute;
-  top: 12%;
-  right: 0;
-  width: 62%;
-  height: 70%;
-  background: var(--room-beam);
-  clip-path: polygon(62% 0, 100% 0, 74% 100%, 10% 100%);
+  z-index: 3;
+  background: var(--room-tint);
+  mix-blend-mode: multiply;
+  /* 時段換過去的時候要用溶的，硬切會嚇到人 */
   transition: background-color 1.2s linear;
   pointer-events: none;
 }
 
 /*
- * 桌子。整個盒子從地平線往上長，桌面用 border-top 畫、桌腳撐滿盒子高度，
- * 所以桌腳一定剛好落在地平線上，房間縮放時也不會脫節。
- * （原本桌面和貓的腳同高，看起來像黏在一起。）
+ * 從窗戶斜下來的光。
+ *
+ * 上緣的 56.25% / 68.75% 不是調出來的，就是窗戶那兩格：9/16 和 11/16。
+ * 光要從窗戶出來，那兩個數字就只能是這個。落到地板時往左偏並且散開一點。
+ *
+ * 這是房間裡**唯一一個不是像素**的東西——邊緣是平滑的斜線。
+ * 留著是因為它撐起整個房間的氣氛，但它跟旁邊的硬邊像素確實是兩種語言，
+ * 值不值得改成階梯狀（或乾脆拿掉）要看過才知道。
  */
-.room-desk {
+.room-beam {
   position: absolute;
-  left: 7%;
-  bottom: 24%;
-  width: 34%;
-  height: 13%;
-  border-top: 7px solid var(--room-prop);
-  transition: border-color 1.2s linear;
-}
-
-.room-desk::before,
-.room-desk::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 6px;
-  background: var(--room-prop);
+  top: 28.6%;   /* 窗底 = 第 2 列 */
+  left: 0;
+  right: 0;
+  height: 71.4%;
+  z-index: 1;
+  background: var(--room-beam);
+  clip-path: polygon(56.25% 0, 68.75% 0, 52% 100%, 34% 100%);
   transition: background-color 1.2s linear;
+  pointer-events: none;
 }
 
-.room-desk::before { left: 8%; }
-.room-desk::after { right: 8%; }
-
+/*
+ * 碗本身畫在 PNG 裡（art/room.py 的 BOWL，第 13 欄第 6 列），
+ * 這個盒子只剩下「碗裡有沒有東西」這一件事。
+ * A5 會讓它變成可以點的餵食入口，位置已經對好了。
+ */
 .bowl {
   position: absolute;
-  left: 74%;
-  bottom: 24%;
-  width: 34px;
-  height: 12px;
-  border-radius: 0 0 17px 17px;
-  background: var(--room-prop);
-  transition: background-color var(--speed);
+  left: 81.25%;   /* 13/16 */
+  top: 85.71%;    /* 6/7 */
+  width: 6.25%;   /* 1/16 */
+  height: 14.29%; /* 1/7 */
+  z-index: 1;
+  pointer-events: none;
 }
 
-.bowl.is-full {
+/* 飼料。堆在碗口上，位置是碗那塊磚裡的第 4~12 行、第 8~11 列 */
+.bowl.is-full::after {
+  content: "";
+  position: absolute;
+  left: 25%;
+  width: 50%;
+  top: 50%;
+  height: 18.75%;
   background: var(--accent);
 }
 
@@ -178,12 +257,23 @@
  * 分成兩層是必要的：JS 每一幀都在寫 .cat 的 transform 來移動牠，
  * 呼吸和呼嚕如果也用 transform 就會互相蓋掉。
  */
+/*
+ * 貓正好是一塊磚：寬 1/16、高 1/7。
+ *
+ * 房間鎖死 16:7、來源是 256x112，所以 100%/16 和 100%/7 算出來一定是正方形，
+ * 而且一定剛好等於房間當下的放大倍率——房間 1147px 寬時貓就是 71.7px，
+ * 不用 aspect-ratio、不用 JS 量、視窗怎麼縮都不會脫節。
+ *
+ * 位置整個交給 transform（JS 每幀寫 translate3d），所以 left/top 歸零。
+ * 舊版是 left:0 + bottom:24%，只有 x 是活的；現在 y 也要動（approach 會走到前面來）。
+ */
 .cat {
   position: absolute;
   left: 0;
-  bottom: 24%;
-  width: 15%;
-  aspect-ratio: 1 / 1;
+  top: 0;
+  width: calc(100% / 16);
+  height: calc(100% / 7);
+  z-index: 2;
   cursor: pointer;
   /* JS 每一幀寫 transform，這裡不能加 transition，否則會拖成橡皮筋 */
   will-change: transform;
@@ -257,6 +347,17 @@ body[data-art="sprite"] .cat-sprite {
 /* ------------------------------------------------------------
    訊息與操作
    ------------------------------------------------------------ */
+
+/*
+ * 房間搬到 .container 外面之後，main 就不再是 .container，
+ * 根目錄那條 main.container { padding: 44px 0 } 也就不再套用。
+ * 這裡補回下半段——上半段不補，因為房間是滿版的，
+ * 讓它離標題近一點才像「畫面被它接管了」，那正是滿版要的效果。
+ */
+.room-column {
+  padding-bottom: 44px;
+}
+
 .note {
   max-width: 560px;
   margin: 16px auto 0;
@@ -406,11 +507,8 @@ footer a:hover {
    呼吸和眨眼是低振幅的原地變化，留著，那也是療癒感的來源。
    走動本身由 script.js 擋掉，這裡處理純 CSS 的部分。
    ------------------------------------------------------------ */
-body[data-motion="reduced"] .room,
-body[data-motion="reduced"] .room-floor,
-body[data-motion="reduced"] .room-window,
-body[data-motion="reduced"] .room-beam,
-body[data-motion="reduced"] .room-desk {
+body[data-motion="reduced"] .room::before,
+body[data-motion="reduced"] .room-beam {
   transition: none;
 }
 

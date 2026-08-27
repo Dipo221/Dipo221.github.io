@@ -14,7 +14,7 @@
   <link rel="preload" as="font" type="font/woff2" href="../../fonts/space-grotesk-latin.woff2" crossorigin />
   <script src="../../theme.js?v=1"></script>
   <link rel="stylesheet" href="../../style.css?v=8" />
-  <link rel="stylesheet" href="style.css?v=6" />
+  <link rel="stylesheet" href="style.css?v=7" />
 </head>
 <body>
   <header class="hero">
@@ -28,40 +28,51 @@
     </div>
   </header>
 
-  <main class="container">
+  <!--
+    main 刻意不是 .container：房間要滿版，所以它排在文字欄外面。
+    用負 margin 把它從欄裡拉出來也可以，但那個算式要用 100vw，
+    而 100vw 在有捲軸的桌機是含捲軸寬的，整頁會多出十幾 px 的橫向捲動。
+  -->
+  <main>
     <!--
-      data-tod 由 script.js 依真實時間設定，跟站台的深／淺主題無關。
-      房間是一扇看出去的窗，切主題不該把裡面的夜晚變成白天。
+      房間比視窗寬的時候（手機）靠這一層左右滑動來看，桌機則是整間剛好放得下。
+      視角會自己跟著貓跑，見 script.js 的 follow()。
     -->
-    <div class="room" id="room" data-tod="day">
+    <div class="room-bleed" id="room-bleed">
       <!--
-        順序就是疊圖順序（都是 absolute、沒有 z-index）。
-        地板要排在桌子前面，否則會蓋掉桌腳；光束疊在場景上、但排在貓前面，
-        免得把貓也染上一層顏色。
+        data-tod 由 script.js 依真實時間設定，跟站台的深／淺主題無關。
+        房間是一扇看出去的窗，切主題不該把裡面的夜晚變成白天。
       -->
-      <div class="room-floor" aria-hidden="true"></div>
-      <div class="room-desk" aria-hidden="true"></div>
-      <div class="room-window" aria-hidden="true"></div>
-      <div class="room-beam" aria-hidden="true"></div>
-      <div class="bowl" id="bowl" aria-hidden="true"></div>
-      <!-- .cat 只管位置（JS 每幀寫 transform），外觀與反應動畫都在 .cat-sprite -->
-      <div class="cat" id="cat" data-anim="sit" role="img" aria-label="一隻貓">
-        <span class="cat-sprite" id="cat-sprite" aria-hidden="true"></span>
+      <div class="room" id="room" data-tod="day">
+        <!--
+          牆、地板、窗、桌子、碗都畫在 art/room-pano.png 裡了，不再是一堆 div。
+          留在這裡的只有「會變的東西」：光束、碗裡的飼料、貓。
+          疊圖順序改用 z-index 明寫（光束 1、貓 2、時段色片 3），
+          因為時段那層要蓋在貓上面，靠 DOM 順序排不出來。
+        -->
+        <div class="room-beam" aria-hidden="true"></div>
+        <div class="bowl" id="bowl" aria-hidden="true"></div>
+        <!-- .cat 只管位置（JS 每幀寫 transform），外觀與反應動畫都在 .cat-sprite -->
+        <div class="cat" id="cat" data-anim="sit" role="img" aria-label="一隻貓">
+          <span class="cat-sprite" id="cat-sprite" aria-hidden="true"></span>
+        </div>
       </div>
     </div>
 
-    <p class="note is-empty" id="note" role="status" aria-live="polite"></p>
+    <div class="container room-column">
+      <p class="note is-empty" id="note" role="status" aria-live="polite"></p>
 
-    <div class="actions">
-      <button class="action" id="act-pet" type="button">摸摸</button>
-      <button class="action" id="act-feed" type="button">餵食</button>
-      <button class="action" id="act-wand" type="button">逗貓棒</button>
+      <div class="actions">
+        <button class="action" id="act-pet" type="button">摸摸</button>
+        <button class="action" id="act-feed" type="button">餵食</button>
+        <button class="action" id="act-wand" type="button">逗貓棒</button>
+      </div>
+
+      <p class="meta" id="meta"></p>
+
+      <!-- 貓叼回來的東西。沒有分數也沒有進度條，這排就是唯一看得見的累積 -->
+      <ul class="gifts" id="gifts"></ul>
     </div>
-
-    <p class="meta" id="meta"></p>
-
-    <!-- 貓叼回來的東西。沒有分數也沒有進度條，這排就是唯一看得見的累積 -->
-    <ul class="gifts" id="gifts"></ul>
   </main>
 
   <footer class="container">
@@ -79,6 +90,6 @@
   <script src="cat.js?v=1"></script>
   <script src="save.js?v=1"></script>
   <script src="sprites.js?v=4"></script>
-  <script src="script.js?v=9"></script>
+  <script src="script.js?v=10"></script>
 </body>
 </html>

@@ -407,19 +407,43 @@
    */
   const rand = World.rng(World.behaviourSlot(now));
 
+  /*
+   * 座標。兩個都是「佔房間寬／高的比例」，但指的位置不一樣：
+   *
+   *   x 是貓的**中心**   y 是貓的**腳**
+   *
+   * 這樣定是為了對得上磚格。碗在第 13 欄，牠的中心就是 13.5/16——
+   * 直接算得出來，不用再加減半隻貓的寬度。腳同理：貓站在地板上，
+   * 決定牠站在哪一列的是腳不是頭。art/room.py 的 CAT_AT 用同一套定義，
+   * 所以校對圖上量到的位置跟這裡的數字是同一個東西。
+   *
+   * 舊版的 x 是**左緣**、y 根本不存在（CSS 寫死 bottom: 24%）。
+   * 換過來的原因是房間變成 16 欄之後貓只剩 1/16 寬，
+   * 左緣那套的「上限 0.78」之類的數字全部要重算，而且怎麼算都不好記。
+   */
+  const FLOOR = {
+    back: 0.62,    // 再往後貓的頭會戳進牆裡（牆佔 3/7）
+    front: 0.96
+  };
+
   const cat = {
     state: "sit",
     startedAt: performance.now(),
     duration: 4000,
-    x: 0.5,        // 房間寬度的比例，0 是最左
+    x: 0.5,
     targetX: 0.5,
+    y: 0.80,
+    targetY: 0.80,
     facing: 1,
-    close: false   // 走到前面來（approach 用）
+    faceAt: null   // 抵達之後要轉向哪裡（goThenDo 用）
   };
 
+  const bleed = document.getElementById("room-bleed");
   let roomW = room.clientWidth;
+  let roomH = room.clientHeight;
   window.addEventListener("resize", function () {
     roomW = room.clientWidth;
+    roomH = room.clientHeight;
   });
 
   function enter(next, at) {
@@ -429,17 +453,20 @@
     cat.state = next;
     cat.startedAt = at;
     cat.duration = Cat.durationFor(next, rand);
-    cat.close = next === "approach";
     cat.pending = null;
+    cat.faceAt = null;
 
     /*
-     * x 是「貓的左緣佔房間寬度的比例」，而貓本身寬 15%，
-     * 所以上限是 0.85 才不會切出右邊界。留一點餘裕抓 0.78。
+     * x 是中心，貓寬 1/16，所以理論上限是 15.5/16 = 0.969。
+     * 抓 0.06~0.94 留一點邊，貓才不會整隻貼在牆角上。
      */
     if (next === "approach") {
-      cat.targetX = 0.42; // 置中：0.42 + 一半的 0.15 ≈ 0.5
+      // 走到房間正中間、而且走到最前面來——「迎上來」要靠這兩件事一起
+      cat.targetX = 0.5;
+      cat.targetY = FLOOR.front;
     } else if (Cat.moves(next)) {
-      cat.targetX = 0.06 + rand() * 0.72;
+      cat.targetX = 0.06 + rand() * 0.88;
+      cat.targetY = FLOOR.back + rand() * (FLOOR.front - FLOOR.back);
     }
 
     catEl.setAttribute("data-anim", next);
@@ -451,11 +478,55 @@
    * 餵食如果直接切成 eat，貓會站在原地對著空氣吃——碗在房間另一頭。
    * 所以先派牠走過去，抵達之後才進入真正的動作。
    */
-  function goThenDo(targetX, then, at) {
+  function goThenDo(targetX, targetY, then, at, faceAt) {
     enter("walk", at);
     cat.targetX = targetX;
+    cat.targetY = targetY;
     cat.pending = then;
+    cat.faceAt = typeof faceAt === "number" ? faceAt : null;
     cat.duration = 8000;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* 視角                                                              */
+
+  /*
+   * 手機上房間比視窗寬（16 欄放不進 375px），所以要有一個「鏡頭」跟著貓，
+   * 不然牠走到房間另一頭就等於消失了，畫面剩一片空牆。
+   * 桌機整間放得得下，scrollWidth 等於 clientWidth，底下第一行就直接返回。
+   *
+   * 兩件事要顧：
+   *
+   *   1. 使用者自己滑去看房間別的地方時要讓開，不能跟他搶。
+   *      分辨方法是記住自己捲到哪（camAt），對不上就是人捲的。
+   *   2. 不要黏死在貓身上。中間留一段死區，貓在畫面中央附近晃的時候鏡頭不動——
+   *      鏡頭每一幀都跟著微調的話，看起來會像房間在抖而不是貓在走。
+   */
+  const CAM_YIELD = 4000;   // 使用者自己滑過之後，鏡頭讓開多久
+  let camAt = 0;
+  let camUserAt = -CAM_YIELD;
+
+  if (bleed) {
+    bleed.addEventListener("scroll", function () {
+      // 誤差 2px 是給瀏覽器的次像素捲動留的，不是人滑的
+      if (Math.abs(bleed.scrollLeft - camAt) > 2) camUserAt = performance.now();
+    });
+  }
+
+  function follow() {
+    if (!bleed) return;
+    const slack = bleed.scrollWidth - bleed.clientWidth;
+    if (slack <= 0) return; // 整間看得完，沒有鏡頭這回事
+    if (performance.now() - camUserAt < CAM_YIELD) return;
+
+    const view = bleed.clientWidth;
+    const want = Math.max(0, Math.min(slack, cat.x * roomW - view / 2));
+    const gap = want - bleed.scrollLeft;
+    // 死區：貓離畫面中心不到八分之一個視窗寬就不動鏡頭
+    if (Math.abs(gap) < view / 8) return;
+
+    camAt = bleed.scrollLeft + gap * 0.05;
+    bleed.scrollLeft = camAt;
   }
 
   function step(t) {
@@ -467,6 +538,15 @@
        */
       if (arrived || t - cat.startedAt > cat.duration) {
         const next = cat.pending;
+        /*
+         * 抵達之後把面向轉向目的地。
+         *
+         * facing 只在移動中更新，所以從碗**右邊**走過來的那幾次，
+         * 停下來時面向還停在「往左」，接著就變成背對著碗低頭吃地板。
+         * 大約十幾次遇到一次，以前 eat 假裝成 idle 看不出來，
+         * 畫了真的低頭姿勢之後就露餡了。
+         */
+        if (cat.faceAt !== null) cat.facing = cat.faceAt > cat.x ? 1 : -1;
         cat.pending = null;
         enter(next, t);
       }
@@ -484,14 +564,26 @@
         cat.x += move;
         cat.facing = move > 0 ? 1 : -1;
       }
+      /*
+       * 前後走。速度比左右慢一半，因為地板的縱深（4 列）比寬度（16 欄）短得多——
+       * 同樣的速度會讓牠看起來一直在往前衝。
+       * facing 不跟著 y 動：往前往後在側面圖上不該翻身。
+       */
+      const dy = cat.targetY - cat.y;
+      if (Math.abs(dy) > 0.005) {
+        cat.y += Math.sign(dy) * Math.min(Math.abs(dy), speed * 0.5);
+      }
     }
 
     render(t);
+    follow();
     requestAnimationFrame(step);
   }
 
   function render(t) {
-    const px = cat.x * roomW;
+    // x 是中心、y 是腳，所以往回推半隻貓的寬、整隻貓的高，才是左上角
+    const px = cat.x * roomW - roomW / 32;
+    const py = cat.y * roomH - roomH / 7;
     /*
      * cat.facing 是「往哪邊移動」：1 是往右。
      * 但圖裡的貓本來就朝左，所以往右走才要翻面——facesLeft 決定正負，
@@ -499,7 +591,7 @@
      */
     const flip = Sprites.manifest.facesLeft ? -cat.facing : cat.facing;
     catEl.style.transform =
-      "translate3d(" + px.toFixed(1) + "px, " + (cat.close ? "10px" : "0px") + ", 0) " +
+      "translate3d(" + px.toFixed(1) + "px, " + py.toFixed(1) + "px, 0) " +
       "scaleX(" + flip + ")";
 
     if (Sprites.ready()) {
@@ -519,9 +611,23 @@
   if (scene.greet) {
     // 離開超過兩天：從角落走過來，這樣「迎上來」才看得出來
     cat.x = 0.06;
+    cat.y = FLOOR.back;
     enter("approach", performance.now());
   } else {
     enter(World.energy(new Date()) < 0.3 ? "sleep" : "sit", performance.now());
+  }
+
+  /*
+   * 鏡頭起手要用**跳**的，不能用 follow() 那個漸進的——
+   * 手機上一進來就看到房間從最左邊慢慢滑到貓身上，
+   * 那是一個沒有人要求的開場動畫，而且會蓋掉「牠已經在那裡」的感覺。
+   */
+  if (bleed) {
+    const slack0 = bleed.scrollWidth - bleed.clientWidth;
+    if (slack0 > 0) {
+      camAt = Math.max(0, Math.min(slack0, cat.x * roomW - bleed.clientWidth / 2));
+      bleed.scrollLeft = camAt;
+    }
   }
 
   /*
@@ -590,7 +696,12 @@
     state.fed.lastAt = Date.now();
     grantBond(1);
     bowlEl.classList.add("is-full");
-    goThenDo(0.68, "eat", performance.now()); // 碗在 74%，走過去再吃
+    /*
+     * 碗在第 13 欄，中心是 13.5/16 = 0.844。貓要站在碗**旁邊**不是碗上面，
+     * 所以停在左邊一格（12.5/16 = 0.781），然後轉頭看碗。
+     * y 對齊碗那一列的中間，牠才不會在碗後面隔一段距離低頭吃空氣。
+     */
+    goThenDo(0.781, 0.93, "eat", performance.now(), 0.844);
     showNote(catName + " 聽到碗的聲音就過來了。");
     Save.save(state);
   }
