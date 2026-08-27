@@ -123,10 +123,6 @@ EMISSIVE = {
 }
 
 
-def _fill(ch):
-    return [ch * 16] * 16
-
-
 def _rows(*rows):
     return list(rows)
 
@@ -327,89 +323,121 @@ FLOOR_DARK = _rows(*(["hfddddddhFffffff"] * 16))
 
 # ---------------------------------------------------------------- 窗
 #
-# 2x2 塊磚 = 32x32。十字窗櫺壓在兩塊磚的接縫上：
-# 左磚的最右邊 + 右磚的最左邊合起來才是 2px 的直櫺，上下同理。
-# 這樣櫺的粗細不受磚的邊界影響，而不是硬把它塞進其中一塊。
+# 窗是**算出來的**，不是一格一格手打的。
 #
-# 斜角在窗上只看得到一個地方：**最底下的窗台有頂面（A/w）、
-# 最上面的楣是背光的內面（j）**。上暗下亮就是「光從上面來」，
-# 兩邊都畫亮的話窗會變成一個貼在牆上的貼紙。
+# 這看起來違反上面「有形狀的東西手打」那條，其實界線沒有變。手打的理由是
+# 「裡面每一格都是美術判斷」，而窗放大之後那些判斷一個都沒有變，
+# 只是要重複更多次——4 欄 4 列是 16 塊磚、256 行，打得出來也沒有人有辦法
+# 用眼睛驗。所以判斷留在下面那幾條規則裡，重複的部分交給迴圈。
+#
+# **這個換法是驗過的，不是換個寫法然後希望它像**：改之前先讓
+# `_window(2, 2)` 去跟原本那四塊手打的磚逐位元比對，四塊、64 行，全部相同。
+# 所以下面這些規則確實把當初每一格的美術判斷都接住了。
+#
+# 三條判斷，放大之後照樣成立：
+#
+# 1. **光從左上來。** 左框看得到受光的內面（W），右框看得到背光的側面（j）；
+#    上楣是背光的內面（j），窗台看得到頂面（A）。上暗下亮就是「光從上面來」，
+#    兩邊都畫亮的話窗會變成一個貼在牆上的貼紙。
+# 2. **櫺一律 2px：受光的一條（W）配正面（w）**，橫櫺直櫺都一樣。
+# 3. **天空由上往下 s -> S -> Y**，最底下那幾行的 Y 是地平線的霾。
+#    雲寬約玻璃的四分之一，兩行，第二行往左錯一格。
+#
+# 疊的順序（由外而內）：外框 > 上楣／窗台 > 橫櫺 > 左右框 > 直櫺 > 天。
+# 這個順序是從手打那版量出來的，不是挑的——換一下就對不上原圖了。
+#
+# pad_x / pad_b：把窗**縮在比它大的格子裡**，空出來的補磚
+# ------------------------------------------------------------------
+#
+# 房間是 20 欄（偶數），所以**奇數寬的窗永遠置不了中**。窗要 3 欄寬又要
+# 正中對齊，就只能給它 4 欄的格子、左右各留半格磚。偏半格在螢幕上是 21px，
+# 對著屋脊那幾根椽看得出來。
+#
+# 順帶解決第二件事：窗台不會直接壓在踢腳板上。牆只有 4 列，一扇 4 列高的窗
+# 底部剛好落在踢腳板上，看起來像門不像窗——底下留半格磚就有窗台了。
+#
+# **格子比畫出來的窗大，對待辦第 5 項是好事不是將就**：那一項的可點區塊
+# 本來就該比畫出來的東西大（手機上最少 44px），現在它自動就是。
 
-WIN_TL = _rows(
-    "oooooooooooooooo",
-    "ojjjjjjjjjjjjjjj",   # 上楣的內面，背光
-    "ojjjjjjjjjjjjjjj",
-    "okkkkkkkkkkkkkkk",
-    "oWwksssssssssssW",
-    "oWwksssssssssssW",
-    "oWwkssYYYYYYsssW",   # 雲
-    "oWwksYYYYYYssssW",
-    "oWwksssssssssssW",
-    "oWwksssssssssssW",
-    "oWwkSSSSSSSSSSSW",
-    "oWwkSSSSSSSSSSSW",
-    "oWwkSSSSSSSSSSSW",
-    "oWwkSSSSSSSSSSSW",
-    "oWwkSSSSSSSSSSSW",
-    "oWWWWWWWWWWWWWWW",   # 橫櫺
-)
+def _window(w, h, pad_x=0, pad_b=0, panes_y=2):
+    """一扇窗。整張算成 (w*16) x (h*16)，最後才切成磚。
 
-WIN_TR = _rows(
-    "oooooooooooooooo",
-    "jjjjjjjjjjjjjjjo",
-    "jjjjjjjjjjjjjjjo",
-    "kkkkkkkkkkkkkkko",
-    "wssssssssssskwjo",
-    "wssssssssssskwjo",
-    "wssssssssssskwjo",
-    "wssssssssssskwjo",
-    "wssssssssssskwjo",
-    "wssssssssssskwjo",
-    "wSSSSSSSSSSSkwjo",
-    "wSSSSSSSSSSSkwjo",
-    "wSSSSSSSSSSSkwjo",
-    "wSSSSSSSSSSSkwjo",
-    "wSSSSSSSSSSSkwjo",
-    "WWWWWWWWWWWWWWWo",
-)
+    先算整張再切，是因為**櫺就不必再跟磚的邊界對齊了**。手打那版的十字櫺
+    是壓在兩塊磚的接縫上湊出來的（左磚的最右邊 + 右磚的最左邊），
+    那是手打逼出來的限制；整張算完再切，櫺想放哪就放哪。
+    """
+    bw, bh = w * 16, h * 16
+    ww, wh = bw - pad_x * 2, bh - pad_b
 
-WIN_BL = _rows(
-    "owwwwwwwwwwwwwww",   # 橫櫺的第二行
-    "oWwkSSSSSSSSSSSW",
-    "oWwkSSSSSSSSSSSW",
-    "oWwkSSSSSSSSSSSW",
-    "oWwkSSSSSSSSSSSW",
-    "oWwkSSSSSSSSSSSW",
-    "oWwkSSSSSSSSSSSW",
-    "oWwkSSSSSSSSSSSW",
-    "oWwkSSSSSSSSSSSW",
-    "oWwkYYYYYYYYYYYW",   # 地平線的霾
-    "oWwkYYYYYYYYYYYW",
-    "oWwkYYYYYYYYYYYW",
-    "oooooooooooooooo",
-    "oAAAAAAAAAAAAAAA",   # 窗台的頂面
-    "owwwwwwwwwwwwwww",   # 窗台的前緣
-    "oooooooooooooooo",
-)
+    gy0, gy1 = 4, wh - 5              # 玻璃的上下界
+    gh = gy1 - gy0 + 1
+    sky = int(round(0.25 * gh))                 # 上面幾行是 s
+    haze = max(2, int(round(0.125 * gh)))       # 下面幾行是地平線的霾
 
-WIN_BR = _rows(
-    "wwwwwwwwwwwwwwwo",
-    "wSSSSSSSSSSSkwjo",
-    "wSSSSSSSSSSSkwjo",
-    "wSSSSSSSSSSSkwjo",
-    "wSSSSSSSSSSSkwjo",
-    "wSSSSSSSSSSSkwjo",
-    "wSSSSSSSSSSSkwjo",
-    "wSSSSSSSSSSSkwjo",
-    "wSSSSSSSSSSSkwjo",
-    "wYYYYYYYYYYYkwjo",
-    "wYYYYYYYYYYYkwjo",
-    "wYYYYYYYYYYYkwjo",
-    "oooooooooooooooo",
-    "AAAAAAAAAAAAAAAo",
-    "wwwwwwwwwwwwwwwo",
-    "oooooooooooooooo",
-)
+    mull_x = ww // 2 - 1                        # 直櫺（一根，居中）
+    step = gh / float(panes_y)
+    mull_y = [int(round(gy0 + step * i)) - 1 for i in range(1, panes_y)]
+
+    cw = max(4, int(round((ww - 8) * 0.25)))    # 雲寬約玻璃的四分之一
+    cx, cy = 6, gy0 + 2
+
+    def at(x, y):
+        if x in (0, ww - 1) or y in (0, wh - 1):
+            return "o"                # 外框
+        if y in (1, 2):
+            return "j"                # 上楣的內面，背光
+        if y == 3:
+            return "k"                # 上楣投在玻璃上的影
+        if y == wh - 4:
+            return "o"
+        if y == wh - 3:
+            return "A"                # 窗台的頂面 —— 斜角唯一看得到的一面
+        if y == wh - 2:
+            return "w"                # 窗台的前緣
+        for m in mull_y:
+            if y == m:
+                return "W"            # 橫櫺：受光的一條
+            if y == m + 1:
+                return "w"
+        if x == 1:
+            return "W"                # 左框：受光的內面
+        if x == 2:
+            return "w"
+        if x == 3:
+            return "k"                # 左框投在玻璃上的影
+        if x == ww - 4:
+            return "k"
+        if x == ww - 3:
+            return "w"
+        if x == ww - 2:
+            return "j"                # 右框：背光的側面
+        if x == mull_x:
+            return "W"                # 直櫺
+        if x == mull_x + 1:
+            return "w"
+        if cy <= y <= cy + 1 and cx - (y - cy) <= x < cx - (y - cy) + cw:
+            return "Y"                # 雲
+        k = y - gy0
+        if k < sky:
+            return "s"
+        if k >= gh - haze:
+            return "Y"
+        return "S"
+
+    grid = ["".join(at(x, y) for x in range(ww)) for y in range(wh)]
+
+    # 縮在比較大的格子裡：空出來的補磚。磚的錯縫照**絕對座標**取
+    # （BRICK 的相位每 16 像素接一次），所以只要格子的左上角對齊磚格，
+    # 補出來的磚就跟旁邊那面牆接得起來，看不出縫。
+    if (ww, wh) != (bw, bh):
+        grid = ["".join(grid[y][x - pad_x]
+                        if pad_x <= x < pad_x + ww and y < wh
+                        else BRICK[y % 16][x % 16]
+                        for x in range(bw))
+                for y in range(bh)]
+
+    return [[r[tx * 16:(tx + 1) * 16] for r in grid[ty * 16:(ty + 1) * 16]]
+            for ty in range(h) for tx in range(w)]
 
 
 # 碗。往下收兩格才是碗，直筒是杯子——這一格的差別就是碗之所以是碗。
@@ -467,7 +495,11 @@ TILES = {
 #
 # tiles 是**從左到右、從上到下**排的，要剛好 w*h 塊。
 OBJECTS = {
-    "window": {"w": 2, "h": 2, "tiles": [WIN_TL, WIN_TR, WIN_BL, WIN_BR]},
+    # 玻璃 48x56，縮在 4x4 的格子裡（左右各留半格、底下留半格磚）。
+    # 3 欄寬的窗在 20 欄的房間裡置不了中，所以給它 4 欄的格子——
+    # 完整的理由在上面 _window() 那段。
+    "window": {"w": 4, "h": 4,
+               "tiles": _window(4, 4, pad_x=8, pad_b=8, panes_y=3)},
     "bowl": {"w": 1, "h": 1, "tiles": [BOWL]},
 }
 
@@ -544,8 +576,11 @@ LAYOUT = {
 # 畫面比例會好看一點，但貓就只剩一條線可以走，2D 移動會看起來像在軌道上滑。
 #
 # 家具擺位（M3 會照這個往下填）：
-#     床 1-4、書櫃衣櫃 5-8、窗 9-10、書桌 11-14、地毯與碗 15-18
+#     床 1-4、書櫃衣櫃 5-7、窗 8-11、書桌 12-15、地毯與碗 16-18
 # 窗擺在正中間，所以那道從窗戶下來的光落在房間中央，兩邊都有東西襯它。
+# 窗吃掉的是 8-11 四欄（玻璃只有中間三欄，左右各半格是磚），
+# 所以左右兩區各讓了一欄——**高的家具會頂到窗，矮的不會**，
+# 真的擠不下的時候先讓書桌，床和地毯本來就低。
 #
 # **斜屋頂決定了誰能擺哪裡**：最外面四欄的天花板是壓低的，
 # 高的東西（書櫃、衣櫃）擺過去會穿出屋頂。所以床（低的）在最左邊，
@@ -581,7 +616,7 @@ ROOMS = {
         ],
         # (名字, 欄, 列)。左上角對齊那一格
         "place": [
-            ("window", 9, 2),
+            ("window", 8, 2),
             ("bowl", 16, 9),
         ],
     },

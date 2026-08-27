@@ -267,8 +267,20 @@ window.RoomData = {
 ''' % (spec["cols"], rows, TILE, top, bottom,
        float(top) / rows, float(bottom) / rows, objs)
     path = os.path.join(os.path.dirname(HERE), "room-data.js")
+    old = ""
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as fh:
+            old = fh.read()
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(js)
+
+    # 這支變了就一定要把 index.html 的 `room-data.js?v=` 加一。
+    #
+    # 忘記加的後果比忘記加圖的號碼更難發現：圖有自己的 ?v=，所以回訪的人
+    # 會拿到**新的圖配快取裡的舊幾何**——房間看起來是對的，只有地板範圍
+    # 跟物件座標默默錯掉，貓走進牆裡或者對著空地低頭吃。
+    # 實際發生過一次（窗戶加大那一版），所以這裡改成會自己講話。
+    return "room-data.js CHANGED -> bump ?v= in index.html" if old != js else ""
 
 
 def cat_image(frame=None):
@@ -783,7 +795,7 @@ if __name__ == "__main__":
     build_anim()
     build_rooms()
     build_room_light()
-    write_room_data()
+    bumped = write_room_data()
     build_room_tiles()
     build_room_view()
     build_room_tod()
@@ -793,3 +805,5 @@ if __name__ == "__main__":
     print("wrote " + rooms + " / room-light.png / room-tiles.png"
           " / room-view.png / room-tod.png")
     print("wrote ../room-data.js")
+    if bumped:
+        print("\n" + bumped)

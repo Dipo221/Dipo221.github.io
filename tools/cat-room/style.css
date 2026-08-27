@@ -185,7 +185,7 @@
    */
   width: var(--w-by-height);
 
-  background-image: url("art/room-pano.png?v=2");
+  background-image: url("art/room-pano.png?v=3");
   background-size: 100% 100%;
   background-repeat: no-repeat;
   /* 非整數倍放大不要糊掉。整份美術的前提就是這一行 */
@@ -252,7 +252,7 @@
   position: absolute;
   inset: 0;
   z-index: 4;
-  background-image: url("art/room-light.png?v=1");
+  background-image: url("art/room-light.png?v=2");
   background-size: 100% 100%;
   background-repeat: no-repeat;
   image-rendering: pixelated;
@@ -274,13 +274,19 @@
  */
 .room-beam {
   position: absolute;
-  top: 36.364%;   /* 窗底 = 第 4 列，4/11 */
+  top: 50%;       /* 窗底 = 來源 y 88（第 2 列起算 56 px），88/176 */
   left: 0;
   right: 0;
-  height: 63.636%;
+  height: 50%;
   z-index: 1;
   background: var(--room-beam);
-  clip-path: polygon(45% 0, 55% 0, 41% 100%, 27% 100%);
+  /*
+   * 上緣 42.5%~57.5% 就是玻璃的左右界（來源 x 136~184，除以 320）。
+   * **不是窗那個物件的左右界**——物件佔 4 欄，玻璃只有中間 3 欄，
+   * 光要從玻璃出來，抓成 40%~60% 會從磚裡射出來。
+   * 下緣照舊往左推 16 個百分點、再放寬 1.4 倍（15% -> 21%）。
+   */
+  clip-path: polygon(42.5% 0, 57.5% 0, 44.5% 100%, 23.5% 100%);
   transition: background-color 1.2s linear;
   pointer-events: none;
 }

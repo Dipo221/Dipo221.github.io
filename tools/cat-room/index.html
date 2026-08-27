@@ -14,7 +14,7 @@
   <link rel="preload" as="font" type="font/woff2" href="../../fonts/space-grotesk-latin.woff2" crossorigin />
   <script src="../../theme.js?v=1"></script>
   <link rel="stylesheet" href="../../style.css?v=8" />
-  <link rel="stylesheet" href="style.css?v=8" />
+  <link rel="stylesheet" href="style.css?v=9" />
 </head>
 <body>
   <header class="hero">
@@ -98,8 +98,13 @@
     room-data.js 是 art/pixel.py 從磚號表產的，不要手改。
     一定要排在 script.js **前面**：那支開頭就會讀 window.RoomData 算
     地板範圍與碗的座標，讀不到會退回上一版房間的數字，貓就走錯地方。
+
+    **改過房間就一定要把 ?v= 加一**，跟 sprite sheet 那條同一個道理，
+    而且這裡更陰險：圖有自己的 ?v=，快取的舊幾何配得上新圖，
+    畫面看起來是對的，只有座標默默錯掉。`python pixel.py` 會在這支
+    真的變了的時候印一行提醒（見 write_room_data()）。
   -->
-  <script src="room-data.js?v=1"></script>
+  <script src="room-data.js?v=2"></script>
   <script src="script.js?v=11"></script>
 </body>
 </html>

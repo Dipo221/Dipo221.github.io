@@ -109,8 +109,13 @@ cd tools/cat-room/art && python pixel.py     （要 Pillow）
 
 改完美術有兩件事一定要做：`sprites.js` 的 manifest 和 `art/disi.py` 的 `PLAY`
 是手動同步的，動一邊要動另一邊；動到 `disi-16.png` 的排數就要把 sprites.js 裡
-`?v=` 的號碼加一，否則舊快取配新 manifest 會整張錯位。改 `room.py` 同理，
-要把 `style.css` 裡 `room-pano.png?v=` 和 `room-light.png?v=` 的號碼加一。
+`?v=` 的號碼加一，否則舊快取配新 manifest 會整張錯位。
+
+改 `room.py` 要加**三個**號碼：`style.css` 裡的 `room-pano.png?v=` 與
+`room-light.png?v=`，還有 `index.html` 裡的 `room-data.js?v=`。
+**第三個最容易忘，而且後果最陰險**——圖有自己的號碼，所以快取裡的舊幾何
+配得上新圖，畫面看起來是對的，只有座標默默錯掉（貓走進牆裡、對著空地吃）。
+`python pixel.py` 會在 `room-data.js` 真的變了的時候印一行提醒。
 
 **改動紀錄**在 `tools/cat-room/CHANGELOG.md`。
 **還欠什麼**在 `tools/cat-room/TODO.md`——加新東西之前先看那支最前面那一段。
