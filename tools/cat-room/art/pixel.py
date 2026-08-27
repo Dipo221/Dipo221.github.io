@@ -210,6 +210,28 @@ def room_image(name, pal=None):
     return img
 
 
+# 網頁真的會載入的房間素材，改了就得去 style.css 把那張的 `?v=` 加一。
+# 從兩張變成六張之後光靠記憶已經不可靠（上一輪就漏掉過一次，症狀是
+# 瀏覽器拿到新圖配舊幾何），所以改成存檔的時候自己比對、自己講話。
+ASSETS_CHANGED = []
+
+
+def save_asset(img, fname):
+    """存進版控的素材，順便記下它這次有沒有真的變。
+
+    比的是**解碼後的像素**不是檔案的位元組——Pillow 的 PNG 輸出不保證
+    每次都一模一樣，比檔案會得到「每次都變了」這種等於沒講的提醒。
+    """
+    path = os.path.join(HERE, fname)
+    old = None
+    if os.path.exists(path):
+        with Image.open(path) as im:
+            old = (im.mode, im.size, im.tobytes())
+    img.save(path)
+    if old != (img.mode, img.size, img.tobytes()):
+        ASSETS_CHANGED.append(fname)
+
+
 def light_palette():
     """發光層的調色盤：沒登記的字元一律黑。
 
@@ -220,8 +242,32 @@ def light_palette():
 
 
 def build_room_light(name="pano"):
-    img = room_image(name, light_palette())
-    img.save(os.path.join(HERE, "room-light.png"))
+    save_asset(room_image(name, light_palette()), "room-light.png")
+
+
+def build_sky_rgba(name, tod):
+    """某個時段的天空疊圖：整張房間大小，只有玻璃不透明。
+
+    做成整張房間大小、不是裁一塊窗出來，是為了讓 CSS 用 `inset: 0` 定位，
+    跟 `::before` / `::after` 一模一樣——**沒有任何窗的座標被抄進 CSS**。
+    以後屋頂開天窗、牆上多一扇窗，這一層自動就跟著有。
+    圖有 99% 是全透明的，壓完幾乎不佔體積。
+
+    形狀不用另外描：拿同一份磚號表換兩次調色盤就有了，一次出顏色、
+    一次出遮罩。發光層也是這樣來的（見 `room_image` 的 `pal`）。
+    """
+    mask_pal = dict((ch, (255, 255, 255) if ch in room.SKY_CHARS else (0, 0, 0))
+                    for ch in room.PALETTE)
+    color_pal = dict((ch, room.SKY_TOD[tod].get(ch, (0, 0, 0)))
+                     for ch in room.PALETTE)
+    img = room_image(name, color_pal).convert("RGBA")
+    img.putalpha(room_image(name, mask_pal).convert("L"))
+    return img
+
+
+def build_room_sky(name="pano"):
+    for tod in room.SKY_TOD:
+        save_asset(build_sky_rgba(name, tod), "room-sky-%s.png" % tod)
 
 
 def write_room_data(name="pano"):
@@ -304,7 +350,7 @@ def paste_cat(im):
 
 def build_rooms():
     for name in room.ROOMS:
-        room_image(name).save(os.path.join(HERE, "room-%s.png" % name))
+        save_asset(room_image(name), "room-%s.png" % name)
 
 
 def room_scale(name, device):
@@ -432,7 +478,8 @@ def build_room_tod(name="pano", scale=3, gap=14, pad=16):
     發光層（`.room::after`）。順序反過來結果就不一樣了。
 
     貓在色片**底下**、發光層底下——環境光本來就該打到貓身上，
-    貓不該是房間裡唯一不受光的東西。
+    貓不該是房間裡唯一不受光的東西。天空層在**最上面**，兩層都不吃：
+    它是屋外的東西，不該被屋裡的燈染色（見 room.py 的 SKY_TOD）。
 
     誠實要講的代價：multiply 保持比例，所以整個房間被壓暗的時候，
     貓跟地板的亮度差是**按比例縮小**的。暖房間本來就比舊的冷房間差得少，
@@ -464,6 +511,10 @@ def build_room_tod(name="pano", scale=3, gap=14, pad=16):
                     c = [int(round(c[i] * (1 - glow) + screen(c[i], g[i]) * glow))
                          for i in range(3)]
                 px[xx, yy] = tuple(c)
+        # 天空層在兩層之後才蓋上去，跟 CSS 的 z-index 一樣。
+        # 跟真的素材共用 build_sky_rgba()，所以這張圖不可能跟畫面不同步
+        sky = build_sky_rgba(name, tod)
+        shot.paste(sky, (0, 0), sky)
         wall = tuple(room.PALETTE["b"][i] * tint[i] // 255 for i in range(3))
         d.text((pad, y),
                "%-5s tint #%02x%02x%02x  glow %.2f  ->  brick #%02x%02x%02x L%.0f"
@@ -611,6 +662,38 @@ def lint_contrast(name="pano"):
     return msgs
 
 
+def lint_sky_tod():
+    """天空那張表。兩條，都對應一種「圖出得來但畫面是壞的」。
+
+    `day` 那排必須等於 `PALETTE`：白天沒有別的東西蓋在窗上，兩邊一旦分家，
+    轉場到白天的那 1.2 秒裡窗會閃一下——只有動態下看得到，靜態圖抓不到。
+
+    四個時段的字元集必須一樣：漏掉一個字元的那個時段，那一片玻璃會變成
+    透明，露出底下**吃過 multiply 的**同一塊天空，也就是原本那片灰。
+    """
+    msgs = []
+    missing = [ch for ch in room.SKY_CHARS if ch not in room.PALETTE]
+    if missing:
+        msgs.append("SKY_TOD: SKY_CHARS %s not in palette" % "".join(missing))
+
+    want = set(room.SKY_CHARS)
+    for tod, table in room.SKY_TOD.items():
+        if set(table) != want:
+            msgs.append("SKY_TOD[%s]: has %s, want %s"
+                        % (tod, "".join(sorted(table)), "".join(sorted(want))))
+    for ch in room.SKY_CHARS:
+        got, base = room.SKY_TOD["day"].get(ch), room.PALETTE.get(ch)
+        if got != base:
+            msgs.append("SKY_TOD[day][%s] = %s, must equal PALETTE %s"
+                        % (ch, got, base))
+
+    if not msgs:
+        msgs.append("sky: %d tods x %d chars (%s), day matches palette"
+                    % (len(room.SKY_TOD), len(room.SKY_CHARS),
+                       " ".join(room.SKY_TOD)))
+    return msgs
+
+
 def lint_room():
     """房間的機械檢查。每一條都對應一種「跑得起來但畫面是壞的」的錯。"""
     msgs = []
@@ -630,6 +713,8 @@ def lint_room():
         if len(o["tiles"]) != o["w"] * o["h"]:
             msgs.append("object %s: %d tiles, want %dx%d = %d"
                         % (name, len(o["tiles"]), o["w"], o["h"], o["w"] * o["h"]))
+
+    msgs += lint_sky_tod()
 
     for name, spec in room.ROOMS.items():
         grid = spec["bg"]
@@ -785,7 +870,8 @@ if __name__ == "__main__":
     # CONTRAST 也在裡面：地板亮到把貓吃掉，畫面是壞的，只是壞在看不見。
     fatal = [m for m in problems + room_problems
              if "not in palette" in m or "unknown tile" in m
-             or ", want" in m or "outside the room" in m or "CONTRAST" in m]
+             or ", want" in m or "outside the room" in m or "CONTRAST" in m
+             or "SKY_TOD" in m]
     if fatal:
         sys.exit("\nfix the map first, nothing rendered")
 
@@ -795,15 +881,19 @@ if __name__ == "__main__":
     build_anim()
     build_rooms()
     build_room_light()
+    build_room_sky()
     bumped = write_room_data()
     build_room_tiles()
     build_room_view()
     build_room_tod()
     gifs = " ".join("%s.gif" % n for n, _, _ in sequences())
     rooms = " ".join("room-%s.png" % n for n in room.ROOMS)
+    skies = " ".join("room-sky-%s.png" % t for t in room.SKY_TOD)
     print("\nwrote disi-16.png / proof.png / squint.png / " + gifs)
-    print("wrote " + rooms + " / room-light.png / room-tiles.png"
-          " / room-view.png / room-tod.png")
+    print("wrote " + rooms + " / room-light.png / " + skies)
+    print("wrote room-tiles.png / room-view.png / room-tod.png")
     print("wrote ../room-data.js")
+    if ASSETS_CHANGED:
+        print("\nCHANGED -> bump ?v= in style.css: " + " ".join(ASSETS_CHANGED))
     if bumped:
-        print("\n" + bumped)
+        print(bumped)

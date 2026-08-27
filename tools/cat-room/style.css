@@ -263,6 +263,46 @@
 }
 
 /*
+ * 窗外的天。四張圖疊在最上面，同時間只有一張是不透明的。
+ *
+ * **這一層存在的理由：天空是屋外的東西，不該吃上面那兩層。**
+ * 那兩層模擬的是屋子裡的光，而天是從窗戶看出去的另一個世界。
+ * 之前它吃 multiply，結果就是黃昏那扇灰窗——天空是全房間唯一的冷色，
+ * 黃昏的暖橘乘下去正好把它中和掉。發光層也救不了（那層登記的是夜裡的藍，
+ * 黃昏開它等於在一片橘裡點一扇藍窗）。兩條路都不通，所以拆成自己一層。
+ *
+ * z-index 5 疊在 ::after（4）上面就跳出那兩層的合成了。
+ * **不要給它 mix-blend-mode**——它就是要正常蓋上去。
+ * .room 有 isolation: isolate，整個合成關在房間裡，加這層不會影響底下兩層。
+ *
+ * 四張圖都是**整張房間大小**、只有玻璃不透明，所以這裡用 inset: 0 就對位了，
+ * 沒有任何窗的座標被抄進 CSS。以後屋頂開天窗也自動就有。
+ * 顏色的單一事實來源是 art/room.py 的 SKY_TOD，改天空色改那裡再跑 pixel.py。
+ */
+.room-sky {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  opacity: 0;
+  /* 跟另外兩層同一個時間，四層要一起溶才看不出是四層 */
+  transition: opacity 1.2s linear;
+  pointer-events: none;
+}
+
+.room-sky[data-when="day"] { background-image: url("art/room-sky-day.png?v=1"); }
+.room-sky[data-when="dawn"] { background-image: url("art/room-sky-dawn.png?v=1"); }
+.room-sky[data-when="dusk"] { background-image: url("art/room-sky-dusk.png?v=1"); }
+.room-sky[data-when="night"] { background-image: url("art/room-sky-night.png?v=1"); }
+
+.room[data-tod="day"] .room-sky[data-when="day"] { opacity: 1; }
+.room[data-tod="dawn"] .room-sky[data-when="dawn"] { opacity: 1; }
+.room[data-tod="dusk"] .room-sky[data-when="dusk"] { opacity: 1; }
+.room[data-tod="night"] .room-sky[data-when="night"] { opacity: 1; }
+
+/*
  * 從窗戶斜下來的光。
  *
  * 上緣的 45% / 55% 不是調出來的，就是窗戶那兩格：9/20 和 11/20。
@@ -588,7 +628,11 @@ footer a:hover {
    呼吸和眨眼是低振幅的原地變化，留著，那也是療癒感的來源。
    走動本身由 script.js 擋掉，這裡處理純 CSS 的部分。
    ------------------------------------------------------------ */
+/* 時段的四層要一起停。少停一層的話換時段時其他層硬切、那一層還在溶，
+   會變成一段誰都沒設計過的過渡（::after 本來就漏了，補上） */
 body[data-motion="reduced"] .room::before,
+body[data-motion="reduced"] .room::after,
+body[data-motion="reduced"] .room-sky,
 body[data-motion="reduced"] .room-beam {
   transition: none;
 }

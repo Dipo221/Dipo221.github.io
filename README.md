@@ -73,11 +73,21 @@ token 只負責存檔，不決定要不要顯示編輯介面，這樣平常滑�
 貓的中間調是 117——地板比貓還亮）。`pixel.py` 有一條 lint 守著這件事：
 地板主色跟貓身上主色最近的一對要差 30 階以上，現在是 40.5。
 
-四個時段不是四張圖，是同一張底圖疊**兩層**：`.room::before` 是 `multiply`
+四個時段不是四張房間圖，是同一張底圖疊**三層**：`.room::before` 是 `multiply`
 的色片（往暗走），`.room::after` 是 `screen` 的發光層（往亮走，
-用 `room-light.png`：整張黑、只有窗和燈是亮的，黑色在 screen 底下等於沒作用）。
-`data-tod` 只換色片的顏色和發光層的不透明度。**兩層都要**——
+用 `room-light.png`：整張黑、只有窗和燈是亮的，黑色在 screen 底下等於沒作用），
+`.room-sky` 是窗外的天。`data-tod` 換色片的顏色、發光層的不透明度，
+以及哪一張天空是不透明的。**前兩層都要**——
 multiply 推不出比底色更亮的東西，夜裡的窗就是靠 screen 那層才亮得起來。
+
+**天空為什麼要自己一層**：那兩層模擬的是屋子裡的光，而天在屋外，
+本來就不該吃它。之前它吃，結果就是黃昏一扇灰窗——天空是全房間唯一的冷色，
+黃昏的暖橘乘下去正好把它中和掉，而發光層登記的是夜裡的藍，救不了。
+所以天空改成**指定的**：`art/room.py` 的 `SKY_TOD` 一個時段一組顏色，
+算成四張整張房間大小、只有玻璃不透明的疊圖（`room-sky-<時段>.png`），
+蓋在那兩層上面。做成整張房間大小是為了讓 CSS 用 `inset: 0` 就對位，
+**沒有任何窗的座標被抄進 CSS**。改天空色改 `SKY_TOD`，不要改 `EMISSIVE`
+——那張存的是夜裡的顏色，填成天空色會讓半夜的窗變成一片大白天。
 
 **改美術**：貓和房間都不是用繪圖軟體畫的，是資料算出來的。
 
@@ -92,8 +102,9 @@ multiply 推不出比底色更亮的東西，夜裡的窗就是靠 screen 那層
 cd tools/cat-room/art && python pixel.py     （要 Pillow）
 ```
 
-進版控的有三張圖加一支 JS：`disi-16.png`、`room-pano.png`、`room-light.png`
-是網頁真的會載入的素材，`room-data.js` 是**房間幾何的單一事實來源**
+進版控的有七張圖加一支 JS：`disi-16.png`、`room-pano.png`、`room-light.png`、
+四張 `room-sky-<時段>.png` 是網頁真的會載入的素材，
+`room-data.js` 是**房間幾何的單一事實來源**
 （格數、地板前後界、每個物件佔哪幾格）。`script.js` 和 `style.css` 都從它算，
 所以**沒有任何座標被手抄兩次**。那支開頭就寫著不要手改，改 `room.py` 再跑一次。
 
@@ -111,11 +122,14 @@ cd tools/cat-room/art && python pixel.py     （要 Pillow）
 是手動同步的，動一邊要動另一邊；動到 `disi-16.png` 的排數就要把 sprites.js 裡
 `?v=` 的號碼加一，否則舊快取配新 manifest 會整張錯位。
 
-改 `room.py` 要加**三個**號碼：`style.css` 裡的 `room-pano.png?v=` 與
-`room-light.png?v=`，還有 `index.html` 裡的 `room-data.js?v=`。
-**第三個最容易忘，而且後果最陰險**——圖有自己的號碼，所以快取裡的舊幾何
+改 `room.py` 最多要加**七個**號碼：`style.css` 裡的 `room-pano.png?v=`、
+`room-light.png?v=`、四張 `room-sky-<時段>.png?v=`，
+還有 `index.html` 裡的 `room-data.js?v=`。
+**最後那個最容易忘，而且後果最陰險**——圖有自己的號碼，所以快取裡的舊幾何
 配得上新圖，畫面看起來是對的，只有座標默默錯掉（貓走進牆裡、對著空地吃）。
-`python pixel.py` 會在 `room-data.js` 真的變了的時候印一行提醒。
+
+七個不用背：`python pixel.py` 會比對產出，只印**這次真的變了**的那幾張，
+`room-data.js` 變了也會另外印一行。照它印的加就好。
 
 **改動紀錄**在 `tools/cat-room/CHANGELOG.md`。
 **還欠什麼**在 `tools/cat-room/TODO.md`——加新東西之前先看那支最前面那一段。

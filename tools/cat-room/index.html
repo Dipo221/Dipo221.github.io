@@ -14,7 +14,7 @@
   <link rel="preload" as="font" type="font/woff2" href="../../fonts/space-grotesk-latin.woff2" crossorigin />
   <script src="../../theme.js?v=1"></script>
   <link rel="stylesheet" href="../../style.css?v=8" />
-  <link rel="stylesheet" href="style.css?v=9" />
+  <link rel="stylesheet" href="style.css?v=10" />
 </head>
 <body>
   <header class="hero">
@@ -47,13 +47,27 @@
         <!--
           牆、地板、屋頂、窗、碗都畫在 art/room-pano.png 裡了，不再是一堆 div。
           留在這裡的只有「會變的東西」：光束、碗裡的飼料、貓。
-          疊圖順序改用 z-index 明寫（光束 1、貓 2、時段色片 3、發光層 4），
+          疊圖順序改用 z-index 明寫（光束 1、貓 2、時段色片 3、發光層 4、天空 5），
           因為時段那層要蓋在貓上面，靠 DOM 順序排不出來。
 
           時段色片與發光層都是 .room 的虛擬元素（::before / ::after），
           所以這裡看不到它們。那是刻意的：它們沒有任何內容也不能被點，
           放成真的 div 只會多兩個永遠不會被讀到的節點。
         -->
+        <!--
+          窗外的天。一個時段一張圖，同時間只有一張不透明，換時段時交叉淡入。
+          虛擬元素只有兩個、已經用掉了，所以這四個只能是真的節點。
+
+          **順序固定 day → dawn → dusk → night，不要重排。** 四個同 z-index，
+          所以交叉淡入的那 1.2 秒是靠 DOM 順序決定誰壓誰。
+
+          它們沒有座標：圖是整張房間大小、只有玻璃不透明的疊圖，
+          CSS 用 inset: 0 就對位了。天空色改 art/room.py 的 SKY_TOD。
+        -->
+        <div class="room-sky" data-when="day" aria-hidden="true"></div>
+        <div class="room-sky" data-when="dawn" aria-hidden="true"></div>
+        <div class="room-sky" data-when="dusk" aria-hidden="true"></div>
+        <div class="room-sky" data-when="night" aria-hidden="true"></div>
         <div class="room-beam" aria-hidden="true"></div>
         <div class="bowl" id="bowl" aria-hidden="true"></div>
         <!-- .cat 只管位置（JS 每幀寫 transform），外觀與反應動畫都在 .cat-sprite -->
