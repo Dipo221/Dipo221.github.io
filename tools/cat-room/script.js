@@ -412,19 +412,63 @@
    *
    *   x 是貓的**中心**   y 是貓的**腳**
    *
-   * 這樣定是為了對得上磚格。碗在第 13 欄，牠的中心就是 13.5/16——
+   * 這樣定是為了對得上磚格。碗在第 16 欄，牠的中心就是 16.5/20——
    * 直接算得出來，不用再加減半隻貓的寬度。腳同理：貓站在地板上，
    * 決定牠站在哪一列的是腳不是頭。art/room.py 的 CAT_AT 用同一套定義，
    * 所以校對圖上量到的位置跟這裡的數字是同一個東西。
    *
    * 舊版的 x 是**左緣**、y 根本不存在（CSS 寫死 bottom: 24%）。
-   * 換過來的原因是房間變成 16 欄之後貓只剩 1/16 寬，
+   * 換過來的原因是房間變成滿版之後貓只佔一小格，
    * 左緣那套的「上限 0.78」之類的數字全部要重算，而且怎麼算都不好記。
    */
+
+  /*
+   * 貓能走到的前後界。
+   *
+   * 這兩個數字以前是**照著磚號表用眼睛量出來的**（0.62 / 0.96），
+   * 房間一改就默默錯掉：不會報錯，只會變成貓的頭戳進牆裡。
+   * 現在改成讀 room-data.js，那支是 art/pixel.py 從磚號表直接產的，
+   * 所以資料只有一份。舊的兩個數字留在 fallback 裡當「room-data.js 沒載到」
+   * 的保險——那時候貓還是會走，只是走在上一版房間的範圍裡。
+   */
+  const RD = window.RoomData || null;
   const FLOOR = {
-    back: 0.62,    // 再往後貓的頭會戳進牆裡（牆佔 3/7）
-    front: 0.96
+    back: RD ? RD.floorTop : 0.62,
+    front: RD ? RD.floorBottom : 0.96
   };
+
+  /*
+   * 房間與貓的**來源像素**。畫面上的位置全部是「來源像素的比例 x 現在多大」，
+   * 所以視窗怎麼縮都不用重算，也不用去量 DOM。
+   *
+   * CAT_SRC 從 sprites.js 的 manifest 來，不是自己寫一個 16。
+   * 那份 manifest 本來就是「換素材只動這一支」的那一層，
+   * M2 把貓重畫成 24x24 的時候這支跟 style.css 都不用碰。
+   */
+  const COLS = RD ? RD.cols : 20;
+  const ROWS = RD ? RD.rows : 11;
+  const ROOM_W = COLS * (RD ? RD.tile : 16);
+  const ROOM_H = ROWS * (RD ? RD.tile : 16);
+  const CAT_SRC = Sprites.manifest.frameW;
+  // CSS 也要知道貓多大。從這裡推過去，兩邊就不可能講不同的數字
+  room.style.setProperty("--cat-src", String(CAT_SRC));
+
+  /*
+   * 餵食要走到哪裡。三個數字全部從碗那一格算出來：
+   *
+   *   BOWL_AT   碗的中心，貓抵達之後轉頭看的方向
+   *   BOWL_X    貓站的地方——碗**旁邊**左一格，不是碗上面
+   *   BOWL_Y    貓的腳。碗的影子畫在牠那格的最底下，所以那格的下緣就是碗的落地點，
+   *             貓的腳踩在同一條線上才會看起來站在一起
+   *
+   * 以前這裡是三個手打的小數（0.781 / 0.93 / 0.844）。它們是照著上一版的
+   * 磚號表量的，房間一改就全錯，而且錯的樣子是「貓對著空地低頭吃」——
+   * 看得出來怪，但看不出來是這三個數字。
+   */
+  const BOWL = (RD && RD.objects.bowl) || [16, 9, 1, 1];
+  const BOWL_AT = (BOWL[0] + BOWL[2] / 2) / COLS;
+  const BOWL_X = (BOWL[0] - 0.5) / COLS;
+  const BOWL_Y = (BOWL[1] + BOWL[3]) / ROWS;
 
   const cat = {
     state: "sit",
@@ -491,7 +535,7 @@
   /* 視角                                                              */
 
   /*
-   * 手機上房間比視窗寬（16 欄放不進 375px），所以要有一個「鏡頭」跟著貓，
+   * 手機上房間比視窗寬（20 欄放不進 375px），所以要有一個「鏡頭」跟著貓，
    * 不然牠走到房間另一頭就等於消失了，畫面剩一片空牆。
    * 桌機整間放得得下，scrollWidth 等於 clientWidth，底下第一行就直接返回。
    *
@@ -565,7 +609,7 @@
         cat.facing = move > 0 ? 1 : -1;
       }
       /*
-       * 前後走。速度比左右慢一半，因為地板的縱深（4 列）比寬度（16 欄）短得多——
+       * 前後走。速度比左右慢一半，因為地板的縱深（4 列）比寬度（20 欄）短得多——
        * 同樣的速度會讓牠看起來一直在往前衝。
        * facing 不跟著 y 動：往前往後在側面圖上不該翻身。
        */
@@ -581,9 +625,16 @@
   }
 
   function render(t) {
-    // x 是中心、y 是腳，所以往回推半隻貓的寬、整隻貓的高，才是左上角
-    const px = cat.x * roomW - roomW / 32;
-    const py = cat.y * roomH - roomH / 7;
+    /*
+     * x 是中心、y 是腳，所以往回推半隻貓的寬、整隻貓的高，才是左上角。
+     *
+     * 貓多大是算的不是寫死的：上一版寫 roomW/32 與 roomH/7，成立的前提是
+     * 「一格貓正好等於一塊磚」。20x11 之後貓橫跨一格半，那兩個數字就錯了，
+     * 而且錯的方式很難查——貓會偏半格，看起來像動畫沒對準。
+     * 分母跟 style.css 的 .cat 是同一條算式，兩邊都從 manifest 的格寬來。
+     */
+    const px = cat.x * roomW - (roomW * CAT_SRC / ROOM_W) / 2;
+    const py = cat.y * roomH - roomH * CAT_SRC / ROOM_H;
     /*
      * cat.facing 是「往哪邊移動」：1 是往右。
      * 但圖裡的貓本來就朝左，所以往右走才要翻面——facesLeft 決定正負，
@@ -696,12 +747,8 @@
     state.fed.lastAt = Date.now();
     grantBond(1);
     bowlEl.classList.add("is-full");
-    /*
-     * 碗在第 13 欄，中心是 13.5/16 = 0.844。貓要站在碗**旁邊**不是碗上面，
-     * 所以停在左邊一格（12.5/16 = 0.781），然後轉頭看碗。
-     * y 對齊碗那一列的中間，牠才不會在碗後面隔一段距離低頭吃空氣。
-     */
-    goThenDo(0.781, 0.93, "eat", performance.now(), 0.844);
+    // 三個座標都是從 room-data.js 的碗算出來的，見上面 BOWL_* 那段
+    goThenDo(BOWL_X, BOWL_Y, "eat", performance.now(), BOWL_AT);
     showNote(catName + " 聽到碗的聲音就過來了。");
     Save.save(state);
   }

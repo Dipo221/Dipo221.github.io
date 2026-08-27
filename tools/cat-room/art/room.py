@@ -6,55 +6,121 @@
 為什麼是磚不是整張畫
 --------------------
 
-一張 256x192 的房間是 49,152 個像素。用 disi.py 那種一格一個字元的方式硬鋪，
-是 192 行 x 256 字元——打不出來，也改不動，更別說畫的人看不見自己畫的東西。
+一張 320x176 的房間是 56,320 個像素。用 disi.py 那種一格一個字元的方式硬鋪，
+是 176 行 x 320 字元——打不出來，也改不動，更別說畫的人看不見自己畫的東西。
 
 8-bit 主機當年也不是那樣做的：畫十幾塊磚，再排一張磚號表。
 磚號表是十幾行、一格一個字元，看得懂也改得動——**跟畫貓完全同一種手感**，
 只是那邊一個字元是一個像素，這邊一個字元是一塊 16x16 的磚。
 
-兩層：BG 是牆和地板（不透明，鋪滿），OBJ 是家具（帶透明格，疊在上面）。
-分兩層不只是為了好畫——之後「點碗＝餵食」那項要知道哪一格是碗，
-物件本來就得是獨立的東西，不能烤進背景裡。
+閣樓，而且是斜角不是等距
+------------------------
 
-調色盤：房間要冷，貓是暖的
---------------------------
+明陽拿了一張 AI 生的閣樓參考圖：紅磚牆、木地板、斜屋頂、暖光、滿滿的雜物。
+那張圖不會進 repo 也不會被描——AI 生的「像素圖」網格是飄的、顏色上百種，
+一格一格描出來反而不會像像素畫。從它身上拿的是四件事：暖色、磚、木、斜屋頂。
 
-這是這支裡最重要的一個決定，而且很容易做錯。Disi 的主色是 #b89070，
-暖棕。**地板如果照直覺畫成木頭色，貓會直接消失在地板上**——
-同一個色相、相近的明度，剪影就沒了。
+**投影用斜角（牆正面、家具看得到頂面），不是參考圖那種等距。** 兩個理由：
 
-所以地板和牆一律走冷的紫灰，把整個房間推到色輪的另一邊，
-貓走到哪裡都跳出來。現在那個 CSS 房間其實已經是這樣了
-（`--room-wall: #4a4a5c`、`--room-floor-c: #3a3748`），只是沒人寫下來為什麼。
+1. 參考圖的立體感其實來自**家具有頂面**，不是牆歪 45 度。家具反正要重畫，
+   把頂面畫出來幾乎是免費的；等距則要把 Disi 重畫成 3/4 的兩個朝向，
+   大約是現在四倍半的畫量。
+2. 等距地板的**寬永遠是高的兩倍**，加寬就一定得加高。一間 20 欄的橫幅房間
+   在等距底下會變成一條斜帶子，手機左右滑著看那條規則就沒了——
+   橫向滑動會一直往下漂。
 
-底下幾個色直接沿用 style.css 既有的 token 值，不是偷懶——
-從 CSS 房間換成像素房間的那一刻，顏色不該跟著跳。
+三個面的亮度是固定的，之後每一件家具都照這個來：
+**頂面最亮（W/A）、正面中間（w）、側面最暗（j）**，每兩個面之間夾一條 o 描邊。
+那條線就是「這一面是躺著的、那一面是立著的」的全部訊息，沒有它只是一個色塊。
 
-地毯是全房間唯一的綠，因為它是唯一需要「不是牆、不是地板、也不是貓」的東西。
+調色盤：地板一定要比貓暗
+------------------------
+
+這是這支裡最重要的一個決定，而且**換成暖色房間之後更容易做錯**。
+
+舊版的房間走冷紫灰，理由寫在這裡：Disi 的主色是暖棕，地板照直覺畫成木頭色，
+貓會直接消失在地板上。換成閣樓之後地板非得是木頭色不可，那條理由並沒有消失，
+只是不能再靠「拉開色相」解決了。量出來的數字：
+
+    參考圖那種蜜色木地板  #b07a45  亮度 129.7
+    Disi 的中間調        #966f55  亮度 117.4   <- 地板比貓還亮
+    這一版的地板          #5c3b23  亮度  64.3
+    舊版的冷紫地板        #3a3748  亮度  56.9
+
+所以解法是**拉開明度不是拉開色相**：地板壓到亮度 60 上下，跟舊版的冷地板
+幾乎一樣安全，代價是地板不會像參考圖那麼亮那麼蜜色。這是有意識付的錢。
+
+而且它已經不是這一次的決定了——`pixel.py` 的 lint 會把地板磚的平均亮度
+跟 Disi 佔面積最大的那幾個色比一次，差太少就 fail。
+跟 `bondDelta >= 0` 同一個做法：會被本能反射違反的規則要有機器擋著。
+
+色盤只有 22 色，不是計畫裡寫的 28
+---------------------------------
+
+原本規劃了布、綠、金屬三組給家具用。但 lint 會印 defined vs used，
+定義了沒用到的顏色就跟留著沒人載入的舊資料一樣——下一個人會以為它有意義。
+那三組等 M3 真的畫到沙發、盆栽、檯燈的時候再一起進來。
+
+受限的色盤才是它看起來像像素畫的原因。參考圖沒有這個限制，所以照抄反而不像。
 """
 
 PALETTE = {
-    "o": (26, 24, 34),      # 最暗：描邊、板縫的縫底
-    "k": (46, 44, 58),      # 框線（= --room-frame）
-    "S": (63, 63, 80),      # 牆的暗部
-    "W": (74, 74, 92),      # 牆（= --room-wall）
-    "w": (86, 86, 106),     # 牆的亮部
-    "h": (50, 47, 62),      # 地板的板縫
-    "f": (58, 55, 72),      # 地板（= --room-floor-c）
-    "g": (68, 64, 84),      # 地板的亮邊
-    "n": (60, 58, 74),      # 家具的暗面
-    "p": (86, 84, 105),     # 家具（= --room-prop）
-    "q": (104, 101, 128),   # 家具的亮面
-    "s": (191, 227, 245),   # 天空（= --room-sky）
-    "t": (74, 107, 99),     # 布：地毯
-    "u": (94, 131, 120),    # 布的亮條
-    "v": (52, 76, 71),      # 布的暗邊
+    # 共用：描邊與陰影。暖黑不是純黑——純黑在一間暖房間裡會像挖了個洞
+    "o": (28, 20, 16),      # 最暗：物件描邊、分面線、板縫的縫底
+    "k": (58, 42, 34),      # 次暗：投影
+
+    # 磚牆
+    "n": (98, 60, 48),      # 磚的下緣（背光）
+    "b": (124, 78, 62),     # 磚（主）
+    "B": (150, 98, 78),     # 磚的上緣（受光）
+    "m": (118, 103, 88),    # 灰漿。要比磚**灰**不是比磚亮，不然整面牆會發光
+
+    # 木地板 —— 亮度被刻意壓低，見開頭
+    "h": (48, 30, 19),      # 板縫
+    "d": (74, 47, 28),      # 顏色比較深的那幾片板
+    "f": (92, 59, 35),      # 地板（主）
+    "F": (108, 71, 44),     # 板縫旁邊被光打到的邊
+
+    # 木家具：踢腳板、窗框，之後的桌椅櫃子。三個面的亮度在這裡定死
+    "j": (86, 60, 38),      # 側面（最暗）
+    "w": (128, 90, 56),     # 正面
+    "W": (166, 120, 76),    # 頂面 —— 斜角看得到、平視看不到的那一面
+    "A": (196, 150, 100),   # 頂面最靠光的那一條
+
+    # 屋頂與樑。整個房間最暗的一塊，因為它在上面、背著光
+    "v": (58, 42, 32),      # 屋頂板（主）
+    "V": (84, 62, 44),      # 屋頂板受光的邊／樑的正面
+    "T": (112, 84, 58),     # 樑與簷板的頂面
+
+    # 窗外的天。全房間唯一的冷色，所以窗一定跳得出來
+    "s": (120, 158, 186),   # 天（上）
+    "S": (152, 190, 212),   # 天（下，靠地平線）
+    "Y": (208, 230, 240),   # 雲與地平線的霾
+
+    # 陶：飼料碗。碗是**要被點的東西**（待辦第 5 項），
+    # 所以它刻意不用木頭色——擺在木地板上必須一眼認得出來
+    "q": (176, 152, 130),   # 碗的外壁
+    "Q": (226, 208, 186),   # 碗口
 }
 
-# n 是後來補的，因為家具原本用 p（#565469）當正面，跟牆（#4a4a5c）
-# 只差 12 階明度——桌子整個融進牆裡，算出來只看得到桌面那條亮線在飄。
-# 立起來的面要比它靠著的牆暗，不是亮。
+
+# ---------------------------------------------------------------- 會發光的色
+#
+# `pixel.py` 會照這張表另外算一張 `room-light.png`：整張黑，
+# 只有在這裡登記過的像素是亮的，用 `mix-blend-mode: screen` 疊在時段色片**上面**。
+# 黑色在 screen 底下等於沒作用，所以那張圖不用去背。
+#
+# 為什麼非有這一層不可：時段是 multiply，而 **multiply 只能往暗走**。
+# 換成暖底色之後黃昏終於推得出橘色（待辦第 6 項抱怨的那件事解決了一半），
+# 但夜晚變難了——一間暖房間的夜晚重點在燈，燈被乘暗就沒有意義。
+#
+# 右邊那個顏色是**夜裡那扇窗該長什麼樣**，不是白天那片天的亮度。
+# screen 只能往亮走，如果這裡填白天的天空色，半夜的窗會變成一片大白天。
+EMISSIVE = {
+    "s": (30, 42, 72),
+    "S": (44, 60, 96),
+    "Y": (66, 84, 120),
+}
 
 
 def _fill(ch):
@@ -65,54 +131,157 @@ def _rows(*rows):
     return list(rows)
 
 
-# ---------------------------------------------------------------- 牆
+# ---------------------------------------------------------------- 重複紋理
 #
-# 牆刻意畫成平的。16px 的磚上加雜訊只會變髒，而且牆是背景——
-# 它的工作是讓貓和家具讀得出來，不是自己好看。
+# 磚、屋頂板這種「有規則」的紋理用函式產，不用手打。
 #
-# 唯一的變化是一條掛畫線（A），橫過整個房間。一條線就夠把一面死牆
-# 分成上下兩段，房間立刻有高度。這是很老的招式，因為它有效。
+# 這跟這支檔案「手打字元地圖」的原則不衝突，界線是這樣分的：
+# **有形狀的東西手打**（窗、碗、樑、踢腳板——那裡面每一格都是美術判斷），
+# **有規則的紋理用函式**（磚的錯縫是一條規則不是一張畫；45 度的屋簷
+# 手打出來根本沒有人有辦法用眼睛驗）。
 
-WALL = _fill("W")
+def _brick_row(y):
+    """磚牆的第 y 行（y 是磚裡的 0-15）。
 
-WALL_RAIL = _rows(
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "wwwwwwwwwwwwwwww",   # 亮線在上
-    "SSSSSSSSSSSSSSSS",   # 暗線在下 = 線有厚度，不是一條漆
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
+    一層磚 4px：受光的上緣、磚身、背光的下緣、灰漿。橫向 8px 一塊，
+    隔一層錯開 4px——**錯縫的相位是照絕對的 y 算的**，所以只要每塊磚
+    都從偶數層開始（磚高 16 = 4 層，相位自己會接回來），
+    上下疊幾塊都對得起來。屋簷磚跟踢腳板磚也共用這條，接縫才不會跳。
+    """
+    course, r = y // 4, y % 4
+    if r == 3:
+        return "m" * 16
+    body = "B" if r == 0 else ("b" if r == 1 else "n")
+    seams = (7, 15) if course % 2 == 0 else (3, 11)
+    return "".join("m" if x in seams else body for x in range(16))
+
+
+def _roof_row(y):
+    """屋頂板的第 y 行。四格一片板：縫、受光的邊、板身、板身。"""
+    return {0: "o", 1: "V"}.get(y % 4, "v") * 16
+
+
+BRICK = [_brick_row(y) for y in range(16)]
+
+
+def _brick_var():
+    """同一面牆裡顏色不一樣的兩塊磚。
+
+    一面完全均勻的磚牆看起來像壁紙。挑兩塊換色就夠打破那個規律，
+    而且因為只是換色不是換形狀，錯縫的相位不會被動到。
+    """
+    rows = [list(r) for r in BRICK]
+    for y, ch in ((4, "b"), (5, "n"), (6, "n")):      # 第 1 層 x4-10：燒得比較深的一塊
+        for x in range(4, 11):
+            rows[y][x] = ch
+    for y, ch in ((8, "B"), (9, "B"), (10, "b")):     # 第 2 層 x8-14：比較淺的一塊
+        for x in range(8, 15):
+            rows[y][x] = ch
+    return ["".join(r) for r in rows]
+
+
+BRICK_VAR = _brick_var()
+
+
+def _rafter():
+    """屋頂板 + 一根椽。
+
+    椽是**蓋在板上面**的，所以那幾欄整條都是椽，板的橫紋在那裡要斷掉——
+    讓橫紋透過去的話兩者會糊成同一個平面。
+    """
+    rows = [list(_roof_row(y)) for y in range(16)]
+    for y in range(16):
+        rows[y][6] = "T"                 # 受光的邊
+        for x in (7, 8, 9):
+            rows[y][x] = "V"
+        rows[y][10] = "o"                # 背光的邊
+    return ["".join(r) for r in rows]
+
+
+ROOF = [_roof_row(y) for y in range(16)]
+ROOF_RAFTER = _rafter()
+
+
+def _eave(side):
+    """屋簷：屋頂從房間中間往兩端斜下來，這塊磚就是那條斜線經過的地方。
+
+    上／外是屋頂板，下／內是磚牆，中間夾一條 3px 的簷板。
+
+    **斜的是屋頂與牆的交界，不是房間的外框。** 這件事決定了整個做法——
+    如果把房間的四個角切掉，`aspect-ratio` 的方框就會缺角，看起來像 bug；
+    而讓天花板在兩端壓低，房間還是一個方框，卻立刻變成閣樓。
+
+    45 度是刻意選的：一塊磚正好降一列，所以磚號表上「往左幾格」就是
+    「往下幾列」，排的時候不用算。磚的部分照絕對的 x 取，不跟著鏡射——
+    鏡射會把錯縫的相位一起翻掉，跟隔壁的牆就接不起來了。
+    """
+    out = []
+    for y in range(16):
+        roof, brick = _roof_row(y), _brick_row(y)
+        line = []
+        for x in range(16):
+            xx = x if side == "left" else 15 - x   # 離屋頂那一端多遠
+            edge = 15 - y                          # 這一行屋頂到哪裡為止
+            if xx > edge:
+                line.append(brick[x])
+            elif xx == edge:
+                line.append("o")                   # 交界的硬描邊
+            elif xx == edge - 1:
+                line.append("T")                   # 簷板受光的一條
+            elif xx == edge - 2:
+                line.append("V")
+            else:
+                line.append(roof[x])
+        out.append("".join(line))
+    return out
+
+
+EAVE_L = _eave("left")
+EAVE_R = _eave("right")
+
+
+# ---------------------------------------------------------------- 樑
+#
+# 一根橫跨整個房間的大樑，兩端收在屋簷裡。它是這間房間唯一一件
+# **一定看得到頂面**的東西，所以它負責在第一眼就把斜角這件事講清楚。
+#
+# 最底下四行是磚，不是樑：那是牆被樑遮住的那一道影。它剛好是一整層磚
+# （絕對的第 7 層），所以下面接第 2 列的牆時錯縫還是對的。
+
+BEAM = [_roof_row(y) for y in range(5)] + _rows(
+    "AAAAAAAAAAAAAAAA",   # 樑的頂面，最靠光的一條
+    "TTTTTTTTTTTTTTTT",   # 樑的頂面
+    "oooooooooooooooo",   # 分面線 —— 沒有這一條，頂面跟正面會糊成一塊
+    "VVVVVVVVVVVVVVVV",   # 正面
+    "VVVVVVVVVVVVVVVV",
+    "VVVVVVVVVVVVVVVV",
+    "vvvvvvvvvvvvvvvv",   # 正面下緣
+    "oooooooooooooooo",   # 樑底
+    "kkkkkkkkkkkkkkkk",   # 牆被樑壓住的影
+    "nnnnnnnnnnnnnnnn",
+    "mmmmmmmmmmmmmmmm",   # 灰漿，接上下面那一層磚
 )
 
-# 牆腳板。牆和地板直接相接會像兩張色紙拼在一起，
-# 有踢腳板才有「牆是立起來的、地板是躺著的」。
-WALL_BASE = _rows(
+
+# ---------------------------------------------------------------- 踢腳板
+#
+# 牆和地板直接相接會像兩張色紙拼在一起。踢腳板才有「牆是立起來的、
+# 地板是躺著的」。上面四行是牆的最後一層磚（絕對的第 24 層，偶數，
+# 所以錯縫跟上面的牆一致），最下面兩行是它壓在地板上的影。
+
+SKIRT = [_brick_row(y) for y in range(4)] + _rows(
+    "AAAAAAAAAAAAAAAA",   # 頂面 —— 踢腳板是從牆凸出來的，斜角看得到這條厚度
     "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
-    "WWWWWWWWWWWWWWWW",
+    "oooooooooooooooo",   # 分面線
+    "wwwwwwwwwwwwwwww",   # 正面
     "wwwwwwwwwwwwwwww",
-    "SSSSSSSSSSSSSSSS",
-    "SSSSSSSSSSSSSSSS",
-    "SSSSSSSSSSSSSSSS",
-    "oooooooooooooooo",
+    "wwwwwwwwwwwwwwww",
+    "wwwwwwwwwwwwwwww",
+    "jjjjjjjjjjjjjjjj",   # 正面下緣轉暗
+    "jjjjjjjjjjjjjjjj",
+    "oooooooooooooooo",   # 落地
+    "hhhhhhhhhhhhhhhh",   # 投在地板上的影
+    "hhhhhhhhhhhhhhhh",
 )
 
 
@@ -129,240 +298,122 @@ WALL_BASE = _rows(
 # 縫是「暗一格 + 亮一格」，暗的是縫、亮的是隔壁板被光打到的邊——
 # 只有暗線的話那是刻痕，不是兩片木頭。
 
-FLOOR_A = _rows(*(["hgffffffhgffffff"] * 16))
+FLOOR = _rows(*(["hFffffffhFffffff"] * 16))
 
-# 唯一的差別是右邊那片板中間有一道橫向的接頭。
-# 只有一塊磚有，而且只跨半塊——地板才不會整齊到像方格紙，
-# 但也不會多到又變回磚。交錯鋪的時候大約每兩塊出現一次。
-FLOOR_B = _rows(
-    "hgffffffhgffffff",
-    "hgffffffhgffffff",
-    "hgffffffhgffffff",
-    "hgffffffhgffffff",
-    "hgffffffhgffffff",
-    "hgffffffhgffffff",
-    "hgffffffhgffffff",
-    "hgffffffhhhhhhhh",
-    "hgffffffhggggggg",
-    "hgffffffhgffffff",
-    "hgffffffhgffffff",
-    "hgffffffhgffffff",
-    "hgffffffhgffffff",
-    "hgffffffhgffffff",
-    "hgffffffhgffffff",
-    "hgffffffhgffffff",
+# 右邊那片板中間多一道橫向的接頭。散著擺，地板才不會整齊到像方格紙。
+FLOOR_JOINT = _rows(
+    "hFffffffhFffffff",
+    "hFffffffhFffffff",
+    "hFffffffhFffffff",
+    "hFffffffhFffffff",
+    "hFffffffhFffffff",
+    "hFffffffhFffffff",
+    "hFffffffhFffffff",
+    "hFffffffhhhhhhhh",
+    "hFffffffhFFFFFFF",
+    "hFffffffhFffffff",
+    "hFffffffhFffffff",
+    "hFffffffhFffffff",
+    "hFffffffhFffffff",
+    "hFffffffhFffffff",
+    "hFffffffhFffffff",
+    "hFffffffhFffffff",
 )
+
+# 顏色比較深的一片板（左邊那片）。**同一欄的四塊地板磚都要用這塊**——
+# 板子是直的，一片板從房間最裡面一路到最前面，只深一段就不是木頭了。
+FLOOR_DARK = _rows(*(["hfddddddhFffffff"] * 16))
 
 
 # ---------------------------------------------------------------- 窗
 #
-# 2x2 塊磚 = 32x32。十字窗框壓在兩塊磚的接縫上：
-# 左磚的最右邊 1px + 右磚的最左邊 1px 合起來才是 2px 的直櫺，
-# 上下同理。這樣框的粗細不受磚的邊界影響，而不是硬把框塞進其中一塊。
+# 2x2 塊磚 = 32x32。十字窗櫺壓在兩塊磚的接縫上：
+# 左磚的最右邊 + 右磚的最左邊合起來才是 2px 的直櫺，上下同理。
+# 這樣櫺的粗細不受磚的邊界影響，而不是硬把它塞進其中一塊。
+#
+# 斜角在窗上只看得到一個地方：**最底下的窗台有頂面（A/w）、
+# 最上面的楣是背光的內面（j）**。上暗下亮就是「光從上面來」，
+# 兩邊都畫亮的話窗會變成一個貼在牆上的貼紙。
 
 WIN_TL = _rows(
-    "kkkkkkkkkkkkkkkk",
-    "kkkkkkkkkkkkkkkk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kkkkkkkkkkkkkkkk",
+    "oooooooooooooooo",
+    "ojjjjjjjjjjjjjjj",   # 上楣的內面，背光
+    "ojjjjjjjjjjjjjjj",
+    "okkkkkkkkkkkkkkk",
+    "oWwksssssssssssW",
+    "oWwksssssssssssW",
+    "oWwkssYYYYYYsssW",   # 雲
+    "oWwksYYYYYYssssW",
+    "oWwksssssssssssW",
+    "oWwksssssssssssW",
+    "oWwkSSSSSSSSSSSW",
+    "oWwkSSSSSSSSSSSW",
+    "oWwkSSSSSSSSSSSW",
+    "oWwkSSSSSSSSSSSW",
+    "oWwkSSSSSSSSSSSW",
+    "oWWWWWWWWWWWWWWW",   # 橫櫺
 )
 
 WIN_TR = _rows(
-    "kkkkkkkkkkkkkkkk",
-    "kkkkkkkkkkkkkkkk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kkkkkkkkkkkkkkkk",
+    "oooooooooooooooo",
+    "jjjjjjjjjjjjjjjo",
+    "jjjjjjjjjjjjjjjo",
+    "kkkkkkkkkkkkkkko",
+    "wssssssssssskwjo",
+    "wssssssssssskwjo",
+    "wssssssssssskwjo",
+    "wssssssssssskwjo",
+    "wssssssssssskwjo",
+    "wssssssssssskwjo",
+    "wSSSSSSSSSSSkwjo",
+    "wSSSSSSSSSSSkwjo",
+    "wSSSSSSSSSSSkwjo",
+    "wSSSSSSSSSSSkwjo",
+    "wSSSSSSSSSSSkwjo",
+    "WWWWWWWWWWWWWWWo",
 )
 
 WIN_BL = _rows(
-    "kkkkkkkkkkkkkkkk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kksssssssssssssk",
-    "kkkkkkkkkkkkkkkk",
-    "kkkkkkkkkkkkkkkk",
+    "owwwwwwwwwwwwwww",   # 橫櫺的第二行
+    "oWwkSSSSSSSSSSSW",
+    "oWwkSSSSSSSSSSSW",
+    "oWwkSSSSSSSSSSSW",
+    "oWwkSSSSSSSSSSSW",
+    "oWwkSSSSSSSSSSSW",
+    "oWwkSSSSSSSSSSSW",
+    "oWwkSSSSSSSSSSSW",
+    "oWwkSSSSSSSSSSSW",
+    "oWwkYYYYYYYYYYYW",   # 地平線的霾
+    "oWwkYYYYYYYYYYYW",
+    "oWwkYYYYYYYYYYYW",
+    "oooooooooooooooo",
+    "oAAAAAAAAAAAAAAA",   # 窗台的頂面
+    "owwwwwwwwwwwwwww",   # 窗台的前緣
+    "oooooooooooooooo",
 )
 
 WIN_BR = _rows(
-    "kkkkkkkkkkkkkkkk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kssssssssssssskk",
-    "kkkkkkkkkkkkkkkk",
-    "kkkkkkkkkkkkkkkk",
+    "wwwwwwwwwwwwwwwo",
+    "wSSSSSSSSSSSkwjo",
+    "wSSSSSSSSSSSkwjo",
+    "wSSSSSSSSSSSkwjo",
+    "wSSSSSSSSSSSkwjo",
+    "wSSSSSSSSSSSkwjo",
+    "wSSSSSSSSSSSkwjo",
+    "wSSSSSSSSSSSkwjo",
+    "wSSSSSSSSSSSkwjo",
+    "wYYYYYYYYYYYkwjo",
+    "wYYYYYYYYYYYkwjo",
+    "wYYYYYYYYYYYkwjo",
+    "oooooooooooooooo",
+    "AAAAAAAAAAAAAAAo",
+    "wwwwwwwwwwwwwwwo",
+    "oooooooooooooooo",
 )
 
-
-# ---------------------------------------------------------------- 家具
-#
-# 桌子只有 2x1 塊磚。桌面（亮 q）在上、前緣（暗 n）在下，
-# 中間夾一條 k——**那條線就是「桌面是水平的、前緣是垂直的」的全部訊息**，
-# 沒有它就只是一個灰方塊。桌腳只畫外側兩支，內側那兩支被桌子自己擋住了。
-
-DESK_L = _rows(
-    "................",
-    "................",
-    "................",
-    ".kkkkkkkkkkkkkkk",
-    ".kqqqqqqqqqqqqqq",
-    ".kqqqqqqqqqqqqqq",
-    ".kkkkkkkkkkkkkkk",
-    ".knnnnnnnnnnnnnn",
-    ".knnnnnnnnnnnnnn",
-    ".kkkkkkkkkkkkkkk",
-    ".knn............",
-    ".knn............",
-    ".knn............",
-    ".knn............",
-    ".kkk............",
-    "................",
-)
-
-DESK_R = _rows(
-    "................",
-    "................",
-    "................",
-    "kkkkkkkkkkkkkkk.",
-    "qqqqqqqqqqqqqqk.",
-    "qqqqqqqqqqqqqqk.",
-    "kkkkkkkkkkkkkkk.",
-    "nnnnnnnnnnnnnnk.",
-    "nnnnnnnnnnnnnnk.",
-    "kkkkkkkkkkkkkkk.",
-    "............nnk.",
-    "............nnk.",
-    "............nnk.",
-    "............nnk.",
-    "............kkk.",
-    "................",
-)
-
-# 地毯 2x2。條紋每三排一條，是為了讓貓走過去的時候地板有參考線——
-# 純色的地毯上，貓的位移會看不太出來。
-#
-# 邊界原本用 o（近黑）描邊，讀起來是一塊有厚度的板子而不是布。
-# 換成 v（暗綠）之後才是「布的邊被自己的影子壓暗」。
-RUG_TL = _rows(
-    "................",
-    "................",
-    "................",
-    "................",
-    "..vvvvvvvvvvvvvv",
-    "..vttttttttttttt",
-    "..vtuuuuuuuuuuuu",
-    "..vttttttttttttt",
-    "..vttttttttttttt",
-    "..vtuuuuuuuuuuuu",
-    "..vttttttttttttt",
-    "..vttttttttttttt",
-    "..vtuuuuuuuuuuuu",
-    "..vttttttttttttt",
-    "..vttttttttttttt",
-    "..vtuuuuuuuuuuuu",
-)
-
-RUG_TR = _rows(
-    "................",
-    "................",
-    "................",
-    "................",
-    "vvvvvvvvvvvvvv..",
-    "tttttttttttttv..",
-    "uuuuuuuuuuuuuv..",
-    "tttttttttttttv..",
-    "tttttttttttttv..",
-    "uuuuuuuuuuuuuv..",
-    "tttttttttttttv..",
-    "tttttttttttttv..",
-    "uuuuuuuuuuuuuv..",
-    "tttttttttttttv..",
-    "tttttttttttttv..",
-    "uuuuuuuuuuuuuv..",
-)
-
-RUG_BL = _rows(
-    "..vttttttttttttt",
-    "..vttttttttttttt",
-    "..vtuuuuuuuuuuuu",
-    "..vttttttttttttt",
-    "..vttttttttttttt",
-    "..vtuuuuuuuuuuuu",
-    "..vttttttttttttt",
-    "..vvvvvvvvvvvvvv",
-    "................",
-    "................",
-    "................",
-    "................",
-    "................",
-    "................",
-    "................",
-    "................",
-)
-
-RUG_BR = _rows(
-    "tttttttttttttv..",
-    "tttttttttttttv..",
-    "uuuuuuuuuuuuuv..",
-    "tttttttttttttv..",
-    "tttttttttttttv..",
-    "uuuuuuuuuuuuuv..",
-    "tttttttttttttv..",
-    "vvvvvvvvvvvvvv..",
-    "................",
-    "................",
-    "................",
-    "................",
-    "................",
-    "................",
-    "................",
-    "................",
-)
 
 # 碗。往下收兩格才是碗，直筒是杯子——這一格的差別就是碗之所以是碗。
+# 裡面那塊 k 是斜角的：平視看不到碗裡面，看得到就表示鏡頭在上面。
 BOWL = _rows(
     "................",
     "................",
@@ -371,31 +422,53 @@ BOWL = _rows(
     "................",
     "................",
     "................",
-    "................",
-    "................",
-    "..kkkkkkkkkkkk..",
-    "..kqqqqqqqqqqk..",
-    "..kppppppppppk..",
-    "...kppppppppk...",
-    "....kkkkkkkk....",
-    "................",
-    "................",
+    "..oooooooooooo..",
+    "..oQQQQQQQQQQo..",
+    "..oQkkkkkkkkQo..",
+    "..oQkkkkkkkkQo..",
+    "..oQQQQQQQQQQo..",
+    "..oqqqqqqqqqqo..",
+    "...oqqqqqqqqo...",
+    "....oooooooo....",
+    "...hhhhhhhhhh...",   # 投在地板上的影
 )
 
 
-# 磚號表用的字元。一個字元一塊磚。
+# ---------------------------------------------------------------- 磚號表用的字元
+#
+# 挑得像它畫出來的東西，磚號表才讀得懂：
+# `#` 是磚、`=` 是樑、`<` `>` 是往兩邊斜下去的屋簷、`_` 是踢腳板、`-` 是地板。
 TILES = {
-    "W": WALL,
-    "A": WALL_RAIL,
-    "B": WALL_BASE,
-    "f": FLOOR_A,
-    "F": FLOOR_B,
-    "1": WIN_TL, "2": WIN_TR,
-    "3": WIN_BL, "4": WIN_BR,
-    "5": DESK_L, "6": DESK_R,
-    "7": RUG_TL, "8": RUG_TR,
-    "9": RUG_BL, "0": RUG_BR,
-    "b": BOWL,
+    "R": ROOF,
+    "I": ROOF_RAFTER,     # 屋頂板 + 一根椽
+    "=": BEAM,
+    "<": EAVE_L,          # 屋頂往左斜下來
+    ">": EAVE_R,
+    "#": BRICK,
+    "%": BRICK_VAR,       # 同一面牆裡顏色不一樣的兩塊磚
+    "_": SKIRT,
+    "-": FLOOR,
+    "~": FLOOR_JOINT,     # 有橫向接頭的那一片
+    ",": FLOOR_DARK,      # 顏色比較深的一片板
+}
+
+
+# ---------------------------------------------------------------- 具名物件
+#
+# 家具不放在磚號表裡，改成「有名字 + 給座標」。
+#
+# 表面上的理由是畫不下：一張床是 3x2 塊磚，用一格一個字元的方式擺，
+# 可用的字元很快就會用光，磚號表也會變成一串誰都看不懂的符號。
+#
+# 真正的理由是**待辦第 5 項（點房間裡的東西取代按鈕列）要的就是這份資料**。
+# 「哪個物件佔哪幾格」如果散在磚號表裡，那一項就得再抄一份座標出來，
+# 抄出來的那份遲早會跟圖對不起來。所以兩件事本來就該是同一份表——
+# 以後每加一件家具，它的可點區塊自動就有座標了。
+#
+# tiles 是**從左到右、從上到下**排的，要剛好 w*h 塊。
+OBJECTS = {
+    "window": {"w": 2, "h": 2, "tiles": [WIN_TL, WIN_TR, WIN_BL, WIN_BR]},
+    "bowl": {"w": 1, "h": 1, "tiles": [BOWL]},
 }
 
 
@@ -404,29 +477,13 @@ TILES = {
 # 房間到底能多大，不是挑一個 max-width 就決定的，是**高度**決定的。
 # 房間是固定比例的，加寬就等於加高，而頁面上房間以外的東西已經吃掉一大半。
 #
-# 量出來的（style.css 與根目錄 style.css）：
-#
-#     .container            680px，左右各 24 padding  ->  內容欄只有 632px
-#     .hero                 72 + 48 padding + 標題 + 小標         ~203px
-#     main.container        上下各 44                              88px
-#     .note + .actions      16+27 + 18+44                         ~105px
-#     .meta                 18 + 1.4em                             ~39px
-#     footer                                                       ~60px
-#
-# 所以現在房間以外吃掉約 500px。1440x900 的筆電只剩 400px 給房間，
-# 4:3 之下寬度只能到 529——**比現在寫的 560 還小，頁面本來就在小小捲動。**
-#
-# 待辦 7（提示文字浮在房間上）和待辦 5（點房間裡的東西取代按鈕列）
-# 一做完，那 105px 就還回來了。所以那兩項不是裝飾，**是房間變大的先決條件**。
-# 底下的預算都是「那兩項做完之後」算的。
-#
 # 縮放規則兩個裝置不一樣，而這是整個尺寸決策的關鍵：
 #
 #   **桌機**：整間房間要看得完，不捲動。倍率取寬與高之中比較緊的那個
 #            （等同 object-fit: contain），所以視窗窄的時候是整間縮小，不是被切掉。
 #   **手機**：高度填滿，寬度溢出去用左右滑的。
 #
-# 手機那條是明陽想出來的，它把這題的變數整個換掉了：房間不必塞進 327px 之後，
+# 手機那條是明陽想出來的，它把這題的變數整個換掉了：房間不必塞進 375px 之後，
 # 倍率由**列數**決定，欄數不再壓縮貓。
 #
 #     貓在螢幕上的大小 = 可用高度 / 列數      （兩個裝置都是這條）
@@ -434,6 +491,10 @@ TILES = {
 #
 # 也就是**列數決定貓多大、欄數決定房間多寬**，兩件事終於拆開了。
 # 欄數變成免費的——多給幾欄只是多一點要滑的距離，不會讓貓縮小。
+#
+# 16x7 換成 20x11 之後貓變小了（同樣的可用高度要分給 11 列而不是 7 列），
+# 這就是 Disi 要從 16x16 重畫成 24x24 的原因：24 / 11 跟 16 / 7 幾乎一樣，
+# 螢幕上的貓維持在 64px 左右。
 
 LAYOUT = {
     "column": 632,      # 待在 .container 裡：680 - 24*2
@@ -460,47 +521,68 @@ LAYOUT = {
 # 比完就把沒選上的刪掉了——留著沒人載入的資料只會讓下一個人以為它還有用。
 #
 # **那六個沒有進過版控**，刪掉的時候這支檔案還沒 commit 過，所以翻 git 找不到，
-# 那張比較圖也沒留。剩下的只有底下這段推理——所以底下那段要寫得夠清楚，
+# 那張比較圖也沒留。剩下的只有這段推理——所以這段要寫得夠清楚，
 # 它是那次比較唯一的遺物。
 #
-#     16x7 = 256x112   16:7    pano
+#     20x11 = 320x176   20:11   pano
 #
-# 為什麼是這個比例：手機那條規則（高度填滿、寬度用滑的）讓欄數變成免費的，
-# 所以就把它花光。7 列是「貓還夠大」的下限，16 欄是「滑得到但不會滑到膩」。
+# 名字留著叫 pano，因為它講的是**形狀**（全景、比視窗寬、要滑著看），
+# 不是風格。從冷紫房間換成閣樓的時候風格全變了，這個名字還是對的。
 #
-# 家具重排過一次。原本那個擺法是為了讓六張比較圖之間只有尺寸在變，
-# 全部擠在左半邊；一間真的要用的全景房間不能那樣——兩端都要有東西，
-# 不然滑過去只是一片空牆，那就白給了欄數。現在是：
+# 列怎麼分：屋頂 1、牆 5（兩端被斜屋頂吃掉）、踢腳板 1、地板 4。
+# 這幾個數字只存在下面那張磚號表裡，改比例不用碰任何程式——
+# 那本來就是磚號表存在的意義。
 #
-#     桌子靠左（1-2 欄）  地毯在中間（6-7 欄）  窗和碗在右（9-10 / 13 欄）
+# **第一版是屋頂 2 列、斜邊只有 2 格**，算出來看才發現那不是閣樓：
+# 上面一條平的暗帶，兩端各缺一個小三角，讀起來是「有木頭天花板的地下室」。
+# 斜屋頂要夠長才會變成閣樓的訊號——現在兩端各斜 4 格（45 度，降 4 列），
+# 角落各露出一大塊屋頂，中間的牆變成梯形。屋頂帶子因此只剩 1 列，
+# 但那 1 列現在有意義了：它是屋脊，不是天花板。
 #
-# 牆是第 0-2 列（第 2 列是踢腳板），地板是第 3-6 列。
+# 地板佔 11 列裡的 4 列，第一眼會覺得太多。那是**留給待辦第 4 項的**：
+# 貓要在房間裡前後走（不只左右），能走的縱深就是這幾列。地板砍成兩列
+# 畫面比例會好看一點，但貓就只剩一條線可以走，2D 移動會看起來像在軌道上滑。
 #
-# 地板佔 7 列裡的 4 列，第一眼會覺得太多。那是**留給 A4 的**：貓之後要在
-# 房間裡前後走（不只左右），能走的縱深就是這幾列。地板砍成兩列畫面比例會
-# 好看一點，但貓就只剩一條線可以走，2D 移動會看起來像在軌道上滑。
-# 先有地方走，構圖之後再說。
+# 家具擺位（M3 會照這個往下填）：
+#     床 1-4、書櫃衣櫃 5-8、窗 9-10、書桌 11-14、地毯與碗 15-18
+# 窗擺在正中間，所以那道從窗戶下來的光落在房間中央，兩邊都有東西襯它。
+#
+# **斜屋頂決定了誰能擺哪裡**：最外面四欄的天花板是壓低的，
+# 高的東西（書櫃、衣櫃）擺過去會穿出屋頂。所以床（低的）在最左邊，
+# 櫃子往中間收——這不是美感排序，是這間房間的形狀自己決定的。
 
 ROOMS = {
     "pano": {
-        "cols": 16, "rows": 7,
+        "cols": 20, "rows": 11,
+        # 哪幾列是地板。lint 拿它算「地板會不會亮到把貓吃掉」
+        "floor_rows": (7, 11),
+        # 貓的腳踩得到的範圍，用「第幾列」表示（可以有小數）。
+        # 上限不是 7.0 而是 7.5：貓 24px 高，腳站在第 7 列最上面的話
+        # 頭會頂進磚牆裡。下限 10.9 是留一格邊，不要整隻貼在畫面最下緣。
+        "walk_rows": (7.5, 10.9),
         "bg": [
-            "WWWWWWWWWWWWWWWW",
-            "AAAAAAAAAAAAAAAA",
-            "BBBBBBBBBBBBBBBB",
-            "fFfFfFfFfFfFfFfF",
-            "FfFfFfFfFfFfFfFf",
-            "fFfFfFfFfFfFfFfF",
-            "FfFfFfFfFfFfFfFf",
+            # 屋脊。椽（I）每 5 欄一根，順著屋頂往下跑
+            "RRIRRRRIRRRRIRRRRIRR",
+            # 大樑只跨中間 12 欄，兩端塞進斜屋頂裡。這是刻意的：
+            # 樑本來就該收在屋架上，畫成貫穿整面牆會變成一條貼在牆上的飾條
+            "RRR<============>RRR",
+            "RR<##%###%####%##>RR",
+            "R<#%####%###%####%>R",
+            "<###%###%####%###%#>",
+            "#%###%####%###%####%",
+            "____________________",
+            # 深色板固定在第 4、11、17 欄，四列都一樣——板子是直的，
+            # 一片板從房間最裡面一路到最前面，中間換欄就變成折斷的地板。
+            # `~`（橫向接頭）反過來要散著擺，四列對齊的話會變成方格紙。
+            "-~--,---~--,--~--,--",
+            "----,~-----,~----,~-",
+            "--~-,----~-,----~,--",
+            "---~,------,-~---,-~",
         ],
-        "obj": [
-            ".........12.....",
-            ".........34.....",
-            ".56.............",
-            "................",
-            "......78........",
-            "......90........",
-            ".............b..",
+        # (名字, 欄, 列)。左上角對齊那一格
+        "place": [
+            ("window", 9, 2),
+            ("bowl", 16, 9),
         ],
     },
 }
@@ -508,6 +590,8 @@ ROOMS = {
 # 校對圖裡貓站的位置。x 是貓的**中心**、y 是貓的**腳**，用佔房間寬高的比例表示，
 # 跟 script.js 裡 cat.x 的定義一樣，所以這張圖量到的位置直接對得上遊戲裡的。
 #
-# 站在地毯右邊的**空地板**上是刻意的：貓是暖棕、地毯是綠的，那個對比不會失敗；
-# 會失敗的是貓對地板（都是中暗調）。校對圖要照的是可能出事的那個，不是好看的那個。
-CAT_AT = (0.55, 0.80)
+# 站在**空地板正中間**是刻意的：貓對窗、貓對碗那些對比不會失敗（一冷一暖、
+# 一暗一亮），會失敗的是貓對地板——兩邊都是中暗調的暖棕。
+# 校對圖要照的是可能出事的那個，不是好看的那個。
+# 0.45 剛好落在兩片板的接縫上，那是地板最亮的一條，也就是最容易糊掉的地方。
+CAT_AT = (0.45, 0.86)

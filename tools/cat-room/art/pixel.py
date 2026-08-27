@@ -42,9 +42,29 @@ BG = (28, 31, 41)
 COLS = len(SHEET[0])
 ROWS = len(SHEET)
 
+# 一格貓是幾像素。同樣不寫死：M2 要把 Disi 從 16x16 重畫成 24x24，
+# 那一輪應該只動 disi.py 和 sprites.js 的 manifest，不該回來改這支。
+CELL = len(disi.FRAMES[SHEET[0][0]])
+
+# M2 打算把 Disi 重畫成幾像素。**只有校對圖在用**——畫完之後 CELL 自己會
+# 變成這個數字，那時候這行就沒有作用了（room-view.png 的參考框會自動消失）。
+# 它存在的理由是：房間換成 20x11 的這一輪，貓還是 16x16，
+# 光看圖沒辦法判斷「新房間配重畫後的貓比例對不對」，而那件事判斷錯了，
+# 賠掉的是整包重畫的美術。所以先在圖上框一個 24x24 出來。
+TARGET_CELL = 24
+
+# 一塊房間磚是幾像素。這個是真的固定的（磚號表、CSS 的百分比、
+# script.js 的座標全都建立在它上面），寫成常數只是為了讓算式看得懂。
+TILE = 16
+
 
 def rgb(ch):
     return PAL[ch]
+
+
+def luma(c):
+    """相對亮度。剪影讀不讀得出來看的是這個，不是色相。"""
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
 
 
 def blit(img, rows, ox, oy, scale, pal=None):
@@ -88,30 +108,30 @@ def frames():
 
 
 def build_sheet():
-    img = Image.new("RGBA", (16 * COLS, 16 * ROWS), (0, 0, 0, 0))
+    img = Image.new("RGBA", (CELL * COLS, CELL * ROWS), (0, 0, 0, 0))
     for i, (_, rows) in enumerate(frames()):
-        blit(img, rows, (i % COLS) * 16, (i // COLS) * 16, 1)
+        blit(img, rows, (i % COLS) * CELL, (i // COLS) * CELL, 1)
     img.save(os.path.join(HERE, "disi-16.png"))
 
 
 def build_proof(scale=20, pad=22):
-    cell = 16 * scale + pad
+    cell = CELL * scale + pad
     img = Image.new("RGB", (cell * COLS + pad, cell * ROWS + pad), BG)
     d = ImageDraw.Draw(img)
     for i, (name, rows) in enumerate(frames()):
         ox = pad + (i % COLS) * cell
         oy = pad + (i // COLS) * cell
-        d.rectangle([ox, oy, ox + 16 * scale, oy + 16 * scale], fill=(58, 62, 78))
+        d.rectangle([ox, oy, ox + CELL * scale, oy + CELL * scale], fill=(58, 62, 78))
         blit(img, rows, ox, oy, scale)
-        for k in range(17):
-            d.line([(ox + k * scale, oy), (ox + k * scale, oy + 16 * scale)],
+        for k in range(CELL + 1):
+            d.line([(ox + k * scale, oy), (ox + k * scale, oy + CELL * scale)],
                    fill=(96, 100, 118))
-            d.line([(ox, oy + k * scale), (ox + 16 * scale, oy + k * scale)],
+            d.line([(ox, oy + k * scale), (ox + CELL * scale, oy + k * scale)],
                    fill=(96, 100, 118))
-        for k in range(0, 16, 2):
+        for k in range(0, CELL, 2):
             d.text((ox + k * scale + 4, oy - 13), str(k), fill=(150, 156, 172))
             d.text((ox - 14, oy + k * scale + 4), str(k), fill=(150, 156, 172))
-        d.text((ox + 2, oy + 16 * scale + 4), name, fill=(190, 195, 208))
+        d.text((ox + 2, oy + CELL * scale + 4), name, fill=(190, 195, 208))
     img.save(os.path.join(HERE, "proof.png"))
 
 
@@ -122,7 +142,7 @@ def build_squint(scale=4, gap=6):
     要比的是「同一個姿勢的三格會不會抖」跟「這排跟那排認不認得出是兩件事」，
     攤成一條的話這兩件事都要用眼睛跨半張圖去對。
     """
-    cell = 16 * scale + gap
+    cell = CELL * scale + gap
     img = Image.new("RGB", (cell * COLS + gap, cell * ROWS + gap), BG)
     for i, (_, rows) in enumerate(frames()):
         blit(img, rows, gap + (i % COLS) * cell, gap + (i // COLS) * cell, scale)
@@ -138,7 +158,7 @@ def build_anim(scale=8):
     for name, seq, ms in sequences():
         imgs = []
         for fname in seq:
-            im = Image.new("RGB", (16 * scale, 16 * scale), BG)
+            im = Image.new("RGB", (CELL * scale, CELL * scale), BG)
             blit(im, disi.FRAMES[fname], 0, 0, scale)
             imgs.append(im)
         imgs[0].save(os.path.join(HERE, "%s.gif" % name),
@@ -166,26 +186,107 @@ def room_font(size):
         return ImageFont.load_default()
 
 
-def room_image(name):
-    """把一間房間算成 1x 的圖。先鋪 BG，再疊 OBJ。"""
+def room_image(name, pal=None):
+    """把一間房間算成 1x 的圖：先鋪 bg 的字元表，再照 place 蓋上具名物件。
+
+    以前是 bg / obj 兩層一樣的迴圈。obj 那層拿掉了——物件從「磚號表裡的
+    一個字元」改成「有名字 + 一組座標」，理由寫在 room.py 的 OBJECTS 上面。
+    所以這裡變成兩種不同的迴圈：字元表是 y-x 掃過去，物件是照放置順序疊。
+
+    `pal` 換掉整份調色盤就會得到同一間房間的另一種算法。發光層就是這樣來的
+    ——同一份磚號表、同一組座標，只是把每個字元對應到「它在夜裡發什麼光」。
+    分兩個函式各掃一次的話，兩邊遲早會不同步。
+    """
     spec = room.ROOMS[name]
-    img = Image.new("RGB", (spec["cols"] * 16, spec["rows"] * 16), (0, 0, 0))
-    for layer in ("bg", "obj"):
-        for ty, line in enumerate(spec[layer]):
-            for tx, ch in enumerate(line):
-                if ch == ".":
-                    continue
-                blit(img, room.TILES[ch], tx * 16, ty * 16, 1, room.PALETTE)
+    p = room.PALETTE if pal is None else pal
+    img = Image.new("RGB", (spec["cols"] * TILE, spec["rows"] * TILE), (0, 0, 0))
+    for ty, line in enumerate(spec["bg"]):
+        for tx, ch in enumerate(line):
+            blit(img, room.TILES[ch], tx * TILE, ty * TILE, 1, p)
+    for oname, ox, oy in spec["place"]:
+        o = room.OBJECTS[oname]
+        for i, tile in enumerate(o["tiles"]):
+            blit(img, tile, (ox + i % o["w"]) * TILE, (oy + i // o["w"]) * TILE, 1, p)
     return img
+
+
+def light_palette():
+    """發光層的調色盤：沒登記的字元一律黑。
+
+    黑在 screen 底下等於沒作用，所以這張圖不用去背，也不用管形狀——
+    形狀本來就跟底圖一模一樣，因為它是同一份資料算的。
+    """
+    return dict((ch, room.EMISSIVE.get(ch, (0, 0, 0))) for ch in room.PALETTE)
+
+
+def build_room_light(name="pano"):
+    img = room_image(name, light_palette())
+    img.save(os.path.join(HERE, "room-light.png"))
+
+
+def write_room_data(name="pano"):
+    """把房間的幾何吐成一支 JS。頁面從此不用自己抄一份座標。
+
+    在這之前 script.js 有兩組是照著磚號表用眼睛量出來的數字：地板的前後界
+    （`FLOOR`）跟餵食時要走到哪裡。磚號表一改它們就默默錯掉——不會報錯，
+    只會變成貓走進牆裡、或者對著空地低頭吃。資料只有一份就不會有這種事。
+
+    順便把待辦第 5 項（點房間裡的東西取代按鈕列）要的表一起帶出去：
+    以後每擺一件家具，它的可點區塊自動就有座標了。
+    """
+    spec = room.ROOMS[name]
+    rows = spec["rows"]
+    top, bottom = spec["walk_rows"]
+    objs = ",\n".join(
+        '    "%s": [%d, %d, %d, %d]' % (n, x, y,
+                                        room.OBJECTS[n]["w"], room.OBJECTS[n]["h"])
+        for n, x, y in spec["place"])
+    js = '''/*
+ * 房間的幾何。**這支是 art/pixel.py 產的，不要手改**——
+ * 改 art/room.py 再跑一次 `python pixel.py`，這裡就會跟著對。
+ *
+ * 手改的話下一次跑那支就會被蓋掉，而且沒有任何東西會提醒你。
+ */
+window.RoomData = {
+  cols: %d,
+  rows: %d,
+  tile: %d,
+
+  /*
+   * 貓的腳走得到的前後界，用佔房間高度的比例表示——跟 cat.y 同一個座標系，
+   * 所以拿來就能用。來源是 room.py 的 walk_rows（第 %.1f 列到第 %.1f 列）。
+   */
+  floorTop: %.4f,
+  floorBottom: %.4f,
+
+  // 名字: [欄, 列, 寬, 高]，單位是磚。左上角對齊那一格
+  objects: {
+%s
+  }
+};
+''' % (spec["cols"], rows, TILE, top, bottom,
+       float(top) / rows, float(bottom) / rows, objs)
+    path = os.path.join(os.path.dirname(HERE), "room-data.js")
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(js)
 
 
 def cat_image(frame=None):
     """比較圖裡放的是**真的那隻貓**，不是一個代表貓的方塊。
 
-    尺寸感全靠這 16x16 跟房間的比例，用假的東西頂替等於沒比。
+    尺寸感全靠這一格跟房間的比例，用假的東西頂替等於沒比。
     """
-    im = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+    im = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
     blit(im, disi.FRAMES[frame or SHEET[0][0]], 0, 0, 1)
+    return im
+
+
+def paste_cat(im):
+    """把貓貼在校對圖上的 CAT_AT。x 是貓的**中心**、y 是貓的**腳**。"""
+    w, h = im.size
+    fx, fy = room.CAT_AT
+    cat = cat_image()
+    im.paste(cat, (round(fx * w) - CELL // 2, round(fy * h) - CELL), cat)
     return im
 
 
@@ -235,12 +336,9 @@ def build_room_view(name="pano", pad=18):
     win = int(round(room.LAYOUT["phone_view"] * float(dh) / ph))
 
     spec = room.ROOMS[name]
-    im = room_image(name)
+    im = paste_cat(room_image(name))
     w, h = im.size
-    # 貓的**腳**落在指定的高度，不是貓的左上角
     fx, fy = room.CAT_AT
-    cat = cat_image()
-    im.paste(cat, (round(fx * w) - 8, round(fy * h) - 16), cat)
 
     ds = room_scale(name, "desktop")
     sw, sh = int(round(w * ds)), int(round(h * ds))
@@ -248,9 +346,9 @@ def build_room_view(name="pano", pad=18):
     # 框以貓為中心，但不准滑出房間外——真的捲動容器也是這樣夾的
     bx = max(0, min(sw - win, int(round(fx * sw)) - win // 2))
     label = ("%s  %dx%d tiles = %dx%d px   laptop %dx%d (%.2fx)   "
-             "cat %dpx laptop / %dpx phone   phone sees %d%% at a time"
+             "cat %dpx now / %dpx at %d src px   phone sees %d%% at a time"
              % (name, spec["cols"], spec["rows"], w, h, sw, sh, ds,
-                round(16 * ds), round(16 * room_scale(name, "phone")),
+                round(CELL * ds), round(TARGET_CELL * ds), TARGET_CELL,
                 round(100.0 * win / sw)))
 
     lh = 24
@@ -261,46 +359,78 @@ def build_room_view(name="pano", pad=18):
     x0, y0 = pad + bx, pad + lh
     d.rectangle([x0, y0, x0 + win, y0 + sh - 1], outline=(224, 122, 95), width=3)
     d.text((x0 + 8, y0 + 8), "phone viewport", fill=(224, 122, 95), font=font)
+
+    # 重畫後那隻貓會佔多大的一塊。M1 結束時貓還是 16x16，光看圖沒辦法判斷
+    # 「20x11 的房間配 24x24 的貓比例對不對」——那件事要等 M2 畫完才看得到，
+    # 而那時候要是比例錯了，賠掉的是整包重畫的美術。所以先框出來。
+    # 框的底邊對齊貓的腳，不是對齊貓的中心：地板上的東西是靠腳站的位置對位的。
+    if TARGET_CELL != CELL:
+        bw = TARGET_CELL * ds
+        cx, cy = pad + fx * sw, pad + lh + fy * sh
+        d.rectangle([cx - bw / 2, cy - bw, cx + bw / 2, cy],
+                    outline=(122, 186, 148), width=2)
+        d.text((cx + bw / 2 + 6, cy - bw), "%dx%d" % (TARGET_CELL, TARGET_CELL),
+               fill=(122, 186, 148), font=font)
     out.save(os.path.join(HERE, "room-view.png"))
 
 
 # style.css 的 --room-tint。四個時段疊在房間上的乘算色片。
 #
-# 這裡重算一次不是備份，是**驗算**：這幾個值當初是拿舊的 --room-wall
-# 反推的（舊 dawn 的牆 / 舊 day 的牆 x 255），所以乘回去必須一格不差地
-# 還原成舊的牆色。對不上就表示有人動了其中一邊沒動另一邊，底下會印出來。
+# 上一版這幾個值是**拿舊的 CSS 牆色反推**出來的，這支還會驗算乘回去對不對，
+# 對不上就印 MISMATCH。那條檢查已經拿掉了：它的用意是「從 CSS 方塊換成
+# 像素房間的時候牆色不准跳」，而這一輪牆色是**故意**要換的——
+# 房間從冷紫換成暖磚，留著那條只會每次都紅。
+#
+# 現在這四個值是照暖底色重挑的，各自要負責一件事：
+#
+#   day   不動。**畫出來的顏色就是中午看到的顏色**，不然畫的時候是在猜。
+#   dawn  往冷灰紫壓。清晨的光是冷的，暖房間要被它「退火」才像早上
+#   dusk  R 留在 255，只砍 G 跟 B。這是 multiply 唯一推得出橘色的方式，
+#         也是換暖底色最主要的回報——上一版的黃昏跟清晨長得幾乎一樣
+#   night 壓到藍。代價寫在下面 TOD_GLOW
 TOD_TINT = {
     "day": (255, 255, 255),
-    "dawn": (200, 183, 222),
-    "dusk": (210, 176, 200),
-    "night": (121, 134, 161),
+    "dawn": (192, 188, 224),
+    "dusk": (255, 194, 158),
+    "night": (96, 110, 152),
 }
 
-# 舊版 CSS 房間各時段的牆色，驗算用的答案
-TOD_WALL_WAS = {
-    "day": (74, 74, 92),
-    "dawn": (58, 53, 80),
-    "dusk": (61, 51, 72),
-    "night": (35, 39, 58),
-}
+# style.css 的 --room-glow：發光層的不透明度。
+#
+# 為什麼非有它不可：multiply **只能往暗走**。一間暖房間的夜晚重點在光
+# （窗、之後的燈），而光被乘暗就沒有意義了。所以夜晚另外疊一層 screen。
+#
+# dusk 是 0 不是折衷值。room.EMISSIVE 登記的是**藍色的夜空**，
+# 黃昏開著它等於在一片橘裡面點一扇藍窗，會把 dusk 那條唯一的回報打掉。
+# 等 M3 有了檯燈（暖色的發光像素），黃昏才會需要它。
+TOD_GLOW = {"day": 0.0, "dawn": 0.30, "dusk": 0.0, "night": 1.0}
+
+
+def screen(b, l):
+    """screen 混色，跟瀏覽器同一條算式。"""
+    return 255 - (255 - b) * (255 - l) // 255
 
 
 def build_room_tod(name="pano", scale=3, gap=14, pad=16):
     """四個時段並排。判斷「半夜的房間會不會暗到看不見貓」用的。
 
-    multiply 是有定義的算術（每個通道 a*b/255），瀏覽器怎麼算這裡就怎麼算，
-    所以這張圖不是示意圖，是**跟畫面上一模一樣**的結果。
+    multiply 跟 screen 都是有定義的算術，瀏覽器怎麼算這裡就怎麼算，
+    所以這張圖不是示意圖，是**跟畫面上一模一樣**的結果。疊法也照 CSS 的順序：
+    先乘時段色片（`.room::before`），再用 `--room-glow` 的不透明度 screen
+    發光層（`.room::after`）。順序反過來結果就不一樣了。
 
-    要講清楚的代價：multiply 只能把顏色壓暗、不能推暖，
-    所以窗外那片天在黃昏不會變橘，只會跟著暗。窗戶要等 A6 拆成獨立的一層。
+    貓在色片**底下**、發光層底下——環境光本來就該打到貓身上，
+    貓不該是房間裡唯一不受光的東西。
+
+    誠實要講的代價：multiply 保持比例，所以整個房間被壓暗的時候，
+    貓跟地板的亮度差是**按比例縮小**的。暖房間本來就比舊的冷房間差得少，
+    夜晚再乘 0.42 之後那個差會小到十幾階。發光層跟 M3 的燈就是要補這個。
     """
     font = room_font(13)
-    base = room_image(name)
-    fx, fy = room.CAT_AT
-    cat = cat_image()
-    base.paste(cat, (round(fx * base.size[0]) - 8, round(fy * base.size[1]) - 16), cat)
-    w, h = base.size[0] * scale, base.size[1] * scale
-    big = base.resize((w, h), Image.NEAREST)
+    base = paste_cat(room_image(name))
+    light = room_image(name, light_palette())
+    bw, bh = base.size
+    w, h = bw * scale, bh * scale
 
     order = ["dawn", "day", "dusk", "night"]
     lh = 22
@@ -308,33 +438,40 @@ def build_room_tod(name="pano", scale=3, gap=14, pad=16):
     d = ImageDraw.Draw(out)
     y = pad
     for tod in order:
-        tint = TOD_TINT[tod]
-        shot = big.point(lambda v, t=tint: v)  # 佔位，實際逐通道算在下面
-        px = shot.load()
-        for yy in range(h):
-            for xx in range(w):
-                r0, g0, b0 = px[xx, yy][:3]
-                px[xx, yy] = (r0 * tint[0] // 255,
-                              g0 * tint[1] // 255,
-                              b0 * tint[2] // 255)
-        # 驗算：牆色乘完要等於舊版 CSS 那個時段的牆
-        was = TOD_WALL_WAS[tod]
-        got = tuple(room.PALETTE["W"][i] * tint[i] // 255 for i in range(3))
-        ok = "ok" if all(abs(got[i] - was[i]) <= 1 for i in range(3)) else \
-             "MISMATCH was #%02x%02x%02x" % was
-        d.text((pad, y), "%-5s tint #%02x%02x%02x -> wall #%02x%02x%02x  %s"
-               % (tod, tint[0], tint[1], tint[2], got[0], got[1], got[2], ok),
+        tint, glow = TOD_TINT[tod], TOD_GLOW[tod]
+        # 算在 1x 上再放大，不是放大了再算。NEAREST 只是把像素複製，
+        # 兩種順序結果一樣，但這樣少算九倍的像素
+        shot = base.copy()
+        px, lp = shot.load(), light.load()
+        for yy in range(bh):
+            for xx in range(bw):
+                c = px[xx, yy][:3]
+                c = [c[i] * tint[i] // 255 for i in range(3)]
+                if glow:
+                    g = lp[xx, yy][:3]
+                    c = [int(round(c[i] * (1 - glow) + screen(c[i], g[i]) * glow))
+                         for i in range(3)]
+                px[xx, yy] = tuple(c)
+        wall = tuple(room.PALETTE["b"][i] * tint[i] // 255 for i in range(3))
+        d.text((pad, y),
+               "%-5s tint #%02x%02x%02x  glow %.2f  ->  brick #%02x%02x%02x L%.0f"
+               % (tod, tint[0], tint[1], tint[2], glow,
+                  wall[0], wall[1], wall[2], luma(wall)),
                fill=(205, 210, 224), font=font)
-        out.paste(shot, (pad, y + lh))
+        out.paste(shot.resize((w, h), Image.NEAREST), (pad, y + lh))
         y += lh + h + gap
     out.save(os.path.join(HERE, "room-tod.png"))
 
 
 def build_room_tiles(scale=9, pad=20, per_row=8):
-    """每一塊磚放大並排，加格線與名字。抓單格錯誤用，等同貓的 proof.png。"""
+    """每一塊磚放大並排，加格線與名字。抓單格錯誤用，等同貓的 proof.png。
+
+    物件的磚也要進來。它們是手打的，最容易出錯的就是那一半——
+    只印磚號表裡那幾塊，等於把最需要看的東西漏掉。
+    """
     font = room_font(12)
-    items = list(room.TILES.items())
-    cell = 16 * scale + pad
+    items = all_tiles()
+    cell = TILE * scale + pad
     cols = min(per_row, len(items))
     rows = (len(items) + per_row - 1) // per_row
     img = Image.new("RGB", (cell * cols + pad, cell * rows + pad + 8), BG)
@@ -342,54 +479,178 @@ def build_room_tiles(scale=9, pad=20, per_row=8):
     for i, (key, tile) in enumerate(items):
         ox = pad + (i % per_row) * cell
         oy = pad + (i // per_row) * cell
-        d.rectangle([ox, oy, ox + 16 * scale, oy + 16 * scale], fill=(58, 62, 78))
+        d.rectangle([ox, oy, ox + TILE * scale, oy + TILE * scale], fill=(58, 62, 78))
         blit(img, tile, ox, oy, scale, room.PALETTE)
-        for k in range(0, 17, 4):
-            d.line([(ox + k * scale, oy), (ox + k * scale, oy + 16 * scale)],
+        for k in range(0, TILE + 1, 4):
+            d.line([(ox + k * scale, oy), (ox + k * scale, oy + TILE * scale)],
                    fill=(96, 100, 118))
-            d.line([(ox, oy + k * scale), (ox + 16 * scale, oy + k * scale)],
+            d.line([(ox, oy + k * scale), (ox + TILE * scale, oy + k * scale)],
                    fill=(96, 100, 118))
-        d.text((ox + 2, oy + 16 * scale + 3), key, fill=(190, 195, 208), font=font)
+        d.text((ox + 2, oy + TILE * scale + 3), key, fill=(190, 195, 208), font=font)
     img.save(os.path.join(HERE, "room-tiles.png"))
+
+
+def all_tiles():
+    """磚 + 所有具名物件的磚。檢查與色盤統計都要走完這兩邊。
+
+    物件的磚不在 `room.TILES` 裡（它們掛在 OBJECTS 底下），漏掉的話
+    畫得出來卻沒被檢查——那正是最容易出錯的一半，因為它們是手打的。
+    """
+    out = [("tile " + k, t) for k, t in room.TILES.items()]
+    for name, o in room.OBJECTS.items():
+        for i, t in enumerate(o["tiles"]):
+            out.append(("%s[%d]" % (name, i), t))
+    return out
+
+
+def shares(counts):
+    """把次數表換成佔比，由大到小。"""
+    total = float(sum(counts.values())) or 1.0
+    return sorted(((ch, n / total) for ch, n in counts.items()),
+                  key=lambda p: -p[1])
+
+
+def floor_colours(name):
+    """地板那幾列實際鋪出來的顏色佔比。
+
+    不是「FLOOR 這塊磚裡有什麼色」——磚號表上深板、接頭、一般板的**數量**
+    才決定地板整體看起來多亮。所以要照真的鋪法數。
+    """
+    spec = room.ROOMS[name]
+    r0, r1 = spec["floor_rows"]
+    counts = {}
+    for line in spec["bg"][r0:r1]:
+        for ch in line:
+            for r in room.TILES[ch]:
+                for c in r:
+                    counts[c] = counts.get(c, 0) + 1
+    return counts
+
+
+def cat_colours():
+    """Disi 全部幀裡不透明像素的顏色佔比。"""
+    counts = {}
+    for rows in disi.FRAMES.values():
+        for r in rows:
+            for ch in r:
+                if ch != ".":
+                    counts[ch] = counts.get(ch, 0) + 1
+    return counts
+
+
+# 地板跟貓的**身體**之間，亮度至少要差這麼多。
+#
+# 這條是 room.py 開頭那個決定的**機器版**：暖色房間的地板照直覺畫成蜜色木頭，
+# Disi 會直接消失在地板上。寫成註解沒有用——那是會被本能反射違反的規則，
+# 要有東西擋著，跟 `bondDelta >= 0` 同一個做法。
+#
+# 門檻是量出來的不是挑的。三個真實的量測（都是這支自己算的）：
+#
+#     舊版的冷紫地板（已知看得很清楚）  最近的一對差 51.1   （地板 g L66.3 對貓 m L117.4）
+#     這一版的暖木地板                  最近的一對差 40.5   （地板 F L76.9 對貓 m L117.4）
+#     參考圖那種蜜色地板 #b07a45         最近的一對差 12.3
+#
+# 30 卡在中間：比現在這版低 10 階（改地板還有得動），比蜜色高 18 階（照抄一定擋下來）。
+# 要放寬它之前先回頭看這三個數字——它不是一個好聽的整數。
+#
+# 第一次寫這條的時候是拿「貓所有佔面積大的顏色」去比，量出來 10.0 直接紅了，
+# 而拿舊版那間已知好用的房間去跑同一條算式只有 2.7。錯的是算式不是房間：
+# 佔比最大的那個色是**描邊**，而描邊比地板暗正是它該做的事。留著這段是因為
+# 「把描邊算進身體色」看起來完全合理，下一個人很可能會再犯一次。
+MIN_LUMA_GAP = 30.0
+
+# 佔比低於這個的顏色不算——眼睛、鼻頭都只有幾格，
+# 它們糊不糊掉不影響剪影，卻會把門檻拉到不可能過。
+BULK_SHARE = 0.10
+
+
+def lint_contrast(name="pano"):
+    """地板會不會把貓吃掉。比的是**亮度**不是色相，因為剪影讀的是亮度。
+
+    描邊跟身體分開看，因為它們要的方向相反：
+    身體要跟地板**拉開**（差太少就融進去），描邊要比地板**暗**
+    （比地板亮的話貓會鑲一圈光暈，不是描邊）。
+    """
+    msgs = []
+    floor = [(ch, s) for ch, s in shares(floor_colours(name)) if s >= BULK_SHARE]
+    cat = [(ch, s) for ch, s in shares(cat_colours())
+           if s >= BULK_SHARE and ch != disi.OUTLINE]
+    msgs.append("floor bulk: " + "  ".join(
+        "%s %.0f%% L%.1f" % (ch, s * 100, luma(room.PALETTE[ch])) for ch, s in floor))
+    msgs.append("cat  body : " + "  ".join(
+        "%s %.0f%% L%.1f" % (ch, s * 100, luma(PAL[ch])) for ch, s in cat))
+    if not floor or not cat:
+        return msgs
+
+    worst = min(((abs(luma(room.PALETTE[f]) - luma(PAL[c])), f, c)
+                 for f, _ in floor for c, _ in cat))
+    gap, fch, cch = worst
+    msgs.append("closest pair: floor %s L%.1f vs cat %s L%.1f = %.1f (min %.1f)%s"
+                % (fch, luma(room.PALETTE[fch]), cch, luma(PAL[cch]),
+                   gap, MIN_LUMA_GAP, "" if gap >= MIN_LUMA_GAP
+                   else "   <- CONTRAST too low, cat melts into the floor"))
+
+    # 描邊對地板**主色**（不是每一個色）。板縫本來就比描邊暗，那是細線不是面積
+    main = floor[0][0]
+    ol, fl = luma(PAL[disi.OUTLINE]), luma(room.PALETTE[main])
+    msgs.append("outline %s L%.1f vs floor %s L%.1f = %+.1f (wants negative)%s"
+                % (disi.OUTLINE, ol, main, fl, ol - fl,
+                   "" if ol < fl else "   <- CONTRAST outline is lighter, cat gets a halo"))
+    return msgs
 
 
 def lint_room():
     """房間的機械檢查。每一條都對應一種「跑得起來但畫面是壞的」的錯。"""
     msgs = []
-    for key, tile in room.TILES.items():
-        if len(tile) != 16:
-            msgs.append("tile %s: %d rows, want 16" % (key, len(tile)))
+    for key, tile in all_tiles():
+        if len(tile) != TILE:
+            msgs.append("%s: %d rows, want %d" % (key, len(tile), TILE))
         for y, r in enumerate(tile):
-            if len(r) != 16:
-                msgs.append("tile %s row %d: %d chars, want 16 -> %r"
-                            % (key, y, len(r), r))
+            if len(r) != TILE:
+                msgs.append("%s row %d: %d chars, want %d -> %r"
+                            % (key, y, len(r), TILE, r))
             bad = set(r) - set(room.PALETTE) - {"."}
             if bad:
-                msgs.append("tile %s row %d: not in palette: %s"
+                msgs.append("%s row %d: not in palette: %s"
                             % (key, y, "".join(sorted(bad))))
 
+    for name, o in room.OBJECTS.items():
+        if len(o["tiles"]) != o["w"] * o["h"]:
+            msgs.append("object %s: %d tiles, want %dx%d = %d"
+                        % (name, len(o["tiles"]), o["w"], o["h"], o["w"] * o["h"]))
+
     for name, spec in room.ROOMS.items():
-        for layer in ("bg", "obj"):
-            grid = spec[layer]
-            if len(grid) != spec["rows"]:
-                msgs.append("%s.%s: %d rows, want %d"
-                            % (name, layer, len(grid), spec["rows"]))
-            for y, line in enumerate(grid):
-                if len(line) != spec["cols"]:
-                    msgs.append("%s.%s row %d: %d tiles, want %d -> %r"
-                                % (name, layer, y, len(line), spec["cols"], line))
-                # bg 不准有透明格：破洞會露出底色，那不是設計，那是漏鋪
-                allowed = set(room.TILES) | ({"."} if layer == "obj" else set())
-                bad = set(line) - allowed
-                if bad:
-                    msgs.append("%s.%s row %d: unknown tile: %s"
-                                % (name, layer, y, "".join(sorted(bad))))
-        msgs.append("%-5s %dx%d px, %d tiles, cat %.1f%% of width"
-                    % (name, spec["cols"] * 16, spec["rows"] * 16,
-                       spec["cols"] * spec["rows"], 100.0 / spec["cols"]))
+        grid = spec["bg"]
+        if len(grid) != spec["rows"]:
+            msgs.append("%s.bg: %d rows, want %d" % (name, len(grid), spec["rows"]))
+        for y, line in enumerate(grid):
+            if len(line) != spec["cols"]:
+                msgs.append("%s.bg row %d: %d tiles, want %d -> %r"
+                            % (name, y, len(line), spec["cols"], line))
+            # bg 不准有透明格：破洞會露出底色，那不是設計，那是漏鋪
+            bad = set(line) - set(room.TILES)
+            if bad:
+                msgs.append("%s.bg row %d: unknown tile: %s"
+                            % (name, y, "".join(sorted(bad))))
+
+        # 物件超出房間就會被默默切掉——圖上看起來像少畫了一塊，不像放錯位置
+        for oname, ox, oy in spec["place"]:
+            if oname not in room.OBJECTS:
+                msgs.append("%s.place: no such object: %s" % (name, oname))
+                continue
+            o = room.OBJECTS[oname]
+            if ox < 0 or oy < 0 or ox + o["w"] > spec["cols"] or oy + o["h"] > spec["rows"]:
+                msgs.append("%s.place %s at (%d,%d) %dx%d: outside the room"
+                            % (name, oname, ox, oy, o["w"], o["h"]))
+
+        msgs.append("%-5s %dx%d px, %d tiles, %d objects, cat %.1f%% of width"
+                    % (name, spec["cols"] * TILE, spec["rows"] * TILE,
+                       spec["cols"] * spec["rows"], len(spec["place"]),
+                       100.0 / spec["cols"]))
+        msgs += lint_contrast(name)
 
     used = set()
-    for tile in room.TILES.values():
+    for _, tile in all_tiles():
         for r in tile:
             used |= set(r)
     used -= {"."}
@@ -446,11 +707,12 @@ def check_rigid_head():
 def lint():
     msgs = []
     for name, rows in disi.FRAMES.items():
-        if len(rows) != 16:
-            msgs.append("%s: %d rows, want 16" % (name, len(rows)))
+        if len(rows) != CELL:
+            msgs.append("%s: %d rows, want %d" % (name, len(rows), CELL))
         for y, r in enumerate(rows):
-            if len(r) != 16:
-                msgs.append("%s row %d: %d chars, want 16 -> %r" % (name, y, len(r), r))
+            if len(r) != CELL:
+                msgs.append("%s row %d: %d chars, want %d -> %r"
+                            % (name, y, len(r), CELL, r))
             bad = set(r) - set(PAL) - {"."}
             if bad:
                 msgs.append("%s row %d: not in palette: %s" % (name, y, "".join(sorted(bad))))
@@ -462,7 +724,7 @@ def lint():
 
         for y in range(len(rows)):
             for x in range(len(rows[y])):
-                if at(x, y) == "." or len(rows[y]) != 16:
+                if at(x, y) == "." or len(rows[y]) != CELL:
                     continue
                 if all(at(*p) == "." for p in
                        [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]):
@@ -476,9 +738,10 @@ def lint():
         for i, name in enumerate(seq):
             prev = seq[i - 1]
             a, b = disi.FRAMES[prev], disi.FRAMES[name]
-            if any(len(r) != 16 for r in a + b):
+            if any(len(r) != CELL for r in a + b):
                 continue
-            diff = sum(1 for y in range(16) for x in range(16) if a[y][x] != b[y][x])
+            diff = sum(1 for y in range(CELL) for x in range(CELL)
+                       if a[y][x] != b[y][x])
             if name in shifted or prev in shifted:
                 tag = "   (deliberate shift)"
             else:
@@ -506,10 +769,11 @@ if __name__ == "__main__":
     room_problems = lint_room()
     print("\n".join(room_problems))
 
+    # 這幾個關鍵字是「圖會壞掉」的錯，不是「圖不好看」。
+    # CONTRAST 也在裡面：地板亮到把貓吃掉，畫面是壞的，只是壞在看不見。
     fatal = [m for m in problems + room_problems
-             if "want 16" in m or "not in palette" in m
-             or "want %d" in m or "unknown tile" in m or "tiles, want" in m
-             or "rows, want" in m]
+             if "not in palette" in m or "unknown tile" in m
+             or ", want" in m or "outside the room" in m or "CONTRAST" in m]
     if fatal:
         sys.exit("\nfix the map first, nothing rendered")
 
@@ -518,10 +782,14 @@ if __name__ == "__main__":
     build_squint()
     build_anim()
     build_rooms()
+    build_room_light()
+    write_room_data()
     build_room_tiles()
     build_room_view()
     build_room_tod()
     gifs = " ".join("%s.gif" % n for n, _, _ in sequences())
     rooms = " ".join("room-%s.png" % n for n in room.ROOMS)
     print("\nwrote disi-16.png / proof.png / squint.png / " + gifs)
-    print("wrote " + rooms + " / room-tiles.png / room-view.png / room-tod.png")
+    print("wrote " + rooms + " / room-light.png / room-tiles.png"
+          " / room-view.png / room-tod.png")
+    print("wrote ../room-data.js")

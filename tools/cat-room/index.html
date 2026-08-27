@@ -14,7 +14,7 @@
   <link rel="preload" as="font" type="font/woff2" href="../../fonts/space-grotesk-latin.woff2" crossorigin />
   <script src="../../theme.js?v=1"></script>
   <link rel="stylesheet" href="../../style.css?v=8" />
-  <link rel="stylesheet" href="style.css?v=7" />
+  <link rel="stylesheet" href="style.css?v=8" />
 </head>
 <body>
   <header class="hero">
@@ -45,10 +45,14 @@
       -->
       <div class="room" id="room" data-tod="day">
         <!--
-          牆、地板、窗、桌子、碗都畫在 art/room-pano.png 裡了，不再是一堆 div。
+          牆、地板、屋頂、窗、碗都畫在 art/room-pano.png 裡了，不再是一堆 div。
           留在這裡的只有「會變的東西」：光束、碗裡的飼料、貓。
-          疊圖順序改用 z-index 明寫（光束 1、貓 2、時段色片 3），
+          疊圖順序改用 z-index 明寫（光束 1、貓 2、時段色片 3、發光層 4），
           因為時段那層要蓋在貓上面，靠 DOM 順序排不出來。
+
+          時段色片與發光層都是 .room 的虛擬元素（::before / ::after），
+          所以這裡看不到它們。那是刻意的：它們沒有任何內容也不能被點，
+          放成真的 div 只會多兩個永遠不會被讀到的節點。
         -->
         <div class="room-beam" aria-hidden="true"></div>
         <div class="bowl" id="bowl" aria-hidden="true"></div>
@@ -90,6 +94,12 @@
   <script src="cat.js?v=1"></script>
   <script src="save.js?v=1"></script>
   <script src="sprites.js?v=4"></script>
-  <script src="script.js?v=10"></script>
+  <!--
+    room-data.js 是 art/pixel.py 從磚號表產的，不要手改。
+    一定要排在 script.js **前面**：那支開頭就會讀 window.RoomData 算
+    地板範圍與碗的座標，讀不到會退回上一版房間的數字，貓就走錯地方。
+  -->
+  <script src="room-data.js?v=1"></script>
+  <script src="script.js?v=11"></script>
 </body>
 </html>
