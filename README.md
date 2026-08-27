@@ -86,6 +86,7 @@ multiply 推不出比底色更亮的東西，夜裡的窗就是靠 screen 那層
 | `art/disi.py` | 貓的像素資料，一格一個字元的地圖 + 七色調色盤。**改貓只改這支** |
 | `art/room.py` | 房間的磚組 + 磚號表 + 22 色調色盤。**改房間只改這支** |
 | `art/pixel.py` | 兩邊都算成 PNG，另外吐校對圖、GIF、`room-data.js`、跑 lint |
+| `art/SIZES.md` | 每張圖多大、一格多大、哪個物件佔哪幾格。**要講「改哪裡」之前先翻這張** |
 
 ```
 cd tools/cat-room/art && python pixel.py     （要 Pillow）
