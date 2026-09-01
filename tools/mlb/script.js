@@ -36,7 +36,12 @@ const MLB = (function () {
 
   const summaryEl = document.getElementById("summary");
   const stampEl = document.getElementById("stamp");
-  const tabsEl = document.getElementById("tabs");
+  const navItemsEl = document.getElementById("nav-items");
+  const menuBtn = document.getElementById("menu-btn");
+  const menuLabel = document.getElementById("menu-label");
+  const drawer = document.getElementById("nav-drawer");
+  const scrim = document.getElementById("nav-scrim");
+  const drawerClose = document.getElementById("drawer-close");
   const boardEl = document.getElementById("board");
   const teamSelect = document.getElementById("team-select");
   const watchSection = document.getElementById("watch-section");
@@ -513,15 +518,14 @@ const MLB = (function () {
     return 0;
   }
 
-  function renderTabs() {
-    tabsEl.innerHTML = "";
+  function renderNav() {
+    navItemsEl.innerHTML = "";
     TABS.forEach(function (tab) {
-      const btn = el("button", "chip" + (tab.id === activeTab ? " is-active" : ""));
+      const btn = el("button", "nav-item" + (tab.id === activeTab ? " is-active" : ""));
       btn.type = "button";
-      btn.setAttribute("role", "tab");
-      btn.setAttribute("aria-selected", tab.id === activeTab ? "true" : "false");
-      btn.appendChild(document.createTextNode(tab.label));
-      btn.appendChild(el("span", "chip-count", countFor(tab.id)));
+      btn.setAttribute("aria-current", tab.id === activeTab ? "true" : "false");
+      btn.appendChild(el("span", null, tab.label));
+      btn.appendChild(el("span", "nav-count", countFor(tab.id)));
       btn.addEventListener("click", function () {
         activeTab = tab.id;
         try {
@@ -529,11 +533,74 @@ const MLB = (function () {
         } catch (err) {
           /* 無痕模式寫不進去，記不住分頁而已，不影響其他功能 */
         }
+        closeDrawer();
         render();
       });
-      tabsEl.appendChild(btn);
+      navItemsEl.appendChild(btn);
     });
   }
+
+  /* ---------- 抽屜 ---------- */
+
+  let drawerOpen = false;
+  let closeTimer = null;
+
+  function openDrawer() {
+    if (drawerOpen) return;
+    drawerOpen = true;
+    clearTimeout(closeTimer);
+
+    scrim.hidden = false;
+    drawer.hidden = false;
+    /*
+     * hidden 等於 display:none，而 display 一變 transition 就不會跑。
+     * 讀一次 offsetWidth 逼瀏覽器先算一次版面，滑入才會從 -100% 開始動。
+     */
+    void drawer.offsetWidth;
+    scrim.classList.add("is-open");
+    drawer.classList.add("is-open");
+    menuBtn.setAttribute("aria-expanded", "true");
+
+    // 開了就把焦點送進去，不然鍵盤使用者的下一個 Tab 會跑到抽屜後面的東西
+    const active = navItemsEl.querySelector(".nav-item.is-active");
+    (active || navItemsEl.querySelector(".nav-item") || drawerClose).focus();
+  }
+
+  function closeDrawer(returnFocus) {
+    if (!drawerOpen) return;
+    drawerOpen = false;
+
+    scrim.classList.remove("is-open");
+    drawer.classList.remove("is-open");
+    menuBtn.setAttribute("aria-expanded", "false");
+
+    /*
+     * 等滑出去了才 hidden，不然會瞬間消失沒有收合的動作。
+     * 不聽 transitionend 是因為 prefers-reduced-motion 之下沒有過場、
+     * 那個事件永遠不會來，抽屜就會一直留在 DOM 裡擋著 Tab 順序。
+     */
+    clearTimeout(closeTimer);
+    closeTimer = setTimeout(function () {
+      scrim.hidden = true;
+      drawer.hidden = true;
+    }, 200);
+
+    // 只有用鍵盤關的時候才把焦點送回按鈕；點選單項目是要去看內容的
+    if (returnFocus) menuBtn.focus();
+  }
+
+  menuBtn.addEventListener("click", function () {
+    drawerOpen ? closeDrawer(true) : openDrawer();
+  });
+  drawerClose.addEventListener("click", function () {
+    closeDrawer(true);
+  });
+  scrim.addEventListener("click", function () {
+    closeDrawer();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && drawerOpen) closeDrawer(true);
+  });
 
   function renderTeamOptions() {
     const groups = {};
@@ -567,12 +634,15 @@ const MLB = (function () {
   }
 
   function render() {
-    renderTabs();
+    renderNav();
     renderWatch();
 
     const tab = TABS.filter(function (t) {
       return t.id === activeTab;
     })[0];
+
+    // 選單收起來之後，按鈕上這行字是唯一還看得到「現在在哪一區」的地方
+    menuLabel.textContent = tab ? tab.label : "選單";
 
     // 新聞沒有球隊欄位，篩選對它沒有意義，所以那一頁把選單停掉
     teamSelect.disabled = !(tab && tab.team);

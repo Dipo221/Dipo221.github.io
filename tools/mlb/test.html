@@ -38,10 +38,20 @@
     所以這裡放一份同 id 的替身讓它跑起來，再餵測資進去驗畫出來的結果。
     藏起來是因為這頁要看的是上面的 PASS/FAIL，不是渲染結果本身。
   -->
-  <div hidden id="stage">
+  <!--
+    這個替身不能用 hidden——display:none 的東西沒辦法接焦點，
+    抽屜那幾條「焦點有沒有送進去」的測試會全部量到 body。
+    改成挪到畫面外，一樣看不到，但還在算版面、還能 focus。
+  -->
+  <div id="stage" style="position:absolute; left:-9999px; top:0; width:600px;">
     <p id="summary"></p>
     <p id="stamp"></p>
-    <div id="tabs"></div>
+    <button id="menu-btn" aria-expanded="false"><span id="menu-label"></span></button>
+    <div id="nav-scrim" hidden></div>
+    <nav id="nav-drawer" hidden>
+      <button id="drawer-close"></button>
+      <div id="nav-items"></div>
+    </nav>
     <select id="team-select"></select>
     <section id="watch-section">
       <span id="watch-count"></span>
@@ -52,7 +62,7 @@
 
   <footer class="container"><p><a href="./">← 回工具</a></p></footer>
 
-  <script src="script.js?v=2"></script>
+  <script src="script.js?v=3"></script>
   <script>
     const out = document.getElementById("out");
     let passed = 0;
@@ -202,14 +212,21 @@
     const board = document.getElementById("board");
     const watch = document.getElementById("watch");
     const teamSelect = document.getElementById("team-select");
-    const tabs = document.getElementById("tabs");
+    const tabs = document.getElementById("nav-items");
+    const menuBtn = document.getElementById("menu-btn");
+    const drawer = document.getElementById("nav-drawer");
+    const scrim = document.getElementById("nav-scrim");
 
     function showTab(label) {
-      const btn = Array.prototype.filter.call(tabs.querySelectorAll(".chip"), (b) =>
+      const btn = Array.prototype.filter.call(tabs.querySelectorAll(".nav-item"), (b) =>
         b.textContent.indexOf(label) === 0
       )[0];
-      if (!btn) throw new Error("找不到分頁：" + label);
+      if (!btn) throw new Error("找不到區塊：" + label);
       btn.click();
+    }
+
+    function esc() {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     }
 
     function pickTeam(id) {
@@ -233,10 +250,48 @@
 
     /* ---------------------------------------------------------- */
 
-    group("分頁");
+    group("選單");
     {
-      check("六個分頁都在", tabs.querySelectorAll(".chip").length, 6);
-      check("分頁上帶筆數（傷兵名單 3 人）", /3/.test(tabs.querySelectorAll(".chip")[1].textContent), true);
+      check("六個區塊都在", tabs.querySelectorAll(".nav-item").length, 6);
+      check("選單上帶筆數（傷兵名單 3 人）", /3/.test(tabs.querySelectorAll(".nav-item")[1].textContent), true);
+      // 選單收起來之後，按鈕上這行字是唯一還看得到「現在在哪」的地方
+      showTab("強擊球");
+      check("按鈕跟著顯示目前這一區", document.getElementById("menu-label").textContent, "強擊球");
+      showTab("傷兵異動");
+      check("換一區就跟著換", document.getElementById("menu-label").textContent, "傷兵異動");
+    }
+
+    group("抽屜開關");
+    {
+      check("一開始是收起來的", drawer.hidden, true);
+      check("一開始 aria-expanded 是 false", menuBtn.getAttribute("aria-expanded"), "false");
+
+      menuBtn.click();
+      check("按漢堡會打開", drawer.hidden, false);
+      check("遮罩跟著出來", scrim.hidden, false);
+      check("打開時 aria-expanded 是 true", menuBtn.getAttribute("aria-expanded"), "true");
+      check("焦點送進抽屜裡", drawer.contains(document.activeElement), true);
+      check("焦點落在目前這一區", document.activeElement.classList.contains("is-active"), true);
+
+      esc();
+      check("Esc 會關掉", menuBtn.getAttribute("aria-expanded"), "false");
+      check("Esc 關掉後焦點回到漢堡鈕", document.activeElement, menuBtn);
+
+      menuBtn.click();
+      scrim.click();
+      check("點遮罩也會關", menuBtn.getAttribute("aria-expanded"), "false");
+
+      menuBtn.click();
+      showTab("新聞");
+      check("選了項目就自動收起來", menuBtn.getAttribute("aria-expanded"), "false");
+      check("而且真的切過去了", /新聞/.test(document.querySelector("#board h2").textContent), true);
+
+      // 沒開的時候按 Esc 不能有反應，不然會把焦點硬搶到漢堡鈕上
+      const before = document.activeElement;
+      esc();
+      check("沒開的時候 Esc 不做事", document.activeElement, before);
+
+      showTab("傷兵異動");
     }
 
     group("傷兵異動");

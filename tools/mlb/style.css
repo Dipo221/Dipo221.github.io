@@ -71,53 +71,189 @@ h2 .count {
   margin-bottom: 22px;
 }
 
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  flex: 1 1 auto;
-}
-
-.chip {
+/*
+ * 漢堡按鈕。沿用原本 chip 的手感（pill、7px 邊距、0.15s 過場），
+ * 只是把六個並排的分頁收成一顆。旁邊那行字是目前在看哪一區——
+ * 選單收起來之後，不寫的話就沒有東西告訴使用者現在在哪。
+ */
+.menu-btn {
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
+  gap: 9px;
+  /*
+   * 44px 是手指的下限，而這是整頁最主要的導覽控制項。
+   * 用 min-height 而不是把 padding 調到剛好——旁邊的球隊選單字級不一樣，
+   * 靠 padding 湊高度兩顆永遠差幾 px，寫死同一個 min-height 才對得齊。
+   */
+  min-height: 44px;
+  padding: 6px 15px 6px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--bg-elevated);
   color: var(--text);
   cursor: pointer;
-  transition: border-color var(--speed), background var(--speed), color var(--speed);
+  flex: 0 0 auto;
+  transition: border-color var(--speed);
 }
 
-.chip:hover {
+.menu-btn:hover {
   border-color: var(--accent);
 }
 
-.chip:focus-visible {
+.menu-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.chip.is-active {
+.menu-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+/*
+ * 遮罩。抽屜開著的時候把後面壓暗，順便接住「點旁邊關掉」這個動作。
+ * 兩個主題都用黑色半透明——淺色主題要的一樣是壓暗，壓亮會看不出層次。
+ */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity var(--speed);
+}
+
+.scrim.is-open {
+  opacity: 1;
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 21;
+  width: min(280px, 82vw);
+  height: 100%;
+  padding: 20px 16px;
+  overflow-y: auto;
+  background: var(--bg-elevated);
+  border-right: 1px solid var(--border);
+  transform: translateX(-100%);
+  transition: transform var(--speed);
+}
+
+.drawer.is-open {
+  transform: translateX(0);
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.drawer-title {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0;
+}
+
+.drawer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Esc 跟點遮罩都能關，但這顆還是要點得到 */
+  width: 44px;
+  height: 44px;
+  /* 抽屜右邊只有 16px，往右推 10px 讓叉叉的視覺重心貼齊邊界 */
+  margin-right: -10px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color var(--speed), background var(--speed);
+}
+
+.drawer-close svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.drawer-close:hover {
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+.drawer-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.nav-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-item {
+  font: inherit;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  /* 直排之後高度就是點擊區，44px 是手指的下限 */
+  padding: 11px 12px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--speed);
+}
+
+.nav-item:hover {
+  background: var(--accent-soft);
+}
+
+.nav-item:focus-visible {
+  /* 往內縮。抽屜左右只留 16px，往外描的框會被抽屜邊緣切掉 */
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.nav-item.is-active {
   background: var(--accent);
-  border-color: var(--accent);
   color: var(--accent-ink);
   font-weight: 600;
 }
 
-.chip-count {
-  font-size: 0.72rem;
+.nav-count {
+  font-size: 0.78rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
-.chip.is-active .chip-count {
+.nav-item.is-active .nav-count {
   color: var(--accent-ink);
-  opacity: 0.7;
+  opacity: 0.75;
 }
 
 .team-filter {
@@ -131,7 +267,9 @@ h2 .count {
 .team-filter select {
   font: inherit;
   font-size: 0.85rem;
-  padding: 7px 12px;
+  /* 跟漢堡鈕同一個 min-height，兩顆並排才對得齊 */
+  min-height: 44px;
+  padding: 6px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--bg-elevated);
@@ -343,7 +481,14 @@ a.card:focus-visible {
     align-items: stretch;
   }
 
+  /*
+   * 窄螢幕讓球隊選單自己佔一整排。
+   * 不寫這條的話 375px 剛好差 4px 擠不下、還是會換行，
+   * 但寬度是內容撐出來的 232px——看起來像壞掉，不像刻意。
+   * 佔滿一排順便讓球隊名有地方顯示（"Arizona Diamondbacks" 很長）。
+   */
   .team-filter {
+    flex: 1 1 100%;
     justify-content: space-between;
   }
 
@@ -359,10 +504,18 @@ a.card:focus-visible {
   }
 }
 
+/*
+ * 抽屜的滑入是這頁唯一比較大的動作，關掉之後要能瞬間到位、不能變成不會開。
+ * JS 那邊的收合有一道 timeout 保險，就是為了這裡沒有 transitionend 可聽。
+ */
 @media (prefers-reduced-motion: reduce) {
-  .chip,
+  .menu-btn,
   .card,
-  .team-filter select {
+  .team-filter select,
+  .nav-item,
+  .drawer-close,
+  .scrim,
+  .drawer {
     transition: none;
   }
 

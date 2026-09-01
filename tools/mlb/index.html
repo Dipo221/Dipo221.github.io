@@ -13,7 +13,7 @@
   <link rel="preload" as="font" type="font/woff2" href="../../fonts/space-grotesk-latin.woff2" crossorigin />
   <script src="../../theme.js?v=1"></script>
   <link rel="stylesheet" href="../../style.css?v=8" />
-  <link rel="stylesheet" href="style.css?v=2" />
+  <link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
   <header class="hero hero-compact">
@@ -32,7 +32,16 @@
     </section>
 
     <div class="controls">
-      <div id="tabs" class="filters" role="tablist"></div>
+      <button id="menu-btn" class="menu-btn" type="button" aria-expanded="false" aria-controls="nav-drawer">
+        <!-- 三條線本身沒有語意，用 aria-hidden 藏起來，讓讀螢幕的人只聽到旁邊那行字 -->
+        <svg class="menu-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+          <line x1="3" y1="6" x2="17" y2="6" />
+          <line x1="3" y1="10" x2="17" y2="10" />
+          <line x1="3" y1="14" x2="17" y2="14" />
+        </svg>
+        <span id="menu-label">傷兵異動</span>
+      </button>
+
       <div class="team-filter">
         <label for="team-select">球隊</label>
         <select id="team-select">
@@ -40,6 +49,24 @@
         </select>
       </div>
     </div>
+
+    <!--
+      抽屜跟遮罩放在 main 外面（footer 之後）會比較好管 z-index，
+      但那樣鍵盤 Tab 的順序會跟畫面對不起來，所以留在觸發它的按鈕附近。
+    -->
+    <div id="nav-scrim" class="scrim" hidden></div>
+    <nav id="nav-drawer" class="drawer" aria-label="區塊選單" hidden>
+      <div class="drawer-head">
+        <h2 class="drawer-title">看哪一區</h2>
+        <button id="drawer-close" class="drawer-close" type="button" aria-label="關閉選單">
+          <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+            <line x1="5" y1="5" x2="15" y2="15" />
+            <line x1="15" y1="5" x2="5" y2="15" />
+          </svg>
+        </button>
+      </div>
+      <div id="nav-items" class="nav-items"></div>
+    </nav>
 
     <div id="board" class="board"></div>
 
@@ -59,6 +86,6 @@
     </p>
   </footer>
 
-  <script src="script.js?v=2"></script>
+  <script src="script.js?v=3"></script>
 </body>
 </html>
