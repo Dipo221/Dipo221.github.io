@@ -1,0 +1,92 @@
+# 每小時把 MLB 的傷兵、異動、強擊球、連勝連敗抓下來，整理成 tools/mlb/data.json。
+#
+# 前端只讀這份靜態 JSON，不在瀏覽器打 statsapi——避免 CORS，
+# 也不會每個訪客都去敲一次別人的 API。
+name: MLB 資料更新
+
+on:
+  schedule:
+    # GitHub 的 cron 是 UTC，而且整點排隊很嚴重，所以錯開到 17 分。
+    # 尖峰時段照樣可能延遲 5–20 分鐘，這對每小時更新的用途沒差，別當成準點。
+    - cron: "17 * * * *"
+  # 手動觸發：第一次回填（約 190 場 playByPlay）用這個跑，別讓它撞在排程上
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# 上一輪還沒跑完就不要開下一輪，兩個 job 同時 commit 會打架。
+# 不取消進行中的那個——它可能正在回填，中斷了下一輪還是要重抓。
+concurrency:
+  group: mlb-fetch
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    # 首次回填要抓一百多場，預設的 6 小時太寬鬆，正常一輪一兩分鐘就結束
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 全部只用標準函式庫，沒有 requirements.txt 要裝
+
+      # 強擊球快取放 Actions cache，不進版控。
+      #
+      # 它是純建置產物：前端只讀 data.json，從來不讀這個檔。
+      # 壓縮後仍有 53 KB，每小時 commit 一次是一年 0.45 GB 的純雜訊，
+      # 對一個 Pages repo 來說太重了。
+      #
+      # key 帶 run_id 所以每輪都是 miss，restore-keys 再用前綴撈回上一輪那份。
+      # 這是 actions/cache 的滾動快取寫法。
+      # 真的沒撈到也不會壞，fetch.py 會自己把整個 14 天視窗重抓一次。
+      #
+      # 刻意拆成 restore / save 兩步而不是用合一的 actions/cache：
+      # 合一版只在 job 成功時才存，抓到一半失敗的話那些已經抓好的場次就白費了，
+      # 下一輪還得從頭回填。快取是依 gamePk 存的、每一筆都是完整的，
+      # 半途而廢的那份一樣有價值，所以用 always() 無論成敗都存回去。
+      - name: 取回強擊球快取
+        uses: actions/cache/restore@v4
+        with:
+          path: tools/mlb/data/hardhit-cache.json
+          key: mlb-hardhit-${{ github.run_id }}
+          restore-keys: |
+            mlb-hardhit-
+
+      # 解析 IL 描述的純函式測試。這裡先擋下來，
+      # 免得 parser 壞掉還把爛資料 commit 上去。
+      - name: 跑 parser 測試
+        run: python scripts/mlb/test_parse.py
+
+      - name: 抓資料
+        run: python scripts/mlb/fetch.py
+
+      # hashFiles 在檔案不存在時回空字串。少了這個判斷，
+      # 萬一 fetch.py 在還沒寫快取前就失敗，cache/save 會因為找不到檔案再紅一次，
+      # 掩蓋掉真正的錯誤在哪一步。
+      - name: 存回強擊球快取
+        if: always() && hashFiles('tools/mlb/data/hardhit-cache.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: tools/mlb/data/hardhit-cache.json
+          key: mlb-hardhit-${{ github.run_id }}
+
+      # fetch.py 內容沒變就不會重寫檔案，所以這裡用 git diff 判斷就夠。
+      # 少了這個判斷每天會多 24 個空 commit，一年近 9000 個。
+      - name: 有變動才 commit
+        run: |
+          if [ -z "$(git status --porcelain tools/mlb/data.json)" ]; then
+            echo "資料沒有變動，這輪不 commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/mlb/data.json
+          git commit -m "chore: 更新 MLB 資料 $(date -u '+%Y-%m-%d %H:%M UTC')"
+          # 排程之間有人手動 push 的話直接 push 會被拒，先 rebase 再重試一次
+          git push || (git pull --rebase --autostash && git push)

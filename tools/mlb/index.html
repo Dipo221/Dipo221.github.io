@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MLB 追蹤</title>
+  <meta name="description" content="傷兵名單、新秀登板、強擊球排行——給 fantasy baseball 用的" />
+  <!--
+    theme.js 要排在樣式表前面，而且不能加 defer——
+    data-theme 必須在第一次 paint 之前設好，晚一步就會閃一下深色。
+    ?v= 是給瀏覽器快取用的版本號，改到這些檔案時記得一起加一。
+  -->
+  <link rel="preload" as="font" type="font/woff2" href="../../fonts/space-grotesk-latin.woff2" crossorigin />
+  <script src="../../theme.js?v=1"></script>
+  <link rel="stylesheet" href="../../style.css?v=8" />
+  <link rel="stylesheet" href="style.css?v=2" />
+</head>
+<body>
+  <header class="hero hero-compact">
+    <div class="container">
+      <h1>MLB 追蹤</h1>
+      <p class="tagline" id="summary">載入中⋯</p>
+      <p class="stamp" id="stamp"></p>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- 關注名單永遠置頂，不受下面的分頁切換影響。名單裡沒人被點到時整段收起來 -->
+    <section id="watch-section" hidden>
+      <h2>關注名單 <span class="count" id="watch-count"></span></h2>
+      <div id="watch" class="cards"></div>
+    </section>
+
+    <div class="controls">
+      <div id="tabs" class="filters" role="tablist"></div>
+      <div class="team-filter">
+        <label for="team-select">球隊</label>
+        <select id="team-select">
+          <option value="">全部球隊</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="board" class="board"></div>
+
+    <p class="disclaimer">
+      「最快可回歸」是用 IL 天數與起算日算出來的最早有資格被啟動的日期，
+      不是預計回歸日——實際回歸時間要看新聞。
+    </p>
+  </main>
+
+  <footer class="container">
+    <p><a href="../../">← 回首頁</a></p>
+    <p class="source">
+      資料來源
+      <a href="https://statsapi.mlb.com/" rel="noopener">MLB Stats API</a>
+      · © MLB Advanced Media，使用即表示同意其
+      <a href="http://gdx.mlb.com/components/copyright.txt" rel="noopener">使用條款</a>
+    </p>
+  </footer>
+
+  <script src="script.js?v=2"></script>
+</body>
+</html>

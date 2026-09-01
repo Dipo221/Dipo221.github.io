@@ -2,3 +2,11 @@
 # 但 skills/ 是這個專案的設計規則，要跟著 repo 走
 .claude/*
 !.claude/skills/
+
+# 強擊球的增量快取是建置產物，前端不讀它，只有抓取腳本自己用。
+# 壓縮後還有 53 KB，每小時 commit 一次一年就是 0.45 GB 的雜訊，
+# 所以放 Actions cache（見 .github/workflows/mlb.yml），不進版控。
+tools/mlb/data/
+
+# Python 的位元碼快取
+__pycache__/

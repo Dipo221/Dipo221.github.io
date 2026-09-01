@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>script.js 測試</title>
+  <!--
+    沒有 build step 也沒有 node，所以測試就是一個網頁：打開就跑，紅的就是壞了。
+    測資的形狀直接照抄 data.json 真實的欄位，數字也用實際跑出來的
+    （Buxton 8/27 起算的 10 天 IL、Tatis 近 14 天 28 支強擊球）。
+
+    測試頁刻意不載 theme.js：底下的 summary 顏色是配深色底寫死的，
+    跟著切成淺色反而讀不出紅綠。這頁固定深色就好。
+  -->
+  <link rel="stylesheet" href="../../style.css?v=8" />
+  <style>
+    body { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+    .summary { padding: 12px 16px; border-radius: 8px; font-weight: 700; margin: 16px 0; }
+    .summary.pass { background: rgba(110, 231, 168, 0.15); color: #6ee7a8; }
+    .summary.fail { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+    .group { margin-top: 22px; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+    .case { padding: 3px 0 3px 44px; position: relative; font-size: 0.88rem; line-height: 1.5; }
+    .case::before { position: absolute; left: 0; top: 4px; font-size: 0.62rem; }
+    .case.ok::before { content: "PASS"; color: #6ee7a8; }
+    .case.no::before { content: "FAIL"; color: #f87171; }
+    .case.no { background: rgba(248, 113, 113, 0.1); }
+    .detail { color: #f87171; padding-left: 44px; font-size: 0.82rem; }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="container"><h1>script.js 測試</h1></div>
+  </header>
+  <main class="container" id="out"></main>
+
+  <!--
+    script.js 在載入當下就會抓這些元素、綁事件，少一個就整包掛掉，
+    所以這裡放一份同 id 的替身讓它跑起來，再餵測資進去驗畫出來的結果。
+    藏起來是因為這頁要看的是上面的 PASS/FAIL，不是渲染結果本身。
+  -->
+  <div hidden id="stage">
+    <p id="summary"></p>
+    <p id="stamp"></p>
+    <div id="tabs"></div>
+    <select id="team-select"></select>
+    <section id="watch-section">
+      <span id="watch-count"></span>
+      <div id="watch"></div>
+    </section>
+    <div id="board"></div>
+  </div>
+
+  <footer class="container"><p><a href="./">← 回工具</a></p></footer>
+
+  <script src="script.js?v=2"></script>
+  <script>
+    const out = document.getElementById("out");
+    let passed = 0;
+    let failed = 0;
+
+    function group(title) {
+      const el = document.createElement("div");
+      el.className = "group";
+      el.textContent = title;
+      out.appendChild(el);
+    }
+
+    function check(label, actual, expected) {
+      const same = JSON.stringify(actual) === JSON.stringify(expected);
+      same ? passed++ : failed++;
+
+      const el = document.createElement("div");
+      el.className = "case " + (same ? "ok" : "no");
+      el.textContent = label;
+      out.appendChild(el);
+
+      if (!same) {
+        const d = document.createElement("div");
+        d.className = "detail";
+        d.textContent = `預期 ${JSON.stringify(expected)}，實際 ${JSON.stringify(actual)}`;
+        out.appendChild(d);
+      }
+    }
+
+    /* ---------------------------------------------------------- */
+
+    group("normalizeName：關注名單要對得起來");
+    {
+      const n = MLB.normalizeName;
+      // 這函式存在的唯一理由：watchlist 用純 ASCII 打，資料源是帶重音的
+      check("重音去掉", n("Ronald Acuña Jr."), "ronald acuna jr");
+      check("沒重音的寫法算出一樣的結果", n("Ronald Acuna Jr."), n("Ronald Acuña Jr."));
+      check("大小寫不影響", n("AARON JUDGE"), "aaron judge");
+      check("句點逗號去掉", n("Luis L. Ortiz"), "luis l ortiz");
+      check("彎引號跟直引號一樣", n("Logan O’Hoppe"), n("Logan O'Hoppe"));
+      check("多餘空白收成一個", n("  Cal   Raleigh  "), "cal raleigh");
+      check("兩種重音寫法都要收斂", n("José Ramírez"), "jose ramirez");
+      check("空值不爆掉", n(null), "");
+      check("不同人不能被歸成同一個", n("Will Smith") === n("Will Smith Jr."), false);
+    }
+
+    group("shortDate：不要因為時區跳掉一天");
+    {
+      const d = MLB.shortDate;
+      // new Date('2026-08-31') 會被當 UTC 午夜，在台北顯示會變成 8/30
+      check("2026-08-31 → 8/31", d("2026-08-31"), "8/31");
+      check("開頭的 0 去掉", d("2026-09-06"), "9/6");
+      check("元旦不會變成前一年 12/31", d("2026-01-01"), "1/1");
+      check("空值回空字串", d(""), "");
+      check("看不懂的格式原樣吐回來", d("九月"), "九月");
+    }
+
+    group("returnLabel：只講「最快」，不講「預計」");
+    {
+      const r = MLB.returnLabel;
+      check("還有 5 天（Buxton 實例）", r("2026-09-06", 5), "最快 9/6 可回歸（還有 5 天）");
+      check("剩 1 天講明天", r("2026-09-02", 1), "最快明天可回歸");
+      check("今天就可以", r("2026-09-01", 0), "已可回歸");
+      check("早就過了也是已可回歸", r("2026-08-20", -12), "已可回歸");
+      check("不知道還有幾天就只講日期", r("2026-09-06", null), "最快 9/6 可回歸");
+      check("算不出日期就整句不講", r(null, 3), "");
+      // 標籤絕對不能寫成「預計」——這是規則算出來的最早資格日，不是傷勢預估
+      check("文案不含「預計」", /預計/.test(r("2026-09-06", 5)), false);
+    }
+
+    /* ---------------------------------------------------------- */
+
+    const TEAMS = [
+      { id: 142, name: "Minnesota Twins", abbr: "MIN", league: "American League", division: "AL Central" },
+      { id: 143, name: "Philadelphia Phillies", abbr: "PHI", league: "National League", division: "NL East" },
+      { id: 136, name: "Seattle Mariners", abbr: "SEA", league: "American League", division: "AL West" },
+    ];
+
+    const DATA = {
+      generatedAt: "2026-09-01T15:15:07Z",
+      season: 2026,
+      windows: { moves: 7, hardHit: 14, callups: 14 },
+      teams: TEAMS,
+      ilMoves: [
+        {
+          playerId: 621439, name: "Byron Buxton", teamId: 142, date: "2026-08-29",
+          action: "placed", listKind: "injured list", days: 10,
+          injury: "Right hip impingement.", earliestReturn: "2026-09-06",
+          description: "placed CF Byron Buxton on the 10-day injured list retroactive to August 27, 2026.",
+        },
+        {
+          playerId: 700001, name: "Comeback Kid", teamId: 143, date: "2026-08-30",
+          action: "activated", listKind: "injured", days: 10,
+          injury: "", earliestReturn: null, description: "activated Comeback Kid from the 10-day injured list.",
+        },
+        {
+          playerId: 700006, name: "New Dad", teamId: 136, date: "2026-08-31",
+          action: "placed", listKind: "paternity", days: null,
+          injury: null, earliestReturn: null, description: "placed C New Dad on the paternity list.",
+        },
+      ],
+      ilBoard: [
+        {
+          playerId: 621439, name: "Byron Buxton", teamId: 142, pos: "CF",
+          status: "D10", statusDesc: "Injured 10-Day", injury: "Right hip impingement.",
+          startDate: "2026-08-27", earliestReturn: "2026-09-06", daysUntil: 5,
+        },
+        {
+          playerId: 700002, name: "Ronald Acuña Jr.", teamId: 143, pos: "RF",
+          status: "D60", statusDesc: "Injured 60-Day", injury: "Left wrist tracture",
+          startDate: "2026-06-01", earliestReturn: "2026-07-31", daysUntil: -32,
+        },
+        {
+          playerId: 700003, name: "No Start Date", teamId: 136, pos: "P",
+          status: "D15", statusDesc: "Injured 15-Day", injury: "",
+          startDate: null, earliestReturn: null, daysUntil: null,
+        },
+      ],
+      hardHits: [
+        {
+          playerId: 665487, name: "Fernando Tatis Jr.", teamId: 143,
+          hardHits: 28, battedBalls: 44, rate: 0.636, maxEV: 115.1, avgEV: 92.1, games: 12,
+        },
+        {
+          playerId: 691406, name: "Junior Caminero", teamId: 136,
+          hardHits: 23, battedBalls: 43, rate: 0.535, maxEV: 116.9, avgEV: 95.9, games: 13,
+        },
+      ],
+      callups: [
+        { playerId: 700004, name: "Fresh Debut", teamId: 142, pos: "SS", date: "2026-08-28", type: "SE", typeDesc: "Selected", isDebut: true, age: 21 },
+        { playerId: 700005, name: "Shuttle Guy", teamId: 143, pos: "RP", date: "2026-08-27", type: "CU", typeDesc: "Recalled", isDebut: false, age: 27 },
+      ],
+      streaks: {
+        wins: [{ teamId: 143, code: "W5", n: 5, wins: 78, losses: 60, type: "wins" }],
+        losses: [{ teamId: 136, code: "L5", n: 5, wins: 64, losses: 74, type: "losses" }],
+      },
+      news: [
+        { title: "測試新聞標題", link: "https://example.com/a", source: "MLB Trade Rumors", date: "2026-09-01T10:00:00Z" },
+      ],
+      hotStats: [],
+      source: "MLB Stats API",
+    };
+
+    // 故意用沒有重音的寫法，驗 normalizeName 真的接在關注名單的比對路徑上
+    const WATCH = { players: [{ name: "Byron Buxton" }, { name: "Ronald Acuna Jr.", note: "OF1" }] };
+
+    const board = document.getElementById("board");
+    const watch = document.getElementById("watch");
+    const teamSelect = document.getElementById("team-select");
+    const tabs = document.getElementById("tabs");
+
+    function showTab(label) {
+      const btn = Array.prototype.filter.call(tabs.querySelectorAll(".chip"), (b) =>
+        b.textContent.indexOf(label) === 0
+      )[0];
+      if (!btn) throw new Error("找不到分頁：" + label);
+      btn.click();
+    }
+
+    function pickTeam(id) {
+      teamSelect.value = String(id);
+      teamSelect.dispatchEvent(new Event("change"));
+    }
+
+    const texts = (sel, root) =>
+      Array.prototype.map.call((root || board).querySelectorAll(sel), (n) => n.textContent);
+
+    /*
+     * 測試會一直切分頁，而切分頁是會寫進 localStorage 的，
+     * 跟正式頁面共用同一個 key。跑完測試把使用者原本停在哪一頁還回去，
+     * 不要因為開了測試頁就把人家記住的分頁洗掉。
+     */
+    const savedTab = (function () {
+      try { return localStorage.getItem("mlb:tab"); } catch (err) { return null; }
+    })();
+
+    MLB.applyData(DATA, WATCH);
+
+    /* ---------------------------------------------------------- */
+
+    group("分頁");
+    {
+      check("六個分頁都在", tabs.querySelectorAll(".chip").length, 6);
+      check("分頁上帶筆數（傷兵名單 3 人）", /3/.test(tabs.querySelectorAll(".chip")[1].textContent), true);
+    }
+
+    group("傷兵異動");
+    {
+      showTab("傷兵異動");
+      pickTeam("");
+      check("三筆都畫出來", board.querySelectorAll(".card").length, 3);
+      check("進 IL 的用紅色左條", board.querySelectorAll(".card.is-il").length, 2);
+      check("歸隊的用綠色左條", board.querySelectorAll(".card.is-back").length, 1);
+      check("傷勢照原樣顯示", texts(".card-injury")[0], "Right hip impingement.");
+      check("有算出最快回歸日", /最快 9\/6 可回歸/.test(board.textContent), true);
+      // 陪產假、喪假也會走同一條路徑，標籤不能漏成英文原字
+      check("陪產名單翻成中文", /陪產名單/.test(board.textContent), true);
+      check("介面上不留英文的 paternity", /paternity/i.test(board.textContent), false);
+    }
+
+    group("傷兵名單");
+    {
+      showTab("傷兵名單");
+      check("三個人都畫出來", board.querySelectorAll(".card").length, 3);
+      check("已過期的標成已可回歸", /已可回歸/.test(board.textContent), true);
+      // MLB 自己打錯字（fracture 打成 tracture），照原樣顯示不要自作聰明修
+      check("原始資料的錯字不修正", /Left wrist tracture/.test(board.textContent), true);
+      check("算不出起算日要誠實留白", /起算日不明/.test(board.textContent), true);
+      check("守備位置有顯示", texts(".card-pos")[0], "CF");
+    }
+
+    group("球隊篩選");
+    {
+      showTab("傷兵名單");
+      pickTeam(142);
+      check("只剩雙城的 1 人", board.querySelectorAll(".card").length, 1);
+      check("剩下的是 Buxton", /Byron Buxton/.test(board.textContent), true);
+      pickTeam(136);
+      check("換一隊會跟著換", /No Start Date/.test(board.textContent), true);
+      pickTeam("");
+      check("清掉篩選恢復三人", board.querySelectorAll(".card").length, 3);
+    }
+
+    group("強擊球");
+    {
+      showTab("強擊球");
+      pickTeam("");
+      check("兩個人都在榜上", board.querySelectorAll(".card").length, 2);
+      check("最大的數字是強擊球數", texts(".rank-value")[0], "28");
+      check("硬擊率換算成百分比", /64% 是強擊球/.test(board.textContent), true);
+      check("最高初速有顯示", /115\.1 mph/.test(board.textContent), true);
+      // 95 mph 是初速門檻，不是 barrel（barrel 是初速加角度的組合），文案不能混用
+      check("有寫清楚 95 mph 門檻", /95 mph/.test(board.textContent), true);
+      check("不自稱 barrel", /barrel/i.test(board.textContent), false);
+    }
+
+    group("新秀登板");
+    {
+      showTab("新秀登板");
+      check("兩筆都在", board.querySelectorAll(".card").length, 2);
+      check("初登板單獨標出來", /初登板/.test(board.textContent), true);
+      check("初登板用 accent 色", board.querySelectorAll(".card.is-debut").length, 1);
+    }
+
+    group("連勝連敗");
+    {
+      showTab("連勝連敗");
+      check("兩欄都在", board.querySelectorAll(".streak-cols > div").length, 2);
+      check("streakCode 直接當主視覺", texts(".streak-code")[0], "W5");
+      check("連敗那欄是 L5", texts(".streak-code")[1], "L5");
+      check("勝敗場有跟著", /78 勝 60 敗/.test(board.textContent), true);
+    }
+
+    group("新聞");
+    {
+      showTab("新聞");
+      check("新聞是可以點的連結", board.querySelectorAll("a.card").length, 1);
+      check("連結指到原文", board.querySelector("a.card").getAttribute("href"), "https://example.com/a");
+      check("外開的連結要有 noopener", board.querySelector("a.card").rel, "noopener");
+      check("標了來源", texts(".news-source")[0], "MLB Trade Rumors");
+      // RSS 沒有球隊欄位，篩選對這頁沒有意義
+      check("這一頁把球隊篩選停掉", teamSelect.disabled, true);
+      showTab("傷兵名單");
+      check("切回去又能用", teamSelect.disabled, false);
+    }
+
+    group("關注名單置頂");
+    {
+      check("兩個人都被撈出來", watch.querySelectorAll(".card").length, 2);
+      check("沒重音的寫法也對得到 Acuña", /Ronald Acuña Jr\./.test(watch.textContent), true);
+      check("自己寫的備註有顯示", /OF1/.test(watch.textContent), true);
+      check("傷兵狀態帶上來", /Injured 10-Day/.test(watch.textContent), true);
+      check("同一個人只出現一張卡", (watch.textContent.match(/Byron Buxton/g) || []).length, 1);
+      // 原始 description 是英文整句，裡面把球隊、守位、球員名又寫一遍，不能整句貼上來
+      check("不貼原始的英文整句", /on the 10-day injured list/.test(watch.textContent), false);
+      check("改用結構化欄位組中文", /進 10 天 IL/.test(watch.textContent), true);
+      check("傷勢不重複兩次", (watch.textContent.match(/Right hip impingement/g) || []).length, 1);
+      check("人數有算對", document.getElementById("watch-count").textContent, "2 人");
+
+      // 名單裡的人都沒消息時要留著區塊講一句，不是整段消失
+      MLB.applyData(DATA, { players: [{ name: "Nobody Here" }] });
+      check("沒命中時不留空白", /都沒有消息/.test(watch.textContent), true);
+      check("名單本身是空的才收起來", (function () {
+        MLB.applyData(DATA, { players: [] });
+        return document.getElementById("watch-section").hidden;
+      })(), true);
+      MLB.applyData(DATA, WATCH);
+    }
+
+    group("空資料不能整頁掛掉");
+    {
+      const EMPTY = { generatedAt: "2026-12-25T00:00:00Z", season: 2026, windows: { moves: 7, hardHit: 14, callups: 14 }, teams: TEAMS, ilMoves: [], ilBoard: [], hardHits: [], callups: [], streaks: { wins: [], losses: [] }, news: [], hotStats: [] };
+      MLB.applyData(EMPTY, { players: [] });
+      showTab("傷兵異動");
+      check("季外沒異動時給句說明", board.querySelectorAll(".notice").length, 1);
+      showTab("連勝連敗");
+      check("連勝連敗兩欄各給一句", board.querySelectorAll(".notice").length, 2);
+      showTab("強擊球");
+      check("沒有擊球資料也不爆", board.querySelectorAll(".notice").length, 1);
+      MLB.applyData(DATA, WATCH);
+    }
+
+    /* ---------------------------------------------------------- */
+
+    try {
+      if (savedTab === null) localStorage.removeItem("mlb:tab");
+      else localStorage.setItem("mlb:tab", savedTab);
+    } catch (err) {
+      /* 無痕模式本來就存不進去，沒什麼好還的 */
+    }
+
+    const summary = document.createElement("div");
+    summary.className = "summary " + (failed ? "fail" : "pass");
+    summary.textContent = failed
+      ? `${failed} 個失敗 / 共 ${passed + failed} 個`
+      : `全部通過（${passed} 個）`;
+    out.insertBefore(summary, out.firstChild);
+    document.title = (failed ? `${failed} FAIL` : "PASS") + " — script.js 測試";
+  </script>
+</body>
+</html>

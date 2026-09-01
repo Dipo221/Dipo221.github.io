@@ -1,0 +1,372 @@
+/*
+ * 沿用根目錄 style.css 的變數，這裡只補這個工具需要的顏色。
+ *
+ * open-now 的 --open/--soon/--broken 是它自己的區域 token、不在根目錄，
+ * 跨工具引用不到，所以這裡照它的做法自己定一組語意化的名字。
+ */
+:root {
+  /*
+   * 原本用 #f87171，當 badge 文字時量出來只有 4.4:1，差一點沒過 4.5——
+   * badge 底下還疊了一層 12% 的同色淡底，把對比又吃掉一些。調亮到 5.28:1。
+   */
+  --il: #fb8a8a;              /* 進傷兵名單 */
+  --il-bg: rgba(251, 138, 138, 0.12);
+  --back: #6ee7a8;            /* 歸隊、已可回歸、連勝 */
+  --back-bg: rgba(110, 231, 168, 0.12);
+  --hot: #fbbf5c;             /* 強擊球 */
+  --hot-bg: rgba(251, 191, 92, 0.12);
+  --cold: #8fa3bd;            /* 連敗 */
+  --cold-bg: rgba(143, 163, 189, 0.12);
+}
+
+/*
+ * 深色那組配的是深底，直接搬到白底會糊掉——亮綠尤其看不清楚，
+ * 0.12 的淡背景在白底上幾乎不存在。所以淺色另外配一組，
+ * 不是把深色的值調亮或調暗就好。
+ */
+[data-theme="light"] {
+  --il: #c0362c;
+  --il-bg: rgba(192, 54, 44, 0.1);
+  --back: #0e7a43;
+  --back-bg: rgba(14, 122, 67, 0.1);
+  --hot: #9a5b00;
+  --hot-bg: rgba(154, 91, 0, 0.1);
+  --cold: #4a5b73;
+  --cold-bg: rgba(74, 91, 115, 0.1);
+}
+
+/*
+ * .container（class）的 specificity 比 main（element）高，
+ * 單寫 main { padding } 會被根目錄的 .container 蓋掉，要用 main.container。
+ */
+main.container {
+  padding-top: 28px;
+}
+
+.hero-compact {
+  padding: 56px 0 28px;
+}
+
+.stamp {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  margin: 6px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+h2 .count {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.85rem;
+  margin-left: 8px;
+}
+
+/* ---------- 分頁與球隊篩選 ---------- */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1 1 auto;
+}
+
+.chip {
+  font: inherit;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color var(--speed), background var(--speed), color var(--speed);
+}
+
+.chip:hover {
+  border-color: var(--accent);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.chip.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.chip-count {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chip.is-active .chip-count {
+  color: var(--accent-ink);
+  opacity: 0.7;
+}
+
+.team-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.team-filter select {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
+  max-width: 190px;
+  transition: border-color var(--speed);
+}
+
+.team-filter select:hover {
+  border-color: var(--accent);
+}
+
+.team-filter select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- 卡片 ---------- */
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card {
+  display: block;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color var(--speed), transform var(--speed);
+}
+
+a.card:hover {
+  border-color: var(--accent);
+  transform: translateX(2px);
+}
+
+a.card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.card.is-il { border-left-color: var(--il); }
+.card.is-back { border-left-color: var(--back); }
+.card.is-hot { border-left-color: var(--hot); }
+.card.is-cold { border-left-color: var(--cold); }
+.card.is-debut { border-left-color: var(--accent); }
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card-name {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.card-pos {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: var(--fs-xs);
+  margin-right: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.badge.is-il { background: var(--il-bg); color: var(--il); }
+.badge.is-back { background: var(--back-bg); color: var(--back); }
+.badge.is-hot { background: var(--hot-bg); color: var(--hot); }
+.badge.is-debut { background: var(--accent-soft); color: var(--accent); }
+
+.card-meta {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  margin-top: 5px;
+}
+
+.card-meta .sep {
+  opacity: 0.5;
+  margin: 0 6px;
+}
+
+.card-injury {
+  color: var(--text);
+  opacity: 0.85;
+}
+
+/* ---------- 強擊球排行 ---------- */
+
+.rank {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.rank-value {
+  /* 這頁最大的數字，顯示字體的效益都在這裡 */
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--hot);
+  font-variant-numeric: tabular-nums;
+  min-width: 2.2ch;
+  text-align: right;
+}
+
+.rank-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rank-unit {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  margin-left: 3px;
+}
+
+/* ---------- 連勝／連敗 ---------- */
+
+.streak-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+}
+
+.streak-code {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  min-width: 2.6ch;
+  text-align: right;
+}
+
+.streak-code.is-back { color: var(--back); }
+.streak-code.is-cold { color: var(--cold); }
+
+.streak-cols h3 {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+
+/* ---------- 新聞 ---------- */
+
+.news-source {
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+/* ---------- 其他狀態 ---------- */
+
+.notice {
+  padding: 18px 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.section + .section {
+  margin-top: 34px;
+}
+
+.disclaimer {
+  margin-top: 28px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+
+.source {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+
+#watch-section {
+  margin-bottom: 30px;
+}
+
+@media (max-width: 520px) {
+  .controls {
+    align-items: stretch;
+  }
+
+  .team-filter {
+    justify-content: space-between;
+  }
+
+  .team-filter select {
+    max-width: none;
+    flex: 1 1 auto;
+  }
+
+  .card-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip,
+  .card,
+  .team-filter select {
+    transition: none;
+  }
+
+  a.card:hover {
+    transform: none;
+  }
+}
