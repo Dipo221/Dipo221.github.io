@@ -1,7 +1,11 @@
 """迪西的像素資料。改圖只改這一支，pixel.py 不用動。
 
-規格對齊 ../sprites.js 的 manifest：24x24 一格，3 欄 x 6 排，
+規格對齊 ../sprites.js 的 manifest：24x24 一格，6 欄 x 6 排，
 第 0 排 idle、1 walk、2 sleep、3 sit、4 eat、5 groom，臉朝左。
+
+**六欄是三欄的兩份**：左半睜眼、右半是同樣三格的閉眼版（眨眼）。
+右半整個是從左半算出來的，手寫的資料只有左邊那三欄——
+推導寫在下面 BLINK_SUFFIX 那一段。
 
 調色盤刻意壓在 7 色。參考素材用 13 色是因為它做了柔和的漸層，
 在這個尺寸上那些中間調有一半根本分不出來——與其鋪滿階調，
@@ -14,7 +18,7 @@
     c  奶油色，口鼻、胸口、腳掌
     e  眼睛。睜眼是**豎條**（2 寬 3 高），閉眼是**橫條**（3 寬 1 高）——
        睜與閉靠形狀分，不靠顏色。閉眼改用描邊棕試過，直接消失，
-       整張臉只剩一個粉紅鼻子
+       整張臉只剩一個粉紅鼻子。sleep 和眨眼用的是同一組形狀規則
     p  粉紅，鼻頭與耳內
 
 原本還有一階亮部，只用到三格就砍了——七色每一階都吃得到面積，
@@ -520,7 +524,7 @@ FRAMES = {
     "groom2": GROOM2,
 }
 
-SHEET = [
+_OPEN = [
     ["idle0", "idle1", "idle2"],
     ["walk0", "walk1", "walk2"],
     ["sleep0", "sleep1", "sleep2"],
@@ -528,6 +532,92 @@ SHEET = [
     ["eat0", "eat1", "eat2"],
     ["groom0", "groom1", "groom2"],
 ]
+
+
+"""眨眼：sheet 右半邊是左半邊的閉眼版。
+
+**眨眼跟姿勢是正交的**——同一個身體、眼睛開或關。所以它不是新的一排，
+是每一排多三格。這樣任何姿勢都能眨，不用為「吃飯的時候眨眼」單獨畫三格
+吃飯專用的閉眼；idle 眨、sit 眨、走路眨，全部同一個機制。
+
+**那三格是算出來的，不准手畫。** 一格一格畫會有 18 張新圖要維護，
+而它們跟睜眼版之間只差 12 個像素——改眼睛的時候忘了同步改閉眼版，
+就是 18 格裡有幾格對不上，而且是那種盯著看永遠找不到的錯。
+算出來的話「同步」不是一件要記得做的事，它在結構上不可能不同步，
+跟 _v() 與 _eat() 擋的是同一種錯。
+
+閉起來長什麼樣：睜眼是 2 寬 3 高的豎條，閉眼留中間那一列、**往臉的中線
+延一格**變成 3 寬 1 高的橫條，空出來的填主色。三個候選比過（2 寬的、
+3 寬的、2 寬加眼窩陰影的），明陽選 3 寬——因為在螢幕真正的密度下
+（桌機 2.65 倍，一隻貓 64px）只有它讀得出來是一條閉著的眼。2 寬的那個
+放大看很乾淨，縮到真實大小整張臉會變成一片空白，「眨了一下」看起來
+只是「臉閃了一下」。
+
+只往中線延、不往外延，是因為外側緊接著就是臉頰的描邊，沒有格子可以借。
+
+**睡覺那三格會原封不動地穿過去。** SLEEP 的眼睛本來就是 3 寬 1 高的橫條，
+只有一列高，下面那個 len(ys) < 2 就跳過了——不是特例，是同一條規則
+碰到已經閉著的眼睛自然的結果。所以 sleep 的閉眼版跟睜眼版位元相同，
+睡著的貓「眨眼」是個看不見的無操作，JS 那邊也就不用為牠寫特例。
+"""
+BLINK_SUFFIX = "_shut"
+
+
+def _eye_blobs(rows):
+    """把所有 e 的像素分成幾團（四連通）。一張臉正常是兩團。
+
+    用連通性找眼睛、不是寫死座標，因為 eat 和 groom 的頭是 _eat()/_groom()
+    疊上去的，同一雙眼睛在不同幀落在不同的列。寫死座標等於把那個位移
+    抄第二遍，抄錯了會改到臉上別的地方。
+    """
+    cells = set((x, y) for y, r in enumerate(rows)
+                for x, ch in enumerate(r) if ch == "e")
+    blobs = []
+    while cells:
+        blob, stack = set(), [cells.pop()]
+        while stack:
+            x, y = stack.pop()
+            blob.add((x, y))
+            for n in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+                if n in cells:
+                    cells.discard(n)
+                    stack.append(n)
+        blobs.append(blob)
+    return blobs
+
+
+def _blink(rows):
+    """睜眼的那一格 -> 閉眼的那一格。**只准動 e**，別的一格都不碰。
+
+    pixel.py 的 lint_blink() 就是在守這句話：改到的每一格，改之前或改之後
+    至少有一邊是眼睛。哪天想在眼縫上面加一格眼窩陰影，那條 lint 會叫——
+    叫得剛好，因為那正是「閉眼版偷偷改了臉的其他部分」的樣子。
+    """
+    g = [list(r) for r in rows]
+    for blob in _eye_blobs(rows):
+        ys = sorted(set(y for _, y in blob))
+        if len(ys) < 2:
+            continue                       # 已經是閉的（sleep），不動
+        keep = ys[len(ys) // 2]            # 中間那一列留著當眼縫
+        xs = sorted(set(x for x, _ in blob))
+        for x, y in blob:
+            if y != keep:
+                g[y][x] = "l"
+        # 往臉的中線延一格。只往內：外側是臉頰的描邊，借不到格子
+        inner = xs[-1] + 1 if xs[-1] < FACE_MID else xs[0] - 1
+        if 0 <= inner < len(g[keep]) and g[keep][inner] == "l":
+            g[keep][inner] = "e"
+    return ["".join(r) for r in g]
+
+
+FRAMES.update((n + BLINK_SUFFIX, _blink(FRAMES[n]))
+              for row in _OPEN for n in row)
+
+# 左半 3 欄睜眼、右半 3 欄閉眼。pixel.py 與 sprites.js 都要知道分界在哪：
+# 前者是為了把剛體檢查分成兩半各自比（拿閉眼的頭去對睜眼的頭，
+# 一定判成變形），後者是 render 時「這一格往右跳幾欄」的那個數字。
+OPEN_COLS = len(_OPEN[0])
+SHEET = [row + [n + BLINK_SUFFIX for n in row] for row in _OPEN]
 
 # 播放順序，對應 ../sprites.js 每個動作的 frames 陣列。
 #

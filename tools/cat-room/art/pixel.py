@@ -220,9 +220,12 @@ def room_image(name, pal=None):
     return img
 
 
-# 網頁真的會載入的房間素材，改了就得去 style.css 把那張的 `?v=` 加一。
+# 網頁真的會載入的素材，改了就得去把那張的 `?v=` 加一。
 # 從兩張變成六張之後光靠記憶已經不可靠（上一輪就漏掉過一次，症狀是
 # 瀏覽器拿到新圖配舊幾何），所以改成存檔的時候自己比對、自己講話。
+#
+# 房間那幾張的 `?v=` 在 style.css，貓的 sheet 在 sprites.js——所以下面印
+# 提醒的時候要分開講。一句「去 style.css 改」會讓人翻遍那支找不到 disi 那行。
 ASSETS_CHANGED = []
 
 
@@ -786,28 +789,36 @@ def check_rigid_head():
             return None
         return [r[c0:c1] for r in rows[r0 + off:r1 + off]]
 
+    # 睜眼那半跟閉眼那半各自比各自的第 0 幀。整排一起比不行：
+    # 眼睛就在框裡（RIGID_ROWS 從 y1 到 y15），拿閉眼的頭去對睜眼的頭，
+    # 12 個像素對不上，每一格都會報 DEFORMED——那是眨眼本身，不是變形。
+    # 分兩半之後這條檢查在閉眼側一樣有效：它守的是「眨眼沒有順手改到別的地方」。
+    half = getattr(disi, "OPEN_COLS", 0)
     out = []
     for row in SHEET:
         if row[0][:-1] not in anims:
             continue
-        ref = head(disi.FRAMES[row[0]], 0)
-        for name in row[1:]:
-            f = disi.FRAMES[name]
-            hits = [o for o in range(-2, 3) if head(f, o) == ref]
-            if hits:
-                out.append("head %s: rigid, offset %+d" % (name, hits[0]))
+        for group in ([row[:half], row[half:]] if half else [row]):
+            if not group:
                 continue
-            best, bd = 0, 10 ** 6
-            for o in range(-2, 3):
-                h = head(f, o)
-                if h is None:
+            ref = head(disi.FRAMES[group[0]], 0)
+            for name in group[1:]:
+                f = disi.FRAMES[name]
+                hits = [o for o in range(-2, 3) if head(f, o) == ref]
+                if hits:
+                    out.append("head %s: rigid, offset %+d" % (name, hits[0]))
                     continue
-                d = sum(1 for y in range(len(ref)) for x in range(len(ref[0]))
-                        if h[y][x] != ref[y][x])
-                if d < bd:
-                    best, bd = o, d
-            out.append("head %s: DEFORMED, %d px off at best offset %+d"
-                       % (name, bd, best))
+                best, bd = 0, 10 ** 6
+                for o in range(-2, 3):
+                    h = head(f, o)
+                    if h is None:
+                        continue
+                    d = sum(1 for y in range(len(ref)) for x in range(len(ref[0]))
+                            if h[y][x] != ref[y][x])
+                    if d < bd:
+                        best, bd = o, d
+                out.append("head %s: DEFORMED, %d px off at best offset %+d"
+                           % (name, bd, best))
     return out
 
 
@@ -871,6 +882,51 @@ def lint_face_symmetry():
     return msgs
 
 
+def lint_blink():
+    """閉眼那半張 sheet 只准動眼睛。
+
+    右半邊的 18 格是 disi._blink() 算出來的，所以它們跟左半邊「同步」
+    這件事不需要人去維護。但那支算錯的時候，錯的是**一次 18 格**，
+    而且每一格只差十來個像素——這種錯逐格看永遠看不出來，
+    只有把界線寫成檢查才擋得住。
+
+    界線就一句：改到的每一格，改之前或改之後至少有一邊是眼睛。
+    以後想在眼縫上面補一格眼窩陰影（比過的 S3 方案）就會撞到這裡，
+    撞得剛好——那個改動確實會動到臉上不是眼睛的地方，該由人決定。
+
+    順便回報有幾格真的變了。sleep 的眼睛本來就閉著，_blink() 會原樣放行，
+    所以 18 格裡應該只有 15 格不一樣；數字不對就是有姿勢的眼睛沒被認出來
+    （例如哪天把眼睛改成不連通的兩塊）。
+    """
+    suffix = getattr(disi, "BLINK_SUFFIX", None)
+    if not suffix:
+        return []
+    msgs, moved, still = [], 0, []
+    for row in SHEET:
+        for name in row:
+            if name.endswith(suffix):
+                continue
+            shut = disi.FRAMES.get(name + suffix)
+            if shut is None:
+                msgs.append("BLINK %s: no %s twin" % (name, suffix))
+                continue
+            a = disi.FRAMES[name]
+            diff = [(x, y) for y in range(len(a)) for x in range(len(a[y]))
+                    if a[y][x] != shut[y][x]]
+            outside = [(x, y) for x, y in diff
+                       if a[y][x] != "e" and shut[y][x] != "e"]
+            if outside:
+                msgs.append("BLINK %s: %d px changed away from the eyes, first at %s"
+                            % (name, len(outside), outside[0]))
+            if diff:
+                moved += 1
+            else:
+                still.append(name)
+    msgs.append("blink: %d frames close their eyes, %d already shut (%s)"
+                % (moved, len(still), " ".join(sorted(still)) or "none"))
+    return msgs
+
+
 def lint():
     msgs = []
     for name, rows in disi.FRAMES.items():
@@ -917,6 +973,7 @@ def lint():
 
     msgs += check_rigid_head()
     msgs += lint_face_symmetry()
+    msgs += lint_blink()
 
     used = set()
     for rows in disi.FRAMES.values():
@@ -942,7 +999,8 @@ if __name__ == "__main__":
     fatal = [m for m in problems + room_problems
              if "not in palette" in m or "unknown tile" in m
              or ", want" in m or "outside the room" in m or "CONTRAST" in m
-             or "SKY_TOD" in m or m.startswith("FACE ")]
+             or "SKY_TOD" in m or m.startswith("FACE ")
+             or m.startswith("BLINK ")]
     if fatal:
         sys.exit("\nfix the map first, nothing rendered")
 
@@ -964,7 +1022,10 @@ if __name__ == "__main__":
     print("wrote " + rooms + " / room-light.png / " + skies)
     print("wrote room-tiles.png / room-view.png / room-tod.png")
     print("wrote ../room-data.js")
-    if ASSETS_CHANGED:
-        print("\nCHANGED -> bump ?v= in style.css: " + " ".join(ASSETS_CHANGED))
+    for where, changed in (
+            ("style.css", [f for f in ASSETS_CHANGED if f != SHEET_PNG]),
+            ("sprites.js", [f for f in ASSETS_CHANGED if f == SHEET_PNG])):
+        if changed:
+            print("\nCHANGED -> bump ?v= in %s: %s" % (where, " ".join(changed)))
     if bumped:
         print(bumped)

@@ -35,7 +35,7 @@
   <script src="world.js?v=4"></script>
   <script src="cat.js?v=1"></script>
   <script src="save.js?v=1"></script>
-  <script src="sprites.js?v=4"></script>
+  <script src="sprites.js?v=5"></script>
   <script>
     const out = document.getElementById("out");
     let passed = 0;
@@ -492,15 +492,31 @@
        */
       const m = Sprites.manifest;
       check("已經接上素材包，不是 placeholder", Sprites.ready(), true);
-      check("3 欄 6 排", [m.cols, m.rows], [3, 6]);
+      check("6 欄 6 排", [m.cols, m.rows], [6, 6]);
       check("每格 24x24", [m.frameW, m.frameH], [24, 24]);
       check("圖裡的貓朝左（往右走要翻面）", m.facesLeft, true);
+      check("左半睜眼、右半閉眼，剛好切一半", m.openCols * 2, m.cols);
+      /*
+       * 欄數變了就一定要換網址。格子大小是寫在檔名裡的（disi-24.png），
+       * 所以改尺寸自動換網址；欄數不在檔名裡，舊快取的圖**載得進來也不報錯**，
+       * 只是每一格都取錯位置——擋得住這件事的只有 ?v=。
+       */
+      check("sheet 的網址帶版本號", /\?v=\d+$/.test(m.sheet), true);
 
       const rowsOk = Object.keys(m.anims).every((k) => m.anims[k].row >= 0 && m.anims[k].row < m.rows);
       check("每個動畫的排號都在圖的範圍內", rowsOk, true);
 
-      const colsOk = Object.keys(m.anims).every((k) => m.anims[k].frames.every((c) => c >= 0 && c < m.cols));
-      check("每個動畫的格號都在圖的範圍內", colsOk, true);
+      /*
+       * 界線是 openCols 不是 cols：render 會把眨眼的欄位加上去，
+       * 動畫本身的格號只准落在睜眼那半邊。寫成 cols 的話，
+       * 哪天有人手滑把 frames 寫成 [3,4,5]，畫面會變成一隻眼睛永遠閉著的貓，
+       * 而測試一片綠。
+       */
+      const colsOk = Object.keys(m.anims).every((k) => m.anims[k].frames.every((c) => c >= 0 && c < m.openCols));
+      check("每個動畫的格號都落在睜眼那半邊", colsOk, true);
+
+      const shutOk = Object.keys(m.anims).every((k) => m.anims[k].frames.every((c) => c + m.openCols < m.cols));
+      check("每一格的閉眼版也在圖裡", shutOk, true);
 
       const aliasOk = Object.keys(m.alias).every((k) => !!m.anims[m.alias[k]]);
       check("每個 alias 都指到真的存在的動畫", aliasOk, true);
@@ -549,6 +565,59 @@
       check("還沒播完不算 done", Sprites.frameFor("__test", 150).done, false);
       check("還沒播完停在正確的格", Sprites.frameFor("__test", 150).col, 1);
       delete m.anims.__test;
+    }
+
+    group("Sprite：眨眼");
+    {
+      /*
+       * 眨眼是**時間的純函數**，這一整組測試存在的理由就是它。
+       * 用 Math.random() 的話下面每一條都寫不出來——而寫不出測試的隨機，
+       * 在畫面上就是「有時候會連眨兩下」這種你重現不了也修不掉的東西。
+       */
+      const m = Sprites.manifest;
+      const GAP = Sprites.BLINK_GAP;
+      const SHUT = Sprites.BLINK_MS;
+
+      check("同一個時間點問兩次答案一樣",
+        Sprites.blinkAt(12345) === Sprites.blinkAt(12345), true);
+
+      // 掃一分鐘，40ms 一步（跟畫預覽 GIF 用的取樣一樣）
+      const hits = [];
+      for (let t = 0; t < 60000; t += 40) {
+        if (Sprites.blinkAt(t) && !Sprites.blinkAt(t - 40)) hits.push(t);
+      }
+      check("一分鐘眨的次數＝週期數", hits.length, 60000 / GAP);
+
+      /*
+       * 每次眨眼都要完整落在自己的週期裡。跨過週期邊界的話，
+       * 上一個週期尾巴那次會貼上下一次的開頭，看起來像連眨兩下——
+       * 這正是抖動要夾在中間 50% 的原因，這條就是在守那件事。
+       */
+      const inside = hits.every((t) => {
+        const i = Math.floor(t / GAP);
+        return Math.floor((t + SHUT - 1) / GAP) === i;
+      });
+      check("每次眨眼都關在自己的週期裡", inside, true);
+
+      // 間隔要不規則（等間隔＝節拍器＝機器），但不能離標稱值太遠
+      const gaps = hits.slice(1).map((t, i) => t - hits[i]);
+      check("間隔不是固定的", new Set(gaps).size > 1, true);
+      check("最短的間隔不小於半個週期", Math.min.apply(null, gaps) >= GAP / 2, true);
+      check("最長的間隔不超過一個半週期", Math.max.apply(null, gaps) <= GAP * 1.5, true);
+
+      // 閉著的時間佔比：一次 120ms、每 3 秒一次 = 4%
+      let shutSteps = 0;
+      for (let t = 0; t < 60000; t += 40) if (Sprites.blinkAt(t)) shutSteps += 1;
+      const duty = shutSteps / (60000 / 40);
+      check("閉眼的時間佔比接近 SHUT/GAP", Math.abs(duty - SHUT / GAP) < 0.01, true);
+
+      /*
+       * 眨眼跟姿勢是正交的：任何動作的任何一格都能加上 openCols
+       * 而不會掉出圖外。這條擋的是「以後有人加了第 7 排卻忘了加閉眼版」。
+       */
+      const anyOk = ["idle", "walk", "sleep", "sit", "eat", "groom", "play", "approach"]
+        .every((s) => Sprites.frameFor(s, 999).col + m.openCols < m.cols);
+      check("每個狀態當下那一格都有閉眼版", anyOk, true);
     }
 
     /* ---------------------------------------------------------- */

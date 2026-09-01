@@ -550,6 +550,20 @@
   let camAt = 0;
   let camUserAt = -CAM_YIELD;
 
+  /*
+   * 被摸的時候會慢眨到這個時間為止。0 表示現在沒有在慢眨。
+   *
+   * 貓對人**慢慢地**眨一次眼是示好，不是普通的眨眼——差別完全在長度，
+   * 所以這裡存的是一個截止時間而不是一個旗標。600ms 跟 react() 那個
+   * is-purring 的 600ms 是同一個數字：呼嚕跟瞇眼是同一個反應的兩半，
+   * 一起開始一起結束。改一個就要改另一個。
+   *
+   * 另外，pet() 的文案本來就寫著「瞇起眼睛，往你的手靠過去」——
+   * 那句話從 16x16 的時候就在了，只是美術一直沒做到。這裡是把它補上。
+   */
+  const SLOW_BLINK_MS = 600;
+  let slowBlinkUntil = 0;
+
   if (bleed) {
     bleed.addEventListener("scroll", function () {
       // 誤差 2px 是給瀏覽器的次像素捲動留的，不是人滑的
@@ -648,8 +662,22 @@
     if (Sprites.ready()) {
       const m = Sprites.manifest;
       const f = Sprites.frameFor(cat.state, t - cat.startedAt);
+      /*
+       * 眨眼：sheet 右半邊是同樣的姿勢、眼睛閉著，所以「眨」就是把欄號
+       * 往右加 openCols。姿勢那邊一行都不用動——這是把眨眼做成多三欄
+       * 而不是多一排的整個理由。
+       *
+       * 兩個來源相或：平常的節拍，加上被摸之後那段慢眨。
+       * 兩者都吃絕對時間 t，跟 cat.startedAt 無關，換動作不會打斷眨到一半。
+       *
+       * 睡著的時候這裡照樣會切欄，但 sleep 那三格的閉眼版跟睜眼版
+       * 位元相同（眼睛本來就閉著），所以是個看不見的無操作。
+       * 不為牠寫特例是刻意的：少一條要跟美術同步的規則。
+       */
+      const shut = t < slowBlinkUntil || Sprites.blinkAt(t);
+      const col = f.col + (shut ? m.openCols : 0);
       // 見 style.css：百分比的 background-position 要除以「格數 - 1」
-      const fx = m.cols > 1 ? (f.col / (m.cols - 1)) * 100 : 0;
+      const fx = m.cols > 1 ? (col / (m.cols - 1)) * 100 : 0;
       const fy = m.rows > 1 ? (f.row / (m.rows - 1)) * 100 : 0;
       spriteEl.style.backgroundPosition = fx + "% " + fy + "%";
     }
@@ -727,6 +755,8 @@
     state.pet.count += 1;
     grantBond(1);
     react("is-purring");
+    // 慢眨。睡著的時候這行照樣跑，但 sleep 的眼睛已經閉著，畫面上不會有事
+    slowBlinkUntil = performance.now() + SLOW_BLINK_MS;
     // 訪客也照樣送出去，他只是看不到數字
     countPet();
     showNote(

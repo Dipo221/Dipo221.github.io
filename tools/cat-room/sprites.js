@@ -16,19 +16,35 @@ const Sprites = (function () {
 
   const manifest = {
     /*
-     * 圖的網址帶版本號，因為 rows 一變，舊圖配新 manifest 會整個錯位——
+     * 圖的網址帶版本號，因為 rows 或 cols 一變，舊圖配新 manifest 會整個錯位——
      * 快取裡還是 3 排的舊圖時，後面幾排會取到圖外面，貓變成一塊空白。
      * 加姿勢改了圖就要把這個號碼加一。
      *
      * 檔名帶著格子大小（見 art/pixel.py 的 build_sheet），所以 2026-09-01
      * 從 16x16 改成 24x24 那次是換檔名，不是加號碼——換網址本來就繞過快取，
      * 而且 `disi-16.png` 裡面裝 24x24 的貓是一份會騙人的文件。
+     *
+     * v=2 是眨眼：格子大小沒變，所以檔名幫不上忙，**只有這個號碼擋得住**。
+     * 這正是「檔名解決不了的那一半」——欄數從 3 變 6，舊快取的圖尺寸是對的、
+     * 載得進來、不會報錯，只是每一格都取錯位置。錯得最安靜的一種。
      */
-    sheet: "art/disi-24.png?v=1",
+    sheet: "art/disi-24.png?v=2",
     frameW: 24,
     frameH: 24,
-    cols: 3,
+    cols: 6,
     rows: 6,
+
+    /*
+     * 左半 3 欄睜眼、右半 3 欄同樣的姿勢但眼睛閉著。
+     *
+     * 眨眼跟姿勢是**正交**的，所以它不是第 6 排、是每一排多三格：
+     * 任何姿勢都能眨，不用為「吃飯時眨眼」單獨畫吃飯專用的閉眼。
+     * render 的時候就是把 col 往右加這個數字，其他什麼都不用改。
+     *
+     * 右半那 18 格是 art/disi.py 的 _blink() 從左半算出來的，沒有手畫，
+     * 所以改眼睛的時候閉眼版自己跟著變。
+     */
+    openCols: 3,
 
     /*
      * 圖裡的貓臉朝左（眼睛在左邊、尾巴在右邊）。
@@ -138,11 +154,46 @@ const Sprites = (function () {
     return { col: anim.frames[index], row: anim.row, done: done };
   }
 
+  /*
+   * 眨眼的節拍。
+   *
+   * 一次閉 120ms、平均 3 秒一次。真貓大約 2-8 秒眨一次，3 秒偏勤快——
+   * 因為這隻貓只有 24 格，眨眼的幅度是兩三個像素，照真實頻率來的話
+   * 大部分時間你根本不會剛好看到，那等於白做。
+   *
+   * **不能是等間隔的。** 固定每 3 秒一次會變成節拍器，那是機器不是貓。
+   * 但也不能用 Math.random()：render 每一幀都會問一次「現在眨了沒」，
+   * 用亂數的話同一個時間點問兩次會得到不同答案，而且測不了。
+   * 所以走這個雜湊——它是**時間的純函數**，同一個 t 永遠同一個答案，
+   * 看起來卻是不規則的。sin 那兩個常數是 GLSL 圈子那個經典的
+   * fract(sin(x) * 43758.5453)，這裡只要它散得夠開，不需要它多好。
+   *
+   * 抖動夾在週期的中間 50%，不是整段。放整段的話，一個週期尾巴的眨眼會
+   * 貼上下一個週期開頭那次，看起來像連眨兩下；夾住之後看到的間隔落在
+   * 1.5-4.5 秒之間，還是不規則，但不會出現那種假動作。
+   *
+   * 吃給的是絕對時間，不是 t - startedAt：眨眼是背景行為，
+   * 不該每次換動作就重新開始數。
+   */
+  const BLINK_MS = 120;
+  const BLINK_GAP = 3000;
+
+  function blinkAt(t) {
+    const i = Math.floor(t / BLINK_GAP);
+    const h = Math.sin(i * 12.9898) * 43758.5453;
+    const at = (0.25 + 0.5 * (h - Math.floor(h))) * (BLINK_GAP - BLINK_MS);
+    const into = t - i * BLINK_GAP;
+    return into >= at && into < at + BLINK_MS;
+  }
+
   return {
     manifest: manifest,
     ready: ready,
     resolve: resolve,
-    frameFor: frameFor
+    frameFor: frameFor,
+    blinkAt: blinkAt,
+    BLINK_MS: BLINK_MS,
+    BLINK_GAP: BLINK_GAP
   };
 })();
 
