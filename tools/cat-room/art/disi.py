@@ -79,6 +79,21 @@
 口鼻同時往中間收窄一格，最寬從 6 格變 4 格。頭的內部是 10 格寬，
 6/10 = 60% 太胖（舊圖是 3/6 = 50%），收完是 40%。連帶整隻的奶油色
 從 11.8% 掉到 9.1%，也就退出了 pixel.py 那份「大面積色」名單。
+
+------------------------------------------------------ 第三輪：雙眼往內一格
+
+眼睛從 x2-3 / x10-11 挪到 x3-4 / x9-10，兩眼之間從 6 格縮成 4 格。
+兩邊踩到的都是主色，**一格奶油都沒動**，所以口鼻那塊維持原樣、
+對稱於 6.5 也還在——這是先算過才動手的，不是改完再回頭看 lint 過不過。
+
+連帶把眨眼的延伸方向翻了面（理由在下面 BLINK_SUFFIX 那一段）。翻面之後
+閉眼的那 15 格**跟翻面之前位元相同**：眼縫本來就落在 x2-4 / x9-11，
+睜眼往內一格、眼縫改成往外一格，兩個位移剛好抵銷。所以這一輪畫面上
+只有「睜著眼睛的時候」變了，眨起來跟之前一模一樣。
+
+sleep 那三格不跟著移。牠的閉眼橫條在 x3-5 / x8-10，中間只剩 2 格，
+各往內一格會黏成一條 6 寬的橫槓。趴著本來就是另一個姿勢，眼睛的形狀
+和位置跟站姿不同是正常的，不需要對齊。
 """
 
 PALETTE = {
@@ -122,9 +137,9 @@ BASE = [
     "ommllllllllmmo..........",  # 5  頭頂：兩角用中間調收
     "omllllllllllmo..........",  # 6
     "omllllllllllmo......ooo.",  # 7  尾巴頂端的帽
-    "omeelllllleemo.....ommmo",  # 8  眼：2 寬 3 高的豎條
-    "omeelcppcleemo.....ommmo",  # 9  鼻 x6-7，兩側各一格奶油
-    "omeelccccleemo.....ommmo",  # 10 口鼻 4 格
+    "omleelllleelmo.....ommmo",  # 8  眼：2 寬 3 高的豎條，x3-4 / x9-10
+    "omleecppceelmo.....ommmo",  # 9  鼻 x6-7，兩側各一格奶油
+    "omleecccceelmo.....ommmo",  # 10 口鼻 4 格，眼睛直接貼著它
     "ommmmmccmmmmmo...ommmo..",  # 11 收成 2 格；頭的右緣開始往外讓
     ".ommmmmmmmmlllmo..ommmo.",  # 12 奶油在這裡就收掉，不拖到脖子
     ".ommmmmlllllllmmo.ommmo.",  # 13 斜著溶進肩膀，不是直角
@@ -162,7 +177,7 @@ IDLE1 = _v(BASE, {
 })
 IDLE2 = _v(BASE, {
     7: "omllllllllllmo....ooo...",
-    8: "omeelllllleemo....ommmo.",
+    8: "omleelllleelmo....ommmo.",
 })
 
 
@@ -291,7 +306,7 @@ SIT1 = _v(SIT0, {
 })
 SIT2 = _v(SIT0, {
     7: "omllllllllllmo....ooo...",
-    8: "omeelllllleemo....ommmo.",
+    8: "omleelllleelmo....ommmo.",
 })
 
 
@@ -353,9 +368,9 @@ EAT_HEAD = [
     "omppo....oppmo..........",  # 7
     "ommllllllllmmo..........",  # 8  頭頂
     "omllllllllllmo..........",  # 9
-    "omeelllllleemo..........",  # 10 眼
-    "omeelcppcleemo..........",  # 11 鼻
-    "omeelccccleemo..........",  # 12
+    "omleelllleelmo..........",  # 10 眼
+    "omleecppceelmo..........",  # 11 鼻
+    "omleecccceelmo..........",  # 12
     "ommmmmccmmmmmo..........",  # 13
     ".ommmmmmmmmmmo..........",  # 14
     "..ommmmmmmmmo...........",  # 15
@@ -458,9 +473,9 @@ GROOM_HEAD = [
     "ommllllllllmmo..........",  # 5
     "omllllllllllmo..........",  # 6
     "omllllllllllmo..........",  # 7
-    "omeelllllleemo..........",  # 8  眼
-    "omeelcppcleemo..........",  # 9  鼻
-    "omeelccccleemo..........",  # 10
+    "omleelllleelmo..........",  # 8  眼
+    "omleecppceelmo..........",  # 9  鼻
+    "omleecccceelmo..........",  # 10
     "ommmmmccmmmmmo..........",  # 11
     ".ommmmmmmmmmmo..........",  # 12
     "..ommmmmmmmmo...........",  # 13
@@ -546,14 +561,19 @@ _OPEN = [
 算出來的話「同步」不是一件要記得做的事，它在結構上不可能不同步，
 跟 _v() 與 _eat() 擋的是同一種錯。
 
-閉起來長什麼樣：睜眼是 2 寬 3 高的豎條，閉眼留中間那一列、**往臉的中線
+閉起來長什麼樣：睜眼是 2 寬 3 高的豎條，閉眼留中間那一列、**往臉的外側
 延一格**變成 3 寬 1 高的橫條，空出來的填主色。三個候選比過（2 寬的、
 3 寬的、2 寬加眼窩陰影的），明陽選 3 寬——因為在螢幕真正的密度下
 （桌機 2.65 倍，一隻貓 64px）只有它讀得出來是一條閉著的眼。2 寬的那個
 放大看很乾淨，縮到真實大小整張臉會變成一片空白，「眨了一下」看起來
 只是「臉閃了一下」。
 
-只往中線延、不往外延，是因為外側緊接著就是臉頰的描邊，沒有格子可以借。
+**延伸的方向跟眼睛的位置是綁在一起的，動一個就要回頭看另一個。**
+眼睛在 x3-4 的時候，內側緊接著就是口鼻的奶油、借不到格子，往外的 x2 才是
+主色；眼睛還在 x2-3 的那一版剛好相反（外側是臉頰的描邊），所以當時寫的是
+往內延。**方向寫錯不會報錯**——`_blink()` 只肯借主色的格子，借不到就默默
+不延，眼縫悄悄變回 2 寬的那一版，也就是明陽比過之後淘汰掉的那個。
+所以這條不能只靠註解，pixel.py 的 lint_blink() 拿下面的 SHUT_EYE 守著。
 
 **睡覺那三格會原封不動地穿過去。** SLEEP 的眼睛本來就是 3 寬 1 高的橫條，
 只有一列高，下面那個 len(ys) < 2 就跳過了——不是特例，是同一條規則
@@ -561,6 +581,11 @@ _OPEN = [
 睡著的貓「眨眼」是個看不見的無操作，JS 那邊也就不用為牠寫特例。
 """
 BLINK_SUFFIX = "_shut"
+
+# 一隻閉著的眼睛長怎樣：3 寬 1 高。pixel.py 的 lint_blink() 拿它去量
+# **每一格閉著的眼睛**，包含 sleep 手畫的那三格——所以這不是「_blink()
+# 的輸出格式」，是「這隻貓的眼睛閉起來的樣子」，兩邊共用同一個定義。
+SHUT_EYE = (3, 1)
 
 
 def _eye_blobs(rows):
@@ -592,6 +617,10 @@ def _blink(rows):
     pixel.py 的 lint_blink() 就是在守這句話：改到的每一格，改之前或改之後
     至少有一邊是眼睛。哪天想在眼縫上面加一格眼窩陰影，那條 lint 會叫——
     叫得剛好，因為那正是「閉眼版偷偷改了臉的其他部分」的樣子。
+
+    那條 lint 還會量眼縫多寬（SHUT_EYE），因為下面「借不到格子就不延」是
+    **默默失敗**的：借不到只是少一格，不會丟例外也不會畫錯，眼縫從 3 寬
+    變 2 寬而已——而那一格正好是這條眼縫讀不讀得出來的全部。
     """
     g = [list(r) for r in rows]
     for blob in _eye_blobs(rows):
@@ -603,10 +632,10 @@ def _blink(rows):
         for x, y in blob:
             if y != keep:
                 g[y][x] = "l"
-        # 往臉的中線延一格。只往內：外側是臉頰的描邊，借不到格子
-        inner = xs[-1] + 1 if xs[-1] < FACE_MID else xs[0] - 1
-        if 0 <= inner < len(g[keep]) and g[keep][inner] == "l":
-            g[keep][inner] = "e"
+        # 往臉的**外**側延一格。只往外：內側現在是口鼻的奶油，借不到格子
+        outer = xs[0] - 1 if xs[-1] < FACE_MID else xs[-1] + 1
+        if 0 <= outer < len(g[keep]) and g[keep][outer] == "l":
+            g[keep][outer] = "e"
     return ["".join(r) for r in g]
 
 

@@ -119,8 +119,9 @@ cd tools/cat-room/art && python pixel.py     （要 Pillow）
 想搬家具就改那幾行，不用碰 CSS——`room-data.js` 會跟著重產。
 
 改完美術有兩件事一定要做：`sprites.js` 的 manifest 和 `art/disi.py` 的 `PLAY`
-是手動同步的，動一邊要動另一邊；動到 `disi-24.png` 的**排數或欄數**就要把
-sprites.js 裡 `?v=` 的號碼加一，否則舊快取配新 manifest 會整張錯位。
+是手動同步的，動一邊要動另一邊；**`disi-24.png` 只要真的變了**就把 sprites.js 裡
+`?v=` 的號碼加一。不用自己判斷變得夠不夠多——`python pixel.py` 會在圖真的
+不一樣的時候印一行 `CHANGED -> bump ?v=`（它比的是解碼後的像素），看到就加。
 
 **但改格子大小不用加號碼，改檔名就好**——sheet 的檔名帶著格子邊長，
 16→24 那次是換檔名不是換內容，舊快取根本配不上新的請求。
@@ -131,12 +132,16 @@ sprites.js 裡 `?v=` 的號碼加一，否則舊快取配新 manifest 會整張�
 舊快取的圖尺寸「對」、載得進來、`background-size` 也算得出來，
 只是每一格都取錯位置——這正好落回上面那種安靜的錯法，只有號碼擋得住。
 
+**只改像素更安靜。** 雙眼往內一格那次連欄數都沒變，舊快取配新程式**完全正常
+運作**，只是眼睛還在舊位置，畫面上找不到任何一處看得出來不對。所以判準不是
+「結構有沒有變」，是「圖有沒有變」。
+
 `?v=` 一共有**三套，彼此無關**，別把它們當成同一件事：
 
 | 改了什麼 | 號碼在哪 |
 |---|---|
 | 房間那六張圖 | `style.css` |
-| 貓的 sheet（欄數／排數） | `sprites.js` 的 `manifest.sheet` |
+| 貓的 sheet（**任何像素**） | `sprites.js` 的 `manifest.sheet` |
 | **任何一支 `.js`** | `index.html`（和 `test.html`）的 `<script src>` |
 
 第三套最容易漏，因為前兩套 `python pixel.py` 會提醒、它不會。

@@ -894,6 +894,16 @@ def lint_blink():
     以後想在眼縫上面補一格眼窩陰影（比過的 S3 方案）就會撞到這裡，
     撞得剛好——那個改動確實會動到臉上不是眼睛的地方，該由人決定。
 
+    第二條是量眼縫的大小（disi.SHUT_EYE，3 寬 1 高）。_blink() 延伸眼縫的
+    時候只肯借主色的格子，借不到就**默默不延**——不丟例外、不畫壞，
+    只是眼縫少一格。而 3 寬變 2 寬正好就是明陽比過之後淘汰掉的那一版
+    （真實大小下讀起來不是「閉眼」是「臉閃了一下」），也就是說最該擋的錯
+    是唯一不會自己講話的那個。2026-09-01 眼睛往內移一格就踩到過：
+    內側從主色變成奶油，延伸的方向沒跟著翻面，圖照出、lint 全綠、眼縫變 2 寬。
+
+    量的是整個右半張 sheet，所以 sleep 手畫的那三格也一起被量到
+    （牠們原樣穿過 _blink()）。眼睛黏在一起會是一團 6 寬的，同樣擋得下來。
+
     順便回報有幾格真的變了。sleep 的眼睛本來就閉著，_blink() 會原樣放行，
     所以 18 格裡應該只有 15 格不一樣；數字不對就是有姿勢的眼睛沒被認出來
     （例如哪天把眼睛改成不連通的兩塊）。
@@ -922,8 +932,33 @@ def lint_blink():
                 moved += 1
             else:
                 still.append(name)
+
+    want = getattr(disi, "SHUT_EYE", None)
+    slits, wrong = 0, 0
+    for row in SHEET:
+        for name in row:
+            if not name.endswith(suffix) or not want:
+                continue
+            for blob in disi._eye_blobs(disi.FRAMES[name]):
+                xs = sorted(set(x for x, _ in blob))
+                ys = sorted(set(y for _, y in blob))
+                got = (xs[-1] - xs[0] + 1, ys[-1] - ys[0] + 1)
+                slits += 1
+                if got != want:
+                    wrong += 1
+                    msgs.append(
+                        "BLINK %s: shut eye at x%d-%d y%d is %dx%d, want %dx%d"
+                        % (name, xs[0], xs[-1], ys[0], got[0], got[1],
+                           want[0], want[1]))
+
     msgs.append("blink: %d frames close their eyes, %d already shut (%s)"
                 % (moved, len(still), " ".join(sorted(still)) or "none"))
+    if want:
+        # 有東西不合格的時候不准說「全部都對」。摘要行是給人掃過去的，
+        # 它跟上面的抱怨自相矛盾的話，被信的會是比較短的那句
+        msgs.append("blink: %d shut eyes, %s" % (
+            slits, ("all %dx%d" % want) if not wrong
+            else ("%d NOT %dx%d" % (wrong, want[0], want[1]))))
     return msgs
 
 
