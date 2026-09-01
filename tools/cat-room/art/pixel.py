@@ -46,6 +46,10 @@ ROWS = len(SHEET)
 # 那一輪應該只動 disi.py 和 sprites.js 的 manifest，不該回來改這支。
 CELL = len(disi.FRAMES[SHEET[0][0]])
 
+# sprite sheet 的檔名。跟著格子大小走，見 build_sheet()。
+# ../sprites.js 的 manifest 也寫著同一個名字，改這裡要改那裡。
+SHEET_PNG = "disi-%d.png" % CELL
+
 # M2 打算把 Disi 重畫成幾像素。**只有校對圖在用**——畫完之後 CELL 自己會
 # 變成這個數字，那時候這行就沒有作用了（room-view.png 的參考框會自動消失）。
 # 它存在的理由是：房間換成 20x11 的這一輪，貓還是 16x16，
@@ -108,10 +112,16 @@ def frames():
 
 
 def build_sheet():
+    """檔名帶著格子大小，所以改尺寸 = 換檔名。
+
+    這不是命名潔癖：`disi-16.png` 裡面裝 24x24 的貓，是一份**會騙人的文件**，
+    而這個專案有一半的正確性靠註解和檔名。順帶一個好處是換名字等於換網址，
+    sprite sheet 那個「舊快取配新 manifest 會整張錯位」的坑自動就繞過去了。
+    """
     img = Image.new("RGBA", (CELL * COLS, CELL * ROWS), (0, 0, 0, 0))
     for i, (_, rows) in enumerate(frames()):
         blit(img, rows, (i % COLS) * CELL, (i // COLS) * CELL, 1)
-    img.save(os.path.join(HERE, "disi-16.png"))
+    save_asset(img, SHEET_PNG)
 
 
 def build_proof(scale=20, pad=22):
@@ -801,6 +811,66 @@ def check_rigid_head():
     return out
 
 
+def lint_face_symmetry():
+    """臉上的東西有沒有對稱於 disi.FACE_MID。
+
+    這條是明陽抓出來的，不是我想到的：24x24 第一版鼻子在 x6-7（中心 6.5），
+    奶油卻左邊給兩格右邊給一格，下面的口鼻塊中心又落在 5.5。
+    **差一格在單幀上看不出來，動起來也看不出來，但整張臉就是歪的。**
+
+    量的是眼（e）、鼻與耳內（p）、以及**整塊口鼻**的奶油（c）。
+
+    第一版的 c 只量「有 p 的那一列」，理由是胸口和腳掌也是 c、那些本來就
+    不對稱。結果歪掉的正好是鼻子**下面**那兩列——沒有 p，整個口鼻的下半段
+    從來沒被檢查過，四個頭裡有四處一路綠燈。**用「哪一列」當範圍是猜的。**
+
+    改成從鼻子的 p 出發做四連通填充，走得到的 c 就是口鼻那一塊，逐列量。
+    範圍變成算出來的，而它成立是靠 disi.py 已經寫死的那條設計規則：
+    **奶油色斷在脖子**，所以胸口那塊碰不到、不會被誤抓。哪天有人把它接起來
+    這裡就會叫——而那件事本來就是禁止的，叫得剛好。
+    """
+    msgs = []
+    mid = getattr(disi, "FACE_MID", None)
+    if mid is None:
+        return msgs
+
+    def muzzle_rows(rows):
+        """從鼻子往外淹，回傳每一列的奶油 x 座標。"""
+        seen = set()
+        stack = [(x, y) for y, r in enumerate(rows)
+                 for x, ch in enumerate(r) if ch == "p"]
+        while stack:
+            x, y = stack.pop()
+            for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+                if (nx, ny) in seen or not (0 <= ny < len(rows)):
+                    continue
+                if 0 <= nx < len(rows[ny]) and rows[ny][nx] == "c":
+                    seen.add((nx, ny))
+                    stack.append((nx, ny))
+        out = {}
+        for x, y in seen:
+            out.setdefault(y, []).append(x)
+        return out
+
+    bad = 0
+    for name in sorted(disi.FRAMES):
+        rows = disi.FRAMES[name]
+        spans = [(y, ch, [x for x, c in enumerate(row) if c == ch])
+                 for y, row in enumerate(rows) for ch in "ep"]
+        spans += [(y, "c", xs) for y, xs in muzzle_rows(rows).items()]
+        for y, ch, xs in spans:
+            if not xs:
+                continue
+            got = (min(xs) + max(xs)) / 2.0
+            if got != mid:
+                bad += 1
+                msgs.append("FACE %s row %d: %s spans x%d-%d, mid %.1f, want %.1f"
+                            % (name, y, ch, min(xs), max(xs), got, mid))
+    if not bad:
+        msgs.append("face: %d frames symmetric about x%.1f" % (len(disi.FRAMES), mid))
+    return msgs
+
+
 def lint():
     msgs = []
     for name, rows in disi.FRAMES.items():
@@ -846,6 +916,7 @@ def lint():
             msgs.append("%-5s %s -> %s: %d px%s" % (anim, prev, name, diff, tag))
 
     msgs += check_rigid_head()
+    msgs += lint_face_symmetry()
 
     used = set()
     for rows in disi.FRAMES.values():
@@ -871,7 +942,7 @@ if __name__ == "__main__":
     fatal = [m for m in problems + room_problems
              if "not in palette" in m or "unknown tile" in m
              or ", want" in m or "outside the room" in m or "CONTRAST" in m
-             or "SKY_TOD" in m]
+             or "SKY_TOD" in m or m.startswith("FACE ")]
     if fatal:
         sys.exit("\nfix the map first, nothing rendered")
 
@@ -889,7 +960,7 @@ if __name__ == "__main__":
     gifs = " ".join("%s.gif" % n for n, _, _ in sequences())
     rooms = " ".join("room-%s.png" % n for n in room.ROOMS)
     skies = " ".join("room-sky-%s.png" % t for t in room.SKY_TOD)
-    print("\nwrote disi-16.png / proof.png / squint.png / " + gifs)
+    print("\nwrote " + SHEET_PNG + " / proof.png / squint.png / " + gifs)
     print("wrote " + rooms + " / room-light.png / " + skies)
     print("wrote room-tiles.png / room-view.png / room-tod.png")
     print("wrote ../room-data.js")

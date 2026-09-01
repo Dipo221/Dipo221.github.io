@@ -60,7 +60,7 @@ token 只負責存檔，不決定要不要顯示編輯介面，這樣平常滑�
 大家看到的一樣；`shared`（今天被摸幾次）記給所有人、只顯示給我；
 `private`（bond、禮物、離開多久的訊息）留在各自的瀏覽器。
 
-**測試**：打開 `tools/cat-room/test.html` 就會跑，目前 183 條。
+**測試**：打開 `tools/cat-room/test.html` 就會跑，目前 186 條。
 邏輯都在 `world.js` / `cat.js` / `save.js` / `sprites.js`，這四支不碰 DOM
 所以測得到；`script.js` 只負責接到頁面上。
 
@@ -102,7 +102,7 @@ multiply 推不出比底色更亮的東西，夜裡的窗就是靠 screen 那層
 cd tools/cat-room/art && python pixel.py     （要 Pillow）
 ```
 
-進版控的有七張圖加一支 JS：`disi-16.png`、`room-pano.png`、`room-light.png`、
+進版控的有七張圖加一支 JS：`disi-24.png`、`room-pano.png`、`room-light.png`、
 四張 `room-sky-<時段>.png` 是網頁真的會載入的素材，
 `room-data.js` 是**房間幾何的單一事實來源**
 （格數、地板前後界、每個物件佔哪幾格）。`script.js` 和 `style.css` 都從它算，
@@ -119,8 +119,13 @@ cd tools/cat-room/art && python pixel.py     （要 Pillow）
 想搬家具就改那幾行，不用碰 CSS——`room-data.js` 會跟著重產。
 
 改完美術有兩件事一定要做：`sprites.js` 的 manifest 和 `art/disi.py` 的 `PLAY`
-是手動同步的，動一邊要動另一邊；動到 `disi-16.png` 的排數就要把 sprites.js 裡
+是手動同步的，動一邊要動另一邊；動到 `disi-24.png` 的排數就要把 sprites.js 裡
 `?v=` 的號碼加一，否則舊快取配新 manifest 會整張錯位。
+
+**但改格子大小不用加號碼，改檔名就好**——sheet 的檔名帶著格子邊長，
+16→24 那次是換檔名不是換內容，舊快取根本配不上新的請求。
+`?v=` 忘了加是錯得安靜（畫面看起來只是有點怪），檔名不對是連載都載不到——
+同一個問題，換成吵的那種錯法。
 
 改 `room.py` 最多要加**七個**號碼：`style.css` 裡的 `room-pano.png?v=`、
 `room-light.png?v=`、四張 `room-sky-<時段>.png?v=`，

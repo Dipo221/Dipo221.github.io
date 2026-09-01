@@ -492,8 +492,8 @@
        */
       const m = Sprites.manifest;
       check("已經接上素材包，不是 placeholder", Sprites.ready(), true);
-      check("3 欄 5 排", [m.cols, m.rows], [3, 5]);
-      check("每格 16x16", [m.frameW, m.frameH], [16, 16]);
+      check("3 欄 6 排", [m.cols, m.rows], [3, 6]);
+      check("每格 24x24", [m.frameW, m.frameH], [24, 24]);
       check("圖裡的貓朝左（往右走要翻面）", m.facesLeft, true);
 
       const rowsOk = Object.keys(m.anims).every((k) => m.anims[k].row >= 0 && m.anims[k].row < m.rows);
@@ -525,15 +525,19 @@
       check("睡覺用第 2 排", Sprites.frameFor("sleep", 0).row, 2);
 
       /*
-       * 坐與吃都有自己的一排。這兩條擋的是「哪天有人為了省格子
-       * 又把它們指回 idle」——那正是這兩個動作原本的樣子。
+       * 坐、吃、理毛都有自己的一排。這幾條擋的是「哪天有人為了省格子
+       * 又把它們指回 idle」——那正是這三個動作原本的樣子。
        */
       check("坐著有自己的一排，不是 idle 定格", Sprites.frameFor("sit", 0).row, 3);
       check("坐著會動，不是只有一格", m.anims.sit.frames.length > 1, true);
       check("吃東西有自己的一排", Sprites.frameFor("eat", 0).row, 4);
       check("吃東西不是 alias", m.alias.eat, undefined);
+      check("理毛有自己的一排", Sprites.frameFor("groom", 0).row, 5);
+      check("理毛不是 alias", m.alias.groom, undefined);
+      check("理毛會動，不是只有一格", m.anims.groom.frames.length > 1, true);
+      // 理毛比吃慢：190ms 會變成在啄自己的腳
+      check("理毛的節奏比吃鬆", m.anims.groom.ms > m.anims.eat.ms, true);
 
-      check("alias：groom 借用 idle", Sprites.frameFor("groom", 0).row, m.anims.idle.row);
       check("alias：play 借用 walk", Sprites.frameFor("play", 0).row, m.anims.walk.row);
       check("alias：approach 借用 walk", Sprites.frameFor("approach", 0).row, m.anims.walk.row);
       check("不認得的動畫退回 idle", Sprites.frameFor("完全沒這個東西", 0).row, m.anims.idle.row);

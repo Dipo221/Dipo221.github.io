@@ -1,8 +1,8 @@
 __pycache__/
 
 # 校對用的產出，跑 pixel.py 就會重生，不進版控。
-# disi-16.png、room-pano.png、room-light.png 不在這裡——
-# 那三張是網站真的會載入的素材，要 commit。
+# disi-24.png、room-pano.png、room-light.png、room-sky-*.png 不在這裡——
+# 那幾張是網站真的會載入的素材，要 commit。
 proof.png
 squint.png
 *.gif
