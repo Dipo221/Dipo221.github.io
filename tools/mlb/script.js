@@ -66,7 +66,7 @@ const MLB = (function () {
     { id: "callups", label: "球員異動", group: "其他", team: true, views: [
       { id: "all", label: "全部" },
       { id: "debut", label: "初登板" },
-      { id: "se", label: "選上合約" },
+      { id: "se", label: "加進 40 人名單" },
       { id: "cu", label: "叫上大聯盟" },
     ] },
     { id: "streaks", label: "連勝連敗", group: "其他", team: true, views: [] },
@@ -226,6 +226,25 @@ const MLB = (function () {
 
   function listLabel(kind) {
     return LIST_LABELS[kind] || "";
+  }
+
+  /*
+   * 登錄異動的兩種。抓取腳本只收這兩個 typeCode，差別是 40 人名單：
+   *
+   *   SE  本來不在 40 人名單上（簽的是小聯盟約），球隊把他的合約選上來、
+   *       加進 40 人名單。40 是硬上限，所以要挪走一個人才塞得下——
+   *       球隊願意付這個代價，訊號比 CU 強得多。
+   *   CU  本來就在 40 人名單上，只是被下放，現在從小聯盟叫回現役名單。
+   *       例行升降，牛棚接駁車多半是這種。
+   *
+   * MLB 原文是 "Selected the contract of"，直譯成「選上合約」字面沒錯但
+   * 看不出在講什麼，所以照它實際發生的事命名。
+   * typeDesc 是英文原字（Selected／Recalled），不能直接丟到中文介面上。
+   */
+  const MOVE_LABELS = { SE: "加進 40 人名單", CU: "叫上大聯盟" };
+
+  function moveLabel(type) {
+    return MOVE_LABELS[type] || "登錄異動";
   }
 
   /*
@@ -462,7 +481,7 @@ const MLB = (function () {
       const s = slot(c.playerId, c.name, c.teamId);
       if (!s) return;
       s.tone = s.tone || "debut";
-      s.lines.push(shortDate(c.date) + " " + (c.isDebut ? "大聯盟初登板" : c.typeDesc || "登錄異動"));
+      s.lines.push(shortDate(c.date) + " " + (c.isDebut ? "大聯盟初登板" : moveLabel(c.type)));
     });
 
     return { byId: byId, byName: byName };
@@ -1129,9 +1148,18 @@ const MLB = (function () {
       return matchesTeam(c.teamId);
     });
 
+    /*
+     * 三個檢視互斥，加起來剛好等於全部。
+     *
+     * isDebut 跟 type 是兩個不同維度的東西——每個初登板的人都一定同時是
+     * SE 或 CU（總得用某種方式被放上名單才能上場），所以只照 type 篩的話，
+     * 初登板的人會同時出現在兩個檢視裡。而卡片的徽章又是初登板優先，
+     * 於是「加進 40 人名單」底下會冒出一排寫著「初登板」、看不出為什麼
+     * 在這裡的卡。初登板是這三件事裡最值得單獨看的，所以讓它獨佔一類。
+     */
     if (view === "debut") rows = rows.filter(function (c) { return c.isDebut; });
-    else if (view === "se") rows = rows.filter(function (c) { return c.type === "SE"; });
-    else if (view === "cu") rows = rows.filter(function (c) { return c.type === "CU"; });
+    else if (view === "se") rows = rows.filter(function (c) { return c.type === "SE" && !c.isDebut; });
+    else if (view === "cu") rows = rows.filter(function (c) { return c.type === "CU" && !c.isDebut; });
 
     // 抓取腳本把初登板排到最前面，但這裡每一種檢視都要照日期新到舊
     rows = rows.slice().sort(function (a, b) {
@@ -1150,19 +1178,18 @@ const MLB = (function () {
     rows.forEach(function (c) {
       const tone = c.isDebut ? "debut" : "hot";
       const card = playerCard(tone, { id: c.playerId, name: c.name });
-      card.appendChild(
-        cardHead(
-          c.name,
-          c.pos,
-          c.isDebut ? "初登板" : c.type === "SE" ? "選上合約" : "叫上大聯盟",
-          tone
-        )
-      );
+      card.appendChild(cardHead(c.name, c.pos, c.isDebut ? "初登板" : moveLabel(c.type), tone));
       card.appendChild(
         metaRow([
           shortDate(c.date),
           c.teamId ? teamName(c.teamId) : "",
           c.age ? c.age + " 歲" : "",
+          /*
+           * 初登板的徽章寫「初登板」，就蓋掉了他是用哪一種方式上來的。
+           * 那件事沒有不重要——被加進 40 人名單的初登板，跟本來就在名單上
+           * 的初登板，球隊的投入程度差很多。徽章要短，所以補在這一列。
+           */
+          c.isDebut ? moveLabel(c.type) : "",
         ])
       );
       wrap.appendChild(card);

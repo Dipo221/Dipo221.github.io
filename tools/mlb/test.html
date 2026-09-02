@@ -60,7 +60,7 @@
 
   <footer class="container"><p><a href="./">← 回工具</a></p></footer>
 
-  <script src="script.js?v=5"></script>
+  <script src="script.js?v=6"></script>
   <script>
     const out = document.getElementById("out");
     let passed = 0;
@@ -679,7 +679,7 @@
 
     group("球員異動：四種檢視");
     {
-      // 這一區以前叫「新秀登板」，但裡面本來就混著選上合約跟叫上大聯盟，名字對不上內容
+      // 這一區以前叫「新秀登板」，但裡面本來就混著加進 40 人名單跟叫上大聯盟，名字對不上內容
       showTab("球員異動");
       pickTeam("");
 
@@ -689,15 +689,34 @@
       check("初登板用 accent 色", board.querySelectorAll(".card.is-debut").length, 1);
       check("年齡有帶", /21 歲/.test(board.textContent), true);
 
+      /*
+       * 三個檢視互斥。第一版這裡是照 type 篩的，而 isDebut 跟 type 是兩個維度——
+       * Fresh Debut 同時是 SE，所以他會既出現在「初登板」也出現在「加進 40 人名單」，
+       * 而且兩邊的徽章都寫「初登板」，在後者底下看起來就像混進來的雜訊。
+       * 這裡逐一驗集合，最後再驗一次三份加起來剛好等於全部。
+       */
       pickView("debut");
       check("只剩初登板", names(), ["Fresh Debut"]);
+      const debutNames = names();
+      check("初登板的卡片補寫他是怎麼上來的", /加進 40 人名單/.test(board.textContent), true);
+
       pickView("se");
-      // 初登板本身也是一筆 SE，兩邊都該看得到他——徽章寫初登板是因為那是更重要的事
-      check("選上合約包含初登板的那筆", names(), ["Contract Guy", "Fresh Debut"]);
-      check("非初登板的 SE 徽章寫選上合約", /選上合約/.test(board.textContent), true);
+      check("加進 40 人名單不含初登板那筆", names(), ["Contract Guy"]);
+      const seNames = names();
+      check("徽章寫加進 40 人名單", /加進 40 人名單/.test(board.textContent), true);
+      check("這一區不該再出現初登板", /初登板/.test(board.textContent), false);
+
       pickView("cu");
       check("叫上大聯盟只有 CU", names(), ["Shuttle Guy"]);
+      const cuNames = names();
       check("徽章寫叫上大聯盟", /叫上大聯盟/.test(board.textContent), true);
+
+      // 三份互斥又窮盡：加起來的人數等於全部，而且沒有人被算兩次
+      pickView("all");
+      const allNames = names();
+      const parts = debutNames.concat(seNames, cuNames);
+      check("三個檢視加起來等於全部", parts.slice().sort(), allNames.slice().sort());
+      check("沒有人出現在兩個檢視裡", parts.length, new Set(parts).size);
 
       pickView("all");
       pickTeam(142);
@@ -800,6 +819,17 @@
       showTab("關注名單");
       check("沒消息的人不會被吃掉", names(), ["Nobody Here"]);
       check("而是講一句最近沒消息", /最近沒有消息/.test(board.textContent), true);
+
+      /*
+       * 登錄異動的說明不能直接用 typeDesc——那是 MLB 給的英文原字
+       * （Selected／Recalled），丟到中文介面上就是一句英文。
+       * 跟 listKind 的 paternity 是同一種錯，用眼睛掃很容易放過去。
+       */
+      load({ "mlb:watch": [{ id: 700005, name: "Shuttle Guy" }, { id: 700004, name: "Fresh Debut" }] });
+      showTab("關注名單");
+      check("CU 講中文不是 Recalled", /叫上大聯盟/.test(board.textContent), true);
+      check("沒有英文原字漏出來", /Recalled|Selected/.test(board.textContent), false);
+      check("初登板還是講初登板", /大聯盟初登板/.test(board.textContent), true);
 
       /*
        * 球隊下拉在這一頁是停用的（TABS 裡 team: false），
