@@ -369,20 +369,19 @@ def build_rooms():
 def room_scale(name, device):
     """一間房間在某個裝置上會被放大幾倍。倍率決定一切，尺寸是它算出來的。
 
-    兩個裝置的規則不一樣，而差別就是明陽那個左右滑的想法：
+    **兩個裝置同一條規則**（滿版之後，2026-09-03）：高度填滿、寬度溢出去用滑的，
+    所以只有高度在決定倍率。這條原本是明陽替手機想的。
 
-      桌機 整間要看得完，所以取寬與高之中比較緊的那個限制（= object-fit: contain）
-      手機 高度填滿、寬度溢出去用滑的，所以**只有高度在決定倍率**
+    它把欄數從算式裡拿掉了：房間不必再塞進視窗寬，貓的大小就只剩
+    「可用高度 / 列數」，多給幾欄只是多一段要滑的距離，不會再讓貓縮小。
 
-    手機那條把欄數從算式裡拿掉了。房間不必再塞進 327px，
-    貓的大小就只剩「可用高度 / 列數」，多給幾欄不會再讓貓縮小。
+    桌機以前多一條「寬度也要塞得下」（取寬高之中比較緊的那個，= contain）。
+    那條跟滿版是矛盾的——20/11 比任何一般螢幕都扁——所以它被拿掉了，
+    理由寫在 room.py 的 LAYOUT 上面。
     """
-    spec = room.ROOMS[name]
-    w, h = spec["cols"] * 16, spec["rows"] * 16
-    if device == "phone":
-        return float(room.LAYOUT["phone"][1] - room.LAYOUT["chrome_phone"]) / h
-    avail_h = room.LAYOUT["desktop"][1] - room.LAYOUT["chrome_desktop"]
-    return min(float(room.LAYOUT["breakout"]) / w, float(avail_h) / h)
+    h = room.ROOMS[name]["rows"] * 16
+    chrome = room.LAYOUT["chrome_phone" if device == "phone" else "chrome_desktop"]
+    return float(room.LAYOUT[device][1] - chrome) / h
 
 
 def build_room_view(name="pano", pad=18):
@@ -396,14 +395,21 @@ def build_room_view(name="pano", pad=18):
     非整數倍放大的毛邊**故意不修**。瀏覽器開 image-rendering: pixelated
     也是這樣，磨掉它等於給一張騙人的預覽。
 
-    橘框是手機一次看得到的範圍。它在這張圖的座標系裡是一個固定的寬度，
-    因為兩個裝置的倍率都由各自的可用高度決定，比值（466/472）跟房間無關——
-    所以框的大小跟房間多寬無關，房間越寬就顯得越小，那個比例正好就是
-    「手機一次看得到幾成」。框以貓為中心，因為視角本來就該跟著貓。
+    **兩個框，兩個裝置一次看得到的範圍。** 藍的是桌機、橘的是手機。
+    滿版之前桌機整間看得完、沒有框可畫，現在它也會切掉左右，所以也要框。
+    藍框外面那兩條就是**斜屋簷被藏起來的部分**，要判斷「藏掉的是不是東西」
+    看這張。
+
+    框在這張圖的座標系裡是固定的寬度，因為兩個裝置的倍率都由各自的可用高度
+    決定，比值跟房間多寬無關——所以房間越寬框就顯得越小，那個比例正好就是
+    「一次看得到幾成」。框以貓為中心，因為視角本來就該跟著貓。
     """
     font = room_font(14)
     dh = room.LAYOUT["desktop"][1] - room.LAYOUT["chrome_desktop"]
     ph = room.LAYOUT["phone"][1] - room.LAYOUT["chrome_phone"]
+    # 這張圖是照桌機倍率算的，所以桌機的視窗寬直接就是它自己；
+    # 手機要換算成同一個座標系才畫得下去。
+    dwin = room.LAYOUT["desktop_view"]
     win = int(round(room.LAYOUT["phone_view"] * float(dh) / ph))
 
     spec = room.ROOMS[name]
@@ -414,22 +420,30 @@ def build_room_view(name="pano", pad=18):
     ds = room_scale(name, "desktop")
     sw, sh = int(round(w * ds)), int(round(h * ds))
     shot = im.resize((sw, sh), Image.NEAREST)
-    # 框以貓為中心，但不准滑出房間外——真的捲動容器也是這樣夾的
-    bx = max(0, min(sw - win, int(round(fx * sw)) - win // 2))
     label = ("%s  %dx%d tiles = %dx%d px   laptop %dx%d (%.2fx)   "
-             "cat %dpx now / %dpx at %d src px   phone sees %d%% at a time"
+             "cat %dpx now / %dpx at %d src px   laptop sees %d%% / phone %d%%"
              % (name, spec["cols"], spec["rows"], w, h, sw, sh, ds,
                 round(CELL * ds), round(TARGET_CELL * ds), TARGET_CELL,
-                round(100.0 * win / sw)))
+                round(100.0 * dwin / sw), round(100.0 * win / sw)))
 
     lh = 24
     out = Image.new("RGB", (sw + pad * 2, sh + lh + pad * 2), BG)
     d = ImageDraw.Draw(out)
     d.text((pad, pad), label, fill=(205, 210, 224), font=font)
     out.paste(shot, (pad, pad + lh))
-    x0, y0 = pad + bx, pad + lh
-    d.rectangle([x0, y0, x0 + win, y0 + sh - 1], outline=(224, 122, 95), width=3)
-    d.text((x0 + 8, y0 + 8), "phone viewport", fill=(224, 122, 95), font=font)
+    y0 = pad + lh
+
+    # 框以貓為中心，但不准滑出房間外——真的捲動容器也是這樣夾的
+    def viewport(vw, color, text, ty):
+        if vw >= sw:
+            return  # 整間看得完，沒有鏡頭這回事（follow() 第一行也是這樣判的）
+        bx = max(0, min(sw - vw, int(round(fx * sw)) - vw // 2))
+        x0 = pad + bx
+        d.rectangle([x0, y0, x0 + vw, y0 + sh - 1], outline=color, width=3)
+        d.text((x0 + 8, ty), text, fill=color, font=font)
+
+    viewport(dwin, (138, 170, 224), "laptop viewport", y0 + 8)
+    viewport(win, (224, 122, 95), "phone viewport", y0 + 30)
 
     # 重畫後那隻貓會佔多大的一塊。M1 結束時貓還是 16x16，光看圖沒辦法判斷
     # 「20x11 的房間配 24x24 的貓比例對不對」——那件事要等 M2 畫完才看得到，
