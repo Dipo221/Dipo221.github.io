@@ -78,15 +78,19 @@ jobs:
 
       # fetch.py 內容沒變就不會重寫檔案，所以這裡用 git diff 判斷就夠。
       # 少了這個判斷每天會多 24 個空 commit，一年近 9000 個。
+      #
+      # 兩個檔要一起看：球員索引通常整天不動，但偶爾只有它變
+      #（有人被加進 40 人名單、data.json 其他地方剛好沒動），
+      # 只檢查 data.json 的話那次更新會被漏掉。
       - name: 有變動才 commit
         run: |
-          if [ -z "$(git status --porcelain tools/mlb/data.json)" ]; then
+          if [ -z "$(git status --porcelain tools/mlb/data.json tools/mlb/players.json)" ]; then
             echo "資料沒有變動，這輪不 commit"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tools/mlb/data.json
+          git add tools/mlb/data.json tools/mlb/players.json
           git commit -m "chore: 更新 MLB 資料 $(date -u '+%Y-%m-%d %H:%M UTC')"
           # 排程之間有人手動 push 的話直接 push 會被拒，先 rebase 再重試一次
           git push || (git pull --rebase --autostash && git push)

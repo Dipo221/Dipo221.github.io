@@ -13,7 +13,7 @@
   <link rel="preload" as="font" type="font/woff2" href="../../fonts/space-grotesk-latin.woff2" crossorigin />
   <script src="../../theme.js?v=1"></script>
   <link rel="stylesheet" href="../../style.css?v=8" />
-  <link rel="stylesheet" href="style.css?v=3" />
+  <link rel="stylesheet" href="style.css?v=4" />
 </head>
 <body>
   <header class="hero hero-compact">
@@ -25,12 +25,10 @@
   </header>
 
   <main class="container">
-    <!-- 關注名單永遠置頂，不受下面的分頁切換影響。名單裡沒人被點到時整段收起來 -->
-    <section id="watch-section" hidden>
-      <h2>關注名單 <span class="count" id="watch-count"></span></h2>
-      <div id="watch" class="cards"></div>
-    </section>
-
+    <!--
+      關注名單以前釘在這裡，現在收進漢堡選單當成一般區塊了。
+      它變成可以按星號加減的名單之後，釘在最上面會把每一頁的第一屏都吃掉。
+    -->
     <div class="controls">
       <button id="menu-btn" class="menu-btn" type="button" aria-expanded="false" aria-controls="nav-drawer">
         <!-- 三條線本身沒有語意，用 aria-hidden 藏起來，讓讀螢幕的人只聽到旁邊那行字 -->
@@ -42,7 +40,17 @@
         <span id="menu-label">傷兵異動</span>
       </button>
 
-      <div class="team-filter">
+      <!--
+        「檢視」而不是「排序」：它同時在做篩選（打者／投手）、排序（即將歸隊）
+        和換時間窗（近 3 天），叫排序對前面那兩組是錯的。
+        選項由 script.js 依照目前在哪一區填。
+      -->
+      <div class="filter view-filter">
+        <label for="view-select">檢視</label>
+        <select id="view-select"></select>
+      </div>
+
+      <div class="filter team-filter">
         <label for="team-select">球隊</label>
         <select id="team-select">
           <option value="">全部球隊</option>
@@ -86,6 +94,6 @@
     </p>
   </footer>
 
-  <script src="script.js?v=3"></script>
+  <script src="script.js?v=5"></script>
 </body>
 </html>

@@ -156,8 +156,8 @@ def is_hard_hit(launch_speed, threshold=95.0):
     """
     強擊球判定：初速 >= 95 mph，這是業界通用的 hard-hit 門檻。
 
-    刻意不叫 barrel——barrel 是初速與仰角的特定組合，
-    我們只看初速，名字就要照實叫，不要借官方術語。
+    只看初速，所以高初速的滾地球也算——要區分「打得紮實」和「打得好」
+    得看仰角，那是 is_barrel() 的事。
     """
     if launch_speed is None:
         return False
@@ -165,3 +165,97 @@ def is_hard_hit(launch_speed, threshold=95.0):
         return float(launch_speed) >= threshold
     except (TypeError, ValueError):
         return False
+
+
+def is_barrel(launch_speed, launch_angle):
+    """
+    Barrel 判定：初速 >= 98 mph，且仰角落在隨初速放寬的區間內。
+
+    98 mph 時只有 26~30 度算，初速愈快區間愈寬，到 116 mph 放寬成 8~50 度——
+    球夠猛的話角度差一點還是會變成長打。
+
+    Statcast 官方公布的是兩個端點，中間那張逐 mph 的表沒有完整公開，
+    所以這裡在兩個端點之間做線性內插：
+
+        下限 = 124 - EV        （98→26、116→8，斜率剛好 -1）
+        上限 = 30 + (EV-98)*10/9（98→30、116→50）
+
+    兩端各自夾住不再外擴，不然 120 mph 會算出 4~54 度這種不存在的區間。
+
+    兩個端點是精確的，中間幾度會比官方略嚴——寧可少算幾顆，
+    也不要為了湊數去編一張自己記不清楚的對照表。畫面上要說明這是算出來的。
+
+    仰角缺值一律不算。實測 312 顆有初速的球全都有仰角，但寧可漏算也不要猜。
+    """
+    if launch_speed is None or launch_angle is None:
+        return False
+    try:
+        speed = float(launch_speed)
+        angle = float(launch_angle)
+    except (TypeError, ValueError):
+        return False
+    if speed < 98.0:
+        return False
+    lower = max(8.0, 124.0 - speed)
+    upper = min(50.0, 30.0 + (speed - 98.0) * 10.0 / 9.0)
+    return lower <= angle <= upper
+
+
+"""
+新聞主題分類用的關鍵字。
+
+只看標題，所以一定會誤判——「其他」是誠實的出口，不要為了讓每篇都有標籤
+硬把關鍵字擴到會亂咬的程度。
+
+順序有意義，先中先得：
+  傷兵排在異動前面，因為傷兵新聞常常寫 "placed on the IL"，兩邊都會中，
+  但使用者想在傷兵那類看到它。
+  異動排在分析前面，因為 "Prospect called up" 是事實不是分析。
+
+短字一律用左右詞邊界（\bil\b、\btear\b），不然 "until"、"years" 都會中。
+"sign" 只鎖左邊界，才能吃 signs/signed/signing 又不會咬到 "assign"。
+"""
+_NEWS_RULES = [
+    ("injury", re.compile(
+        r"\binjur|\bil\b|\bplaced on\b|\bday-to-day\b|\bstrain|\bsprain"
+        r"|\bsurgery\b|\bmri\b|\bfracture|\btear\b|\btorn\b|\bsidelined\b"
+        r"|\bsetback\b|\brehab|\bconcussion|\bhamstring\b|\boblique\b"
+        r"|\bsore|\bdiscomfort|\btommy john\b|\bout for\b",
+        re.IGNORECASE)),
+    # "waived" 要鎖死尾巴，不能寫成 \bwaive——不然 "Waiver Wire Rankings"
+    # 這種純粹是 fantasy 分析的標題會被當成球員被 DFA。
+    # 「claimed off waivers」照樣抓得到，因為 claim 本來就在清單裡。
+    #
+    # select 只收動詞形（select/selects/selected/selecting），不收 selection——
+    # 「選上合約」的標題一律是 "Pirates Select X"，
+    # 而 "All-Star selections"、"draft selections" 講的是入選跟選秀，不是這一類。
+    #
+    # call up 要吃連字號跟 -ing：實際看到的寫法有 called up、calling up、
+    # call-up、call-ups 四種，只寫 \bcall(?:ed)?\s+up\b 會漏掉一半。
+    ("move", re.compile(
+        r"\bsign|\btrade|\bdeal|\bacquire|\bclaim|\bwaived\b|\bdfa\b"
+        r"|\bdesignate|\boption|\brecall|\bpromot|\bselect(?:s|ed|ing)?\b"
+        r"|\bcall(?:ed|ing)?[\s-]+ups?\b|\bextension\b|\brelease|\bnon-tender",
+        re.IGNORECASE)),
+    ("analysis", re.compile(
+        r"\brankings?\b|\bwaiver|\bstart/sit\b|\bsleeper|\bfantasy\b"
+        r"|\bprojection|\bprospect|\bpreview\b|\bbreakout\b|\bbuy low\b"
+        r"|\bsell high\b|\bstreamer|\bdraft\b",
+        re.IGNORECASE)),
+]
+
+
+def categorize(title):
+    """
+    用標題把新聞分成 injury / move / analysis / other 四類。
+
+    分不出來就回 other，不要硬塞進最像的那一類——
+    一個誠實的「其他」比一個亂猜的標籤有用。
+    """
+    if not title:
+        return "other"
+    text = str(title)
+    for name, pattern in _NEWS_RULES:
+        if pattern.search(text):
+            return name
+    return "other"

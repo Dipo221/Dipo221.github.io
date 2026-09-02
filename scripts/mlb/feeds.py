@@ -21,6 +21,8 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
+import parse
+
 USER_AGENT = "dipo221.github.io mlb-tracker (personal fantasy baseball dashboard)"
 TIMEOUT = 25
 
@@ -142,6 +144,8 @@ def collect(days=14, per_source=25, log=print):
                     "date": dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
                     if dt
                     else None,
+                    # 只看標題猜主題，一定會有誤判，所以 parse.categorize 留了「其他」
+                    "cat": parse.categorize(title),
                 }
             )
             kept += 1
