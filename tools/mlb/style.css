@@ -60,6 +60,17 @@ main.container {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * 超過兩小時就從 muted 升回正常字色。
+ *
+ * 刻意不用 --il 那種警示紅：資料舊三小時是 Actions 排程的常態，
+ * 不是錯誤，塗紅色等於謊報嚴重性。真正的訊號是「3 小時前」那幾個字，
+ * 顏色只負責讓眼睛掃過去的時候停一下。
+ */
+.stamp.is-stale {
+  color: var(--text);
+}
+
 h2 .count {
   color: var(--muted);
   font-weight: 400;
@@ -918,6 +929,11 @@ a.card:focus-visible {
   color: var(--muted);
   font-size: var(--fs-xs);
   line-height: 1.6;
+}
+
+/* 連著兩段免責說明的話，段落之間不需要跟正文一樣的 28px */
+.disclaimer + .disclaimer {
+  margin-top: 10px;
 }
 
 .source {

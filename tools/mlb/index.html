@@ -13,7 +13,7 @@
   <link rel="preload" as="font" type="font/woff2" href="../../fonts/space-grotesk-latin.woff2" crossorigin />
   <script src="../../theme.js?v=1"></script>
   <link rel="stylesheet" href="../../style.css?v=8" />
-  <link rel="stylesheet" href="style.css?v=4" />
+  <link rel="stylesheet" href="style.css?v=5" />
 </head>
 <body>
   <header class="hero hero-compact">
@@ -82,6 +82,16 @@
       「最快可回歸」是用 IL 天數與起算日算出來的最早有資格被啟動的日期，
       不是預計回歸日——實際回歸時間要看新聞。
     </p>
+
+    <!--
+      更新間隔要寫出來。排程設的是每小時三次，但 GitHub 的 schedule 是
+      best-effort，忙起來整輪會被跳過，實際間隔常常是一到三小時。
+      不講的話，看到頁首寫「3 小時前」會以為是壞了。
+    -->
+    <p class="disclaimer">
+      資料由 GitHub Actions 定時產生。排程在尖峰時段會被整輪跳過，
+      所以實際更新間隔大約是一到三小時——頁首那個時間就是這份資料真正的產出時刻。
+    </p>
   </main>
 
   <footer class="container">
@@ -94,6 +104,6 @@
     </p>
   </footer>
 
-  <script src="script.js?v=6"></script>
+  <script src="script.js?v=7"></script>
 </body>
 </html>

@@ -60,7 +60,7 @@
 
   <footer class="container"><p><a href="./">← 回工具</a></p></footer>
 
-  <script src="script.js?v=6"></script>
+  <script src="script.js?v=7"></script>
   <script>
     const out = document.getElementById("out");
     let passed = 0;
@@ -177,6 +177,39 @@
       check("跨月也對", u(d(45)), 45);
       check("空值回 null", u(null), null);
       check("格式不對回 null", u("九月六日"), null);
+    }
+
+    group("freshLabel：資料有多舊要用看的，不是用心算的");
+    {
+      const f = MLB.freshLabel;
+      // 固定住「現在」，不然這組測試的結果會隨著跑的時間變
+      const now = new Date("2026-09-02T10:00:00Z");
+      const ago = (mins) => new Date(now - mins * 60000).toISOString();
+
+      check("剛產出", f(ago(0), now).text, "剛剛更新");
+      check("一分鐘內還算剛剛", f(ago(1), now).text, "剛剛更新");
+      check("兩分鐘開始報數", f(ago(2), now).text, "2 分鐘前更新");
+      check("59 分鐘還是講分鐘", f(ago(59), now).text, "59 分鐘前更新");
+      check("滿一小時換單位", f(ago(60), now).text, "1 小時前更新");
+      check("無條件捨去不四捨五入", f(ago(119), now).text, "1 小時前更新");
+      // 這就是使用者回報的那次：台北 18:00 看到 13:47 的資料
+      check("4 小時 15 分講 4 小時", f(ago(255), now).text, "4 小時前更新");
+      check("滿一天換單位", f(ago(1440), now).text, "1 天前更新");
+
+      // 兩小時是分界線：排程正常時不該亮，漏掉好幾輪才亮
+      check("1 小時 59 分不算過期", f(ago(119), now).stale, false);
+      check("剛滿兩小時算過期", f(ago(120), now).stale, true);
+
+      /*
+       * 訪客的時鐘比產檔的機器慢就會算出負數。沒有夾到 0 的話，
+       * 畫面上會出現「-43 分鐘前更新」——那比不顯示還糟，看起來像壞了。
+       */
+      check("時鐘倒退不印負數", f(ago(-43), now).text, "剛剛更新");
+      check("時鐘倒退不算過期", f(ago(-43), now).stale, false);
+
+      // 回 null 而不是空字串，呼叫端才分得出「沒有時間」跟「時間是空的」
+      check("空值回 null", f(null, now), null);
+      check("看不懂的時間回 null", f("九月二日", now), null);
     }
 
     /* ---------------------------------------------------------- */
@@ -471,6 +504,37 @@
       check("群組是照順序連在一起的", MLB.TABS.map((t) => t.group), [
         "我的", "我的", "傷兵", "傷兵", "打擊", "打擊", "其他", "其他", "其他",
       ]);
+    }
+
+    group("頁首的更新時間");
+    {
+      const stamp = document.getElementById("stamp");
+      // clone 過再改，不然會把 DATA 這份共用測資改掉，後面的群組就跟著歪了
+      const at = (ms) => Object.assign(clone(DATA), { generatedAt: ms === null ? null : new Date(Date.now() - ms).toISOString() });
+
+      load({}, at(5 * 60000));
+      check("5 分鐘前", /5 分鐘前更新/.test(stamp.textContent), true);
+      check("絕對時間留在括號裡", /（台北 \d+\/\d+ \d\d:\d\d）/.test(stamp.textContent), true);
+      check("還新鮮就不上過期樣式", stamp.classList.contains("is-stale"), false);
+
+      load({}, at(4 * 3600000));
+      check("4 小時前", /4 小時前更新/.test(stamp.textContent), true);
+      check("過了兩小時就上樣式", stamp.classList.contains("is-stale"), true);
+
+      /*
+       * 這條是重點：renderStamp 用的是 classList.toggle 不是 add。
+       * 寫成 add 的話第一次過期之後這個 class 就再也拿不掉，
+       * 資料明明更新了頁首還一直是深色——而且只有連續看兩輪的人會發現。
+       */
+      load({}, at(60000));
+      check("重新變新鮮就把樣式拿掉", stamp.classList.contains("is-stale"), false);
+
+      load({}, at(null));
+      check("沒有時間就整句不顯示", stamp.textContent, "");
+      check("也不會留著過期樣式", stamp.classList.contains("is-stale"), false);
+
+      // 還原成標準測資，下面的群組是接著這個狀態往下驗的
+      load({});
     }
 
     group("選單");

@@ -201,6 +201,35 @@ const MLB = (function () {
   }
 
   /*
+   * 資料有多舊。刻意講「多久以前」而不是「幾點更新」。
+   *
+   * Actions 的排程是 best-effort：忙起來是整輪直接丟掉，不是延後。
+   * 實測 18 小時裡該跑 18 次、只點火 4 次，所以停在三小時前是常態不是故障。
+   * 寫絕對時間的話得自己心算才知道過期多久——這個站就是這樣被發現漏更新的。
+   * 絕對時間仍然留在括號裡：想確認是哪一輪產的資料時還是需要它。
+   *
+   * now 收成參數而不是在裡面 new Date()，測試才固定得住時間點。
+   */
+  function freshLabel(iso, now) {
+    const then = new Date(iso);
+    if (!iso || isNaN(then.getTime())) return null;
+    /*
+     * 訪客的時鐘比產檔的機器慢就會算出負數。夾到 0，
+     * 不然畫面上會出現「-43 分鐘前更新」這種看起來像壞掉的字。
+     */
+    const mins = Math.max(0, Math.floor(((now || new Date()) - then) / 60000));
+
+    let text;
+    if (mins < 2) text = "剛剛更新";
+    else if (mins < 60) text = mins + " 分鐘前更新";
+    else if (mins < 1440) text = Math.floor(mins / 60) + " 小時前更新";
+    else text = Math.floor(mins / 1440) + " 天前更新";
+
+    // 兩小時是「排程大致還在跑」跟「明顯漏掉好幾輪」的分界
+    return { text: text, stale: mins >= 120 };
+  }
+
+  /*
    * 最快可回歸的說法。這是規則算出來的最早有資格被啟動的日期，
    * 不是預估回歸日，所以字面一定要寫「最快」。
    */
@@ -1483,19 +1512,23 @@ const MLB = (function () {
   }
 
   function renderStamp() {
-    if (!data.generatedAt) return;
-    const d = new Date(data.generatedAt);
-    if (isNaN(d.getTime())) return;
+    const fresh = freshLabel(data.generatedAt);
+    // 用 toggle 而不是重設 className：這顆節點的既有 class 不歸這裡管
+    stampEl.classList.toggle("is-stale", !!(fresh && fresh.stale));
+    if (!fresh) {
+      stampEl.textContent = "";
+      return;
+    }
     // 這個站的預設時區是台北，資料時間也照台北顯示
-    const text = new Intl.DateTimeFormat("zh-TW", {
+    const abs = new Intl.DateTimeFormat("zh-TW", {
       timeZone: "Asia/Taipei",
       month: "numeric",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
       hourCycle: "h23",
-    }).format(d);
-    stampEl.textContent = "資料更新於 " + text + "（台北時間）";
+    }).format(new Date(data.generatedAt));
+    stampEl.textContent = fresh.text + "（台北 " + abs + "）";
   }
 
   /*
@@ -1620,6 +1653,7 @@ const MLB = (function () {
     shortDate: shortDate,
     returnLabel: returnLabel,
     daysUntil: daysUntil,
+    freshLabel: freshLabel,
     applyData: applyData,
     TABS: TABS,
     SECTIONS: SECTIONS,
