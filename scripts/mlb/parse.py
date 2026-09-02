@@ -202,6 +202,81 @@ def is_barrel(launch_speed, launch_angle):
 
 
 """
+揮棒判斷用的 call code。
+
+statsapi 沒有「這球有沒有揮棒」的布林欄位，只有 details.call.code，
+所以只能從代碼反推。實測一天 10 場共 2963 球，代碼只出現這 13 種：
+B F C X S D *B E T W L H M。剩下的（Q 揮棒 pitchout、R 界外 pitchout、
+O 觸擊擦棒、P pitchout、I 故意四壞、V 自動壞球）罕見但照樣列進來，
+漏掉的話那幾球會被當成沒揮棒，把分母算歪。
+
+界外（F）跟觸擊界外（L）是揮了而且碰到了，一定要算進揮棒數——
+少了它們追打率的分母會少三分之一。
+"""
+_SWING_CODES = frozenset(
+    ["S", "W", "T", "M", "Q", "F", "L", "R", "O", "X", "D", "E"]
+)
+
+"""
+揮空。擦棒被捕（T）算不算揮空是唯一有疑問的一項，用實測決定：
+
+    含 T  23.87%   不含 T  21.88%   聯盟公布值約 24%
+
+所以官方是把 T 當揮空算的（擦棒被捕在記錄上就是揮棒落空的三振），
+含 T 才對得起來。界外（F/L/R）是實打實的碰到，不算。
+"""
+_WHIFF_CODES = frozenset(["S", "W", "T", "M", "Q"])
+
+
+def is_swing(call_code):
+    """這球打者有沒有揮棒。看不懂的代碼一律當沒揮，寧可低估也不要灌水。"""
+    return call_code in _SWING_CODES
+
+
+def is_whiff(call_code):
+    """揮了而且完全沒碰到。必然是 is_swing 的子集，測試有守這條。"""
+    return call_code in _WHIFF_CODES
+
+
+def in_zone(zone):
+    """
+    這球進不進好球帶。statsapi 的 zone：1~9 是帶內的九宮格，11~14 是帶外四角。
+
+    回三種值不是兩種——zone 缺值時回 None，讓呼叫端可以把這球整個跳過。
+    回 False 的話這球會被算進「帶外」的分母，追打率就被稀釋了。
+    實測 291 球沒有一顆缺 zone，但不能假設它永遠都在。
+    """
+    if zone is None:
+        return None
+    try:
+        z = int(zone)
+    except (TypeError, ValueError):
+        return None
+    if 1 <= z <= 9:
+        return True
+    if 11 <= z <= 14:
+        return False
+    return None
+
+
+def is_sweet_spot(launch_angle):
+    """
+    甜蜜點：仰角 8~32 度，Statcast 的公開定義。
+
+    這一項補的是 is_hard_hit 看不到的事——強擊球只看初速，
+    所以 105 mph 的滾地球跟 105 mph 的平飛球算同一件事。
+    實測一天 511 顆擊球是 31.9%，聯盟約 33%，對得起來。
+    """
+    if launch_angle is None:
+        return False
+    try:
+        angle = float(launch_angle)
+    except (TypeError, ValueError):
+        return False
+    return 8.0 <= angle <= 32.0
+
+
+"""
 新聞主題分類用的關鍵字。
 
 只看標題，所以一定會誤判——「其他」是誠實的出口，不要為了讓每篇都有標籤

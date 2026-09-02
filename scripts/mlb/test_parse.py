@@ -172,6 +172,76 @@ check("沒有初速就不算", parse.is_barrel(None, 25.0), False)
 check("兩個都沒有", parse.is_barrel(None, None), False)
 check("髒值不要炸掉", parse.is_barrel("abc", "def"), False)
 
+group("甜蜜點：仰角 8~32 度")
+check("平飛 20 度", parse.is_sweet_spot(20.0), True)
+check("8 度剛好進", parse.is_sweet_spot(8.0), True)
+check("32 度剛好進", parse.is_sweet_spot(32.0), True)
+check("7.9 度是滾地", parse.is_sweet_spot(7.9), False)
+check("32.1 度太高", parse.is_sweet_spot(32.1), False)
+check("打進地上的負角度", parse.is_sweet_spot(-12.0), False)
+check("沖天炮 60 度", parse.is_sweet_spot(60.0), False)
+# 這一項存在的理由：同樣是強擊球，滾地跟平飛差很多
+check("105 mph 滾地球不是甜蜜點", parse.is_sweet_spot(-3.0), False)
+check("缺值", parse.is_sweet_spot(None), False)
+check("髒值不要炸掉", parse.is_sweet_spot("abc"), False)
+
+group("揮棒判定")
+check("揮空 S", parse.is_swing("S"), True)
+check("被擋住的揮空 W", parse.is_swing("W"), True)
+check("擦棒被捕 T", parse.is_swing("T"), True)
+check("界外 F 是揮了而且碰到了", parse.is_swing("F"), True)
+check("觸擊界外 L", parse.is_swing("L"), True)
+check("觸擊落空 M", parse.is_swing("M"), True)
+check("擊出去 X／D／E 都是揮棒",
+      [parse.is_swing(c) for c in ("X", "D", "E")], [True, True, True])
+check("好球被喊的 C 沒有揮", parse.is_swing("C"), False)
+check("壞球 B 沒有揮", parse.is_swing("B"), False)
+check("落地壞球 *B 沒有揮", parse.is_swing("*B"), False)
+check("觸身球 H 沒有揮", parse.is_swing("H"), False)
+# 看不懂的代碼寧可低估也不要灌水——算成揮棒會讓揮空率的分母膨脹
+check("沒看過的代碼當沒揮", parse.is_swing("ZZ"), False)
+check("None", parse.is_swing(None), False)
+
+group("揮空判定")
+check("S 是揮空", parse.is_whiff("S"), True)
+check("W 是揮空", parse.is_whiff("W"), True)
+# 實測：含 T 是 23.87%、不含是 21.88%，聯盟公布約 24%，所以官方把 T 算揮空
+check("擦棒被捕 T 算揮空（實測對得上聯盟值）", parse.is_whiff("T"), True)
+check("觸擊落空 M 算揮空", parse.is_whiff("M"), True)
+check("界外 F 碰到了不算揮空", parse.is_whiff("F"), False)
+check("觸擊界外 L 不算揮空", parse.is_whiff("L"), False)
+check("擊出去的球不算揮空",
+      [parse.is_whiff(c) for c in ("X", "D", "E")], [False, False, False])
+check("沒揮的球不算揮空", parse.is_whiff("C"), False)
+check("None", parse.is_whiff(None), False)
+
+group("揮空必然是揮棒的子集")
+# 這條是不變式，不是抽樣。任何一個代碼只要「揮空但沒揮棒」，
+# 揮空率就會 > 100%，而那種數字看起來像 bug 而不是像資料。
+# 兩個集合各自維護，很容易改了一邊忘了另一邊，所以在這裡守住。
+bad = sorted(c for c in parse._WHIFF_CODES if not parse.is_swing(c))
+check("每個揮空代碼都算揮棒", bad, [])
+check("揮空的種類比揮棒少", len(parse._WHIFF_CODES) < len(parse._SWING_CODES), True)
+
+group("好球帶：三種答案不是兩種")
+check("正中紅心 5", parse.in_zone(5), True)
+check("帶內左上角 1", parse.in_zone(1), True)
+check("帶內右下角 9", parse.in_zone(9), True)
+check("帶外 11", parse.in_zone(11), False)
+check("帶外 14", parse.in_zone(14), False)
+check("字串型的 zone 也讀得懂", parse.in_zone("13"), False)
+# 10 不存在（1~9 帶內、11~14 帶外，中間跳過 10）
+check("10 不是合法 zone", parse.in_zone(10), None)
+check("15 以上不是合法 zone", parse.in_zone(15), None)
+"""
+缺值一定要回 None 而不是 False。回 False 的話這球會被算進「帶外」的分母，
+追打率就被不知道的球稀釋掉；回 True 則會讓分母縮水。
+兩種都是把不知道的事當成知道。
+"""
+check("缺值回 None 不回 False", parse.in_zone(None), None)
+check("髒值回 None", parse.in_zone("abc"), None)
+check("None 不等於 False", parse.in_zone(None) is False, False)
+
 group("新聞分類")
 check(
     "傷兵",
@@ -298,7 +368,15 @@ check("7 天看得到 3 場", [r for r in hh7 if r["name"] == "Slugger"][0]["gam
 check("3 天看得到 2 場", [r for r in hh3 if r["name"] == "Slugger"][0]["games"], 2)
 
 group("時間窗：窗愈短數字愈小")
-slug = lambda rows: [r for r in rows if r["name"] == "Slugger"][0]  # noqa: E731
+
+
+def slug_by(name, rows):
+    """從榜上撈某個人。撈不到就讓 IndexError 炸出來——
+    測試裡「他不在榜上」跟「他的數字錯了」是兩種失敗，不要混成一種。"""
+    return [r for r in rows if r["name"] == name][0]
+
+
+slug = lambda rows: slug_by("Slugger", rows)  # noqa: E731
 check("14 天強擊球 12", slug(hh14)["hardHits"], 12)
 check("7 天強擊球 9", slug(hh7)["hardHits"], 9)
 check("3 天強擊球 6", slug(hh3)["hardHits"], 6)
@@ -333,6 +411,66 @@ check("d3 跟單獨算的一樣", b["d3"], hh3)
 group("時間窗：空快取不要炸掉")
 check("沒有 games", hardhit.leaderboard({}, 14, TODAY, "hh", 10), [])
 check("games 是空的", hardhit.leaderboard({"games": {}}, 3, TODAY, "br", 1), [])
+
+group("舊格式的紀錄不要炸掉")
+# 上面那份 five_games() 的打者只有 bb/hh/br，沒有選球與仰角欄位。
+# 快取升版會整份重建，所以正式流程不會遇到，但彙總不該假設欄位一定在。
+old = slug(hh14)
+check("沒有仰角資料就不給甜蜜點率", old["sweetSpotRate"], None)
+check("沒有仰角資料就不給平均仰角", old["avgLA"], None)
+check("沒有帶外球數就不給追打率", old["chaseRate"], None)
+check("沒有揮棒數就不給揮空率", old["whiffRate"], None)
+# 回 0 的話畫面會顯示「追打率 0%」——那是在宣稱一件我們沒量到的事
+check("是 None 不是 0", old["chaseRate"] is None, True)
+check("看球數是 0", old["pitches"], 0)
+
+
+# ---------------------------------------------------------------------------
+# 選球與甜蜜點的分母。這一段防的是「拿擊球數當所有東西的分母」，
+# 那是接上逐球統計之後最容易犯的錯：一個打席可能看六球才出局，
+# 也可能第一球就打掉，所以看球數跟擊球數是兩個世界。
+# ---------------------------------------------------------------------------
+
+
+def bat_full(name, team, **kw):
+    rec = {"name": name, "teamId": team, "max": 108.0,
+           "bb": 0, "hh": 0, "br": 0, "ss": 0, "lan": 0, "la": 0.0, "sum": 0.0,
+           "p": 0, "oz": 0, "ch": 0, "sw": 0, "wh": 0}
+    rec.update(kw)
+    rec["sum"] = rec["bb"] * 95.0
+    return rec
+
+
+# 每個分母都不一樣，所以拿錯任何一個都會算出不同的數字：
+#   甜蜜點 6/8=.750   追打 6/20=.300   揮空 4/16=.250   強擊 4/10=.400
+# 全部拿 bb=10 當分母的話會變成 .600/.600/.400，四條都會紅。
+DENOM = {
+    "games": {
+        "g": {"date": "2026-09-01", "batters": {"7": bat_full(
+            "Picky", 147, bb=10, hh=4, br=2, ss=6, lan=8, la=120.0,
+            p=40, oz=20, ch=6, sw=16, wh=4)}}
+    }
+}
+row = hardhit.leaderboard(DENOM, 3, TODAY, "hh", 1)[0]
+
+group("選球的分母不是擊球數")
+check("追打率用帶外球數當分母", row["chaseRate"], 0.3)
+check("揮空率用揮棒數當分母", row["whiffRate"], 0.25)
+check("看球數原樣輸出", row["pitches"], 40)
+check("強擊率還是用擊球數", row["hardHitRate"], 0.4)
+
+group("甜蜜點與平均仰角的分母是有仰角的擊球數")
+# 缺仰角的球要退出分母，不是當成 0 度——0 度是滾地球，不是「不知道」
+check("甜蜜點率 6/8 而不是 6/10", row["sweetSpotRate"], 0.75)
+check("平均仰角 120/8 而不是 120/10", row["avgLA"], 15.0)
+
+
+group("平均初速")
+# 平均初速是所有打擊指標裡穩定得最快的（約 40 顆擊球），14 天對多數先發剛好夠。
+# 卡片上原本顯示的是最高初速，但那是 n 顆球的極大值——出賽多的人天生就會比較高，
+# 拿來跨球員比較是不公平的。平均沒有這個問題。
+check("平均初速", row["avgEV"], 95.0)
+check("最高初速還在（排序的第三順位要用）", row["maxEV"], 108.0)
 
 print("\n%d passed, %d failed" % (passed, failed))
 sys.exit(1 if failed else 0)

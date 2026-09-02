@@ -625,6 +625,19 @@ const MLB = (function () {
     return meta;
   }
 
+  /*
+   * 比率轉成整數百分比。沒有值就回 null 讓 metaRow 整項跳過。
+   *
+   * 這裡最重要的是 0 跟「沒有」要分得開：一個打者追打率真的是 0%
+   * （帶外的球一顆都沒揮）跟他根本沒有面對過帶外的球，是兩件事。
+   * 寫成 `value ? ... : null` 的話前者會被當成後者整項消失。
+   */
+  function pct(label, value) {
+    if (value === null || value === undefined) return null;
+    return label + " " + Math.round(value * 100) + "%";
+  }
+
+
   /* ---------- 檢視 ---------- */
 
   function tabById(id) {
@@ -1132,14 +1145,48 @@ const MLB = (function () {
       body.appendChild(cardHead(h.name, posOf(h.playerId), teamName(h.teamId), "hot"));
 
       const rate = isBarrel ? h.barrelRate : h.hardHitRate;
+      /*
+       * 顯示平均初速而不是最高初速。
+       *
+       * 最高初速是 n 顆球的極大值，所以它會跟著出賽數長——打了 45 顆的人
+       * 天生就比打了 25 顆的人高，跨球員比較等於在比誰上場多。
+       * 平均沒有這個偏差，而且它是所有打擊指標裡穩定得最快的（約 40 顆擊球），
+       * 14 天對多數先發剛好夠。maxEV 仍然留在資料裡當排序的第三順位。
+       */
       const parts = [
         h.battedBalls + " 次擊球中 " + Math.round((rate || 0) * 100) + "% 是" +
           (isBarrel ? " barrel" : "強擊球"),
-        "最高 " + h.maxEV + " mph",
+        (h.avgEV === null || h.avgEV === undefined ? "最高 " + h.maxEV : "平均 " + h.avgEV) +
+          " mph",
       ];
       // 另一個數字當對照：barrel 多但強擊球普通，或反過來，都是有意義的訊號
       parts.push(isBarrel ? "強擊球 " + h.hardHits + " 球" : "barrel " + (h.barrels || 0) + " 顆");
       body.appendChild(metaRow(parts));
+
+      /*
+       * 第二排是「他決定要不要揮」的那一瞬間，跟第一排刻意分開。
+       *
+       * 第一排全部是接觸品質——球棒碰到球之後發生了什麼。這兩組講的是
+       * 打擊的兩個不同階段，混成同一排會變成七項用點分隔的長串，
+       * 而且會讓人以為它們是同一種東西。
+       *
+       * 這裡顯示的全部是「水準」不是「變化」。原本規劃的升溫／降溫徽章
+       * 實測是量不到的，理由寫在 hardhit.py 那段被拿掉的 trend_map 註解裡。
+       *
+       * 舊的 data.json 沒有這些欄位，這時候 disc 會是空的——不要 append 一個
+       * 空的 .card-meta，那會留下一條 5px 的空隙看起來像排版壞了。
+       */
+      const disc = [
+        pct("追打", h.chaseRate),
+        pct("揮空", h.whiffRate),
+        pct("甜蜜點", h.sweetSpotRate),
+        h.avgLA === null || h.avgLA === undefined ? null : "平均仰角 " + h.avgLA + "°",
+      ].filter(Boolean);
+      if (disc.length) {
+        const row = metaRow(disc);
+        row.classList.add("card-meta-swing");
+        body.appendChild(row);
+      }
 
       rank.appendChild(body);
       card.appendChild(rank);
@@ -1158,6 +1205,20 @@ const MLB = (function () {
             "中間幾度會比官方略嚴。"
           : "強擊球＝擊球初速 95 mph 以上，這是通用的 hard-hit 門檻，只看力道不看角度。" +
             "排序看的是數量不是比率，因為要找的是最近「頻繁」打出強擊球的人。"
+      )
+    );
+    /*
+     * 第二排那四個數字一定要附說明，因為追打與揮空是「愈低愈好」，
+     * 跟這張卡上其他每一個數字的方向都相反。不寫的話掃過去會以為 41% 的追打率
+     * 是好事。聯盟平均是拿這 14 天的全部逐球資料自己算的，不是抄來的。
+     */
+    holder.appendChild(
+      el(
+        "p",
+        "disclaimer",
+        "第二排是揮棒前的選球：追打＝好球帶外的球揮了幾成，揮空＝揮了幾次沒碰到，" +
+          "這兩個愈低愈好。甜蜜點＝仰角 8~32 度的擊球占比，平均仰角則看他偏滾地還是偏飛球，" +
+          "這兩個是看風格不是看好壞。近期聯盟大約是追打 31%、揮空 25%、甜蜜點 35%。"
       )
     );
     return holder;

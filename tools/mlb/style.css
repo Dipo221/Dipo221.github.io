@@ -506,6 +506,17 @@ a.card:focus-visible {
   margin: 0 6px;
 }
 
+/*
+ * 強擊球卡的第二排（選球）。跟第一排（接觸品質）講的是打擊的兩個不同階段，
+ * 所以要看得出是兩排，但不能重到搶走上面那排。
+ *
+ * 只用間距分，不動顏色也不縮字：--muted 再淡下去就掉到 4.5:1 以下，
+ * 而字級已經是 --fs-sm，再小就低於這個站的內文下限了。
+ */
+.card-meta + .card-meta-swing {
+  margin-top: 3px;
+}
+
 .card-injury {
   color: var(--text);
   opacity: 0.85;

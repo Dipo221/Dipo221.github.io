@@ -60,7 +60,7 @@
 
   <footer class="container"><p><a href="./">← 回工具</a></p></footer>
 
-  <script src="script.js?v=7"></script>
+  <script src="script.js?v=8"></script>
   <script>
     const out = document.getElementById("out");
     let passed = 0;
@@ -292,25 +292,62 @@
           startDate: null, earliestReturn: null, daysUntil: null,
         },
       ],
-      // 三個時間窗都從同一份快取算，所以榜單會整份換人，不是只換數字
+      /*
+       * 三個時間窗都從同一份快取算，所以榜單會整份換人，不是只換數字。
+       *
+       * 每一列排成三行對應卡片上的三段：身分、接觸品質（第一排）、選球（第二排）。
+       * 選球那四個數字的分母各自不同（帶外球數、揮棒數、有仰角的擊球數），
+       * 所以它們彼此之間、以及跟 battedBalls 之間都不該對得起來——
+       * 這裡刻意用實際頁面上量到的 Tatis 那張卡的數字，不要為了好記把它們湊成整數。
+       */
       hardHits: {
         d14: [
-          { playerId: 665487, name: "Fernando Tatis Jr.", teamId: 143, hardHits: 28, barrels: 9, battedBalls: 44, hardHitRate: 0.636, barrelRate: 0.2, maxEV: 115.1, avgEV: 92.1, games: 12 },
-          { playerId: 691406, name: "Junior Caminero", teamId: 136, hardHits: 23, barrels: 7, battedBalls: 43, hardHitRate: 0.535, barrelRate: 0.163, maxEV: 116.9, avgEV: 95.9, games: 13 },
+          {
+            playerId: 665487, name: "Fernando Tatis Jr.", teamId: 143, games: 12,
+            hardHits: 28, barrels: 9, battedBalls: 44, hardHitRate: 0.636, barrelRate: 0.2, maxEV: 115.1, avgEV: 92.1,
+            pitches: 214, chaseRate: 0.262, whiffRate: 0.248, sweetSpotRate: 0.5, avgLA: 2.5,
+          },
+          {
+            playerId: 691406, name: "Junior Caminero", teamId: 136, games: 13,
+            hardHits: 23, barrels: 7, battedBalls: 43, hardHitRate: 0.535, barrelRate: 0.163, maxEV: 116.9, avgEV: 95.9,
+            pitches: 207, chaseRate: 0.361, whiffRate: 0.357, sweetSpotRate: 0.349, avgLA: 7.9,
+          },
         ],
         d7: [
-          { playerId: 691406, name: "Junior Caminero", teamId: 136, hardHits: 12, barrels: 4, battedBalls: 21, hardHitRate: 0.571, barrelRate: 0.190, maxEV: 116.9, avgEV: 95.2, games: 6 },
+          {
+            playerId: 691406, name: "Junior Caminero", teamId: 136, games: 6,
+            hardHits: 12, barrels: 4, battedBalls: 21, hardHitRate: 0.571, barrelRate: 0.190, maxEV: 116.9, avgEV: 95.2,
+            pitches: 98, chaseRate: 0.34, whiffRate: 0.318, sweetSpotRate: 0.381, avgLA: 9.4,
+          },
         ],
         d3: [
-          { playerId: 700007, name: "Shohei Ohtani", teamId: 143, hardHits: 5, barrels: 2, battedBalls: 9, hardHitRate: 0.556, barrelRate: 0.222, maxEV: 114.0, avgEV: 94.0, games: 3 },
+          /*
+           * 這一列刻意是殘缺的，因為它是兩件事的唯一測資：
+           *   chaseRate: 0  —— 真的一顆帶外球都沒揮，跟「沒面對過帶外球」是兩回事
+           *   仰角兩欄 null —— 逐球資料有、但這幾場的擊球都沒有仰角紀錄
+           * 兩組數字的分母本來就分開算，所以一邊有一邊沒有是真的會發生的狀態。
+           */
+          {
+            playerId: 700007, name: "Shohei Ohtani", teamId: 143, games: 3,
+            hardHits: 5, barrels: 2, battedBalls: 9, hardHitRate: 0.556, barrelRate: 0.222, maxEV: 114.0, avgEV: 94.0,
+            pitches: 41, chaseRate: 0, whiffRate: 0.222, sweetSpotRate: null, avgLA: null,
+          },
         ],
       },
       barrels: {
         d14: [
-          { playerId: 665487, name: "Fernando Tatis Jr.", teamId: 143, hardHits: 28, barrels: 9, battedBalls: 44, hardHitRate: 0.636, barrelRate: 0.2, maxEV: 115.1, avgEV: 92.1, games: 12 },
+          {
+            playerId: 665487, name: "Fernando Tatis Jr.", teamId: 143, games: 12,
+            hardHits: 28, barrels: 9, battedBalls: 44, hardHitRate: 0.636, barrelRate: 0.2, maxEV: 115.1, avgEV: 92.1,
+            pitches: 214, chaseRate: 0.262, whiffRate: 0.248, sweetSpotRate: 0.5, avgLA: 2.5,
+          },
         ],
         d7: [
-          { playerId: 691406, name: "Junior Caminero", teamId: 136, hardHits: 12, barrels: 4, battedBalls: 21, hardHitRate: 0.571, barrelRate: 0.190, maxEV: 116.9, avgEV: 95.2, games: 6 },
+          {
+            playerId: 691406, name: "Junior Caminero", teamId: 136, games: 6,
+            hardHits: 12, barrels: 4, battedBalls: 21, hardHitRate: 0.571, barrelRate: 0.190, maxEV: 116.9, avgEV: 95.2,
+            pitches: 98, chaseRate: 0.34, whiffRate: 0.318, sweetSpotRate: 0.381, avgLA: 9.4,
+          },
         ],
         d3: [],
       },
@@ -710,7 +747,15 @@
       check("14 天榜兩個人", names(), ["Fernando Tatis Jr.", "Junior Caminero"]);
       check("最大的數字是強擊球數", texts(".rank-value")[0], "28");
       check("硬擊率換算成百分比", /64% 是強擊球/.test(board.textContent), true);
-      check("最高初速有顯示", /115\.1 mph/.test(board.textContent), true);
+      /*
+       * 卡片上的初速是「平均」不是「最高」。
+       * 最高初速是 n 顆球的極大值，會跟著出賽數長——打了 44 顆的人天生就比
+       * 打了 21 顆的人高，拿來跨球員比等於在比誰上場多。maxEV 沒有從資料裡拿掉
+       * （排序的第三順位還在用），所以這裡要正反兩條都驗，只驗一條的話
+       * 改回去也不會紅。
+       */
+      check("初速講的是平均", /平均 92\.1 mph/.test(board.textContent), true);
+      check("最高初速不上卡片", /115\.1 mph/.test(board.textContent), false);
       // 榜上順便帶另一個數字當對照：barrel 多但強擊球普通，或反過來，都是訊號
       check("強擊球榜帶 barrel 當對照", /barrel 9 顆/.test(board.textContent), true);
       // 95 mph 是純力道門檻，說明要講清楚它跟 barrel 差在哪
@@ -739,6 +784,66 @@
       pickTeam(136);
       check("這一隊在這個窗沒人上榜", /這一隊在這個時間窗沒有人上榜/.test(board.textContent), true);
       pickTeam("");
+    }
+
+    group("卡片第二排：揮棒前的選球");
+    {
+      /*
+       * 第一排是接觸品質（球棒碰到球之後），第二排是選球（決定要不要揮的那一瞬間）。
+       * 這是打擊的兩個不同階段，混成一排會變成七項用點分隔的長串，
+       * 而且會讓人以為它們是同一種東西——所以「有沒有分成兩個節點」本身就是規格。
+       */
+      showTab("強擊球");
+      pickTeam("");
+      pickView("d14");
+
+      const cards = board.querySelectorAll(".cards .card");
+      check("每張卡兩排", Array.prototype.map.call(cards, (c) => c.querySelectorAll(".card-meta").length), [2, 2]);
+      check("第二排各自標了 class", board.querySelectorAll(".card-meta-swing").length, 2);
+      check("第二排排在第一排後面", cards[0].querySelectorAll(".card-meta")[1].classList.contains("card-meta-swing"), true);
+
+      // 順序固定：兩個「愈低愈好」的排前面，兩個「看風格」的排後面
+      check("四項照順序", texts(".card-meta-swing")[0], "追打 26%·揮空 25%·甜蜜點 50%·平均仰角 2.5°");
+      // 0.357 進位成 36、0.349 退成 35，剛好卡在邊界上
+      check("比率四捨五入到整數", texts(".card-meta-swing")[1], "追打 36%·揮空 36%·甜蜜點 35%·平均仰角 7.9°");
+      // 仰角是角度不是比率，不能跟著被乘 100
+      check("仰角保留一位小數帶度數", /平均仰角 7\.9°/.test(board.textContent), true);
+
+      /*
+       * 這條是整組裡最重要的一條。
+       * 追打率真的是 0%（帶外的球一顆都沒揮）跟他根本沒面對過帶外的球，是兩件事。
+       * pct() 寫成 `value ? ... : null` 的話前者會被當成後者整項消失，
+       * 而畫面上看起來只是少了一項，不會有任何人發現。
+       */
+      pickView("d3");
+      check("真的是 0% 要印出來，不能整項消失", /追打 0%/.test(board.textContent), true);
+      // 選球的分母（帶外球數、揮棒數）跟仰角的分母（有仰角的擊球數）各自獨立，
+      // 所以一邊有值一邊沒有是真的會發生的狀態，不是壞資料
+      check("仰角沒有值就只留選球那兩項", texts(".card-meta-swing"), ["追打 0%·揮空 22%"]);
+      check("沒有值的項目連分隔點都不留", /·$|··/.test(texts(".card-meta-swing")[0]), false);
+
+      pickView("d14");
+      showTab("Barrel");
+      check("Barrel 榜共用同一段", board.querySelectorAll(".card-meta-swing").length, 1);
+
+      /*
+       * 追打與揮空是「愈低愈好」，跟這張卡上其他每一個數字的方向都相反。
+       * 不寫的話掃過去會以為 36% 的追打率是好事。
+       */
+      check("有說明第二排在講什麼", /追打＝好球帶外的球揮了幾成/.test(board.textContent), true);
+      check("有寫清楚這兩個愈低愈好", /這兩個愈低愈好/.test(board.textContent), true);
+      check("甜蜜點與仰角是看風格不是看好壞", /這兩個是看風格不是看好壞/.test(board.textContent), true);
+      check("給了聯盟平均當對照", /追打 31%、揮空 25%、甜蜜點 35%/.test(board.textContent), true);
+
+      /*
+       * 這裡曾經有一個「升溫／降溫」徽章（近 7 天 vs 前 7 天的硬擊率變化）。
+       * 實測那個差異跟「把同一個人的比賽隨機分成兩堆」分不出來，等於在報雜訊，
+       * 所以整個拿掉了，理由留在 hardhit.py 那段取代 trend_map 的註解裡。
+       * 留這兩條是因為資料裡已經沒有 trend 欄位，光看程式碼不會知道它存在過。
+       */
+      showTab("強擊球");
+      check("沒有升溫降溫徽章", board.querySelectorAll(".badge.is-up, .badge.is-down").length, 0);
+      check("畫面上不出現升溫或降溫", /升溫|降溫/.test(board.textContent), false);
     }
 
     group("球員異動：四種檢視");
@@ -1202,6 +1307,8 @@
        */
       const OLD = clone(DATA);
       OLD.hardHits = [
+        // 這一列連 avgEV 都沒有，模擬更早以前那份只有最高初速的資料
+        { playerId: 691406, name: "Junior Caminero", teamId: 136, hardHits: 23, battedBalls: 43, rate: 0.535, maxEV: 116.9, games: 13 },
         { playerId: 665487, name: "Fernando Tatis Jr.", teamId: 143, hardHits: 28, battedBalls: 44, rate: 0.636, maxEV: 115.1, avgEV: 92.1, games: 12 },
       ];
       delete OLD.barrels;
@@ -1216,9 +1323,19 @@
       showTab("強擊球");
       pickTeam("");
       pickView("d14");
-      check("舊的陣列被當成 14 天那份", names(), ["Fernando Tatis Jr."]);
+      check("舊的陣列被當成 14 天那份", names(), ["Junior Caminero", "Fernando Tatis Jr."]);
       check("舊的 rate 欄位換算得出來", /64% 是強擊球/.test(board.textContent), true);
       check("沒有 barrel 資料就顯示 0，不留 undefined", /barrel 0 顆/.test(board.textContent), true);
+
+      /*
+       * 沒有選球資料的時候整排不要長出來。
+       * 空的 .card-meta 會留一條 5px 的空隙，看起來像排版壞了而不是像沒有資料。
+       */
+      check("沒有選球欄位就整排不畫", board.querySelectorAll(".card-meta-swing").length, 0);
+      check("卡片只剩一排", Array.prototype.map.call(board.querySelectorAll(".cards .card"), (c) => c.querySelectorAll(".card-meta").length), [1, 1]);
+      // 更早以前的資料連 avgEV 都沒有，這時候退回最高初速比留白好
+      check("連平均初速都沒有就退回最高", /最高 116\.9 mph/.test(board.textContent), true);
+      check("有平均的那張還是用平均", /平均 92\.1 mph/.test(board.textContent), true);
       pickView("d7");
       check("短窗還沒有資料就給空狀態", board.querySelectorAll(".notice").length, 1);
 
