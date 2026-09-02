@@ -13,7 +13,7 @@
   <link rel="preload" as="font" type="font/woff2" href="../../fonts/space-grotesk-latin.woff2" crossorigin />
   <script src="../../theme.js?v=1"></script>
   <link rel="stylesheet" href="../../style.css?v=8" />
-  <link rel="stylesheet" href="style.css?v=6" />
+  <link rel="stylesheet" href="style.css?v=7" />
 </head>
 <body>
   <header class="hero hero-compact">
@@ -78,10 +78,11 @@
 
     <div id="board" class="board"></div>
 
-    <p class="disclaimer">
-      「最快可回歸」是用 IL 天數與起算日算出來的最早有資格被啟動的日期，
-      不是預計回歸日——實際回歸時間要看新聞。
-    </p>
+    <!--
+      「最快可回歸」的說明搬進 script.js 了——它只跟傷兵那兩區有關，
+      寫死在這裡會讓新聞、連勝連敗底下也掛著三行在講 IL。
+      下面這段是全站通用的，才留在這裡。
+    -->
 
     <!--
       更新間隔要寫出來。排程設的是每小時三次，但 GitHub 的 schedule 是
@@ -104,6 +105,6 @@
     </p>
   </footer>
 
-  <script src="script.js?v=8"></script>
+  <script src="script.js?v=9"></script>
 </body>
 </html>

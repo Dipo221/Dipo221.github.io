@@ -614,15 +614,47 @@ const MLB = (function () {
     return head;
   }
 
+  /*
+   * 每個分隔點後面插一個 <wbr>。
+   *
+   * 這排在手機上一定會換行——第一排排成一行要 373px，卡片的內文欄只有 194px，
+   * 把整個 375 的螢幕給它都不夠。所以能決定的不是換不換，是斷在哪。
+   *
+   * 「·」跟前後的字之間沒有空白，本身不算斷行點；而中文預設可以在任兩個字
+   * 中間斷，於是瀏覽器只好挑一個字切下去，「甜蜜點 50%」就變成「甜蜜／點 50%」。
+   * 配上 .card-meta 的 word-break: keep-all（禁掉中文字之間的斷點），
+   * <wbr> 就成了這排唯一合法的斷點，換行必然落在項目與項目之間。
+   */
   function metaRow(parts) {
     const meta = el("div", "card-meta");
-    parts.forEach(function (part, i) {
+    parts.forEach(function (part) {
       if (part === null || part === undefined || part === "") return;
-      if (meta.childNodes.length) meta.appendChild(el("span", "sep", "·"));
+      if (meta.childNodes.length) {
+        meta.appendChild(el("span", "sep", "·"));
+        meta.appendChild(document.createElement("wbr"));
+      }
       if (typeof part === "string") meta.appendChild(document.createTextNode(part));
       else meta.appendChild(part);
     });
     return meta;
+  }
+
+  /*
+   * 名詞解釋收進摺疊。
+   *
+   * 這些說明是「看一次就記得」的東西，但它每次進到那一區都攤在榜單底下——
+   * 強擊球那兩段在手機上佔掉 8 行，比一張球員卡還高，而人是來看榜單的。
+   *
+   * 用 <details> 而不是自己做開合：鍵盤操作、讀螢幕的語意、
+   * 還有瀏覽器「在頁面中尋找」時會自動展開，全部不用自己寫。
+   */
+  function foldedNotes(summary, texts) {
+    const box = el("details", "notes");
+    box.appendChild(el("summary", "notes-summary", summary));
+    texts.forEach(function (text) {
+      box.appendChild(el("p", "disclaimer", text));
+    });
+    return box;
   }
 
   /*
@@ -1009,6 +1041,23 @@ const MLB = (function () {
     return panel;
   }
 
+  /*
+   * 「最快可回歸」的說明只掛在傷兵那兩區。
+   *
+   * 它本來寫死在 index.html 的 <main> 裡，所以連新聞、連勝連敗、強擊球
+   * 這些根本沒有回歸日的區塊底下，都會跟著出現三行在講 IL。
+   */
+  const RETURN_NOTE =
+    "「最快可回歸」是用 IL 天數與起算日算出來的最早有資格被啟動的日期，" +
+    "不是預計回歸日——實際回歸時間要看新聞。";
+
+  function withReturnNote(cards) {
+    const holder = el("div");
+    holder.appendChild(cards);
+    holder.appendChild(foldedNotes("「最快可回歸」是怎麼算的", [RETURN_NOTE]));
+    return holder;
+  }
+
   function renderMoves() {
     const view = currentView();
     let rows = (data.ilMoves || []).filter(function (m) {
@@ -1069,7 +1118,7 @@ const MLB = (function () {
       if (ret) card.appendChild(el("div", "card-meta", ret));
       wrap.appendChild(card);
     });
-    return wrap;
+    return withReturnNote(wrap);
   }
 
   function renderBoard() {
@@ -1112,7 +1161,7 @@ const MLB = (function () {
       );
       wrap.appendChild(card);
     });
-    return wrap;
+    return withReturnNote(wrap);
   }
 
   /*
@@ -1195,31 +1244,25 @@ const MLB = (function () {
 
     const holder = el("div");
     holder.appendChild(wrap);
+    /*
+     * 第二排那四個數字一定要附說明，因為追打與揮空是「愈低愈好」，
+     * 跟這張卡上其他每一個數字的方向都相反。不寫的話掃過去會以為 41% 的追打率
+     * 是好事。聯盟平均是拿這 14 天的全部逐球資料自己算的，不是抄來的。
+     *
+     * 說明收在摺疊裡，但字一個都沒少——是收起來不是刪掉。
+     */
     holder.appendChild(
-      el(
-        "p",
-        "disclaimer",
+      foldedNotes("這些數字怎麼算的", [
         isBarrel
           ? "Barrel＝初速 98 mph 以上、而且仰角落在會變成長打的區間裡（98 mph 時是 26~30 度，" +
             "初速愈快區間愈寬）。這是照公開的公式從逐球資料算的，不是 MLB 官方標記的那個欄位，" +
             "中間幾度會比官方略嚴。"
           : "強擊球＝擊球初速 95 mph 以上，這是通用的 hard-hit 門檻，只看力道不看角度。" +
-            "排序看的是數量不是比率，因為要找的是最近「頻繁」打出強擊球的人。"
-      )
-    );
-    /*
-     * 第二排那四個數字一定要附說明，因為追打與揮空是「愈低愈好」，
-     * 跟這張卡上其他每一個數字的方向都相反。不寫的話掃過去會以為 41% 的追打率
-     * 是好事。聯盟平均是拿這 14 天的全部逐球資料自己算的，不是抄來的。
-     */
-    holder.appendChild(
-      el(
-        "p",
-        "disclaimer",
+            "排序看的是數量不是比率，因為要找的是最近「頻繁」打出強擊球的人。",
         "第二排是揮棒前的選球：追打＝好球帶外的球揮了幾成，揮空＝揮了幾次沒碰到，" +
           "這兩個愈低愈好。甜蜜點＝仰角 8~32 度的擊球占比，平均仰角則看他偏滾地還是偏飛球，" +
-          "這兩個是看風格不是看好壞。近期聯盟大約是追打 31%、揮空 25%、甜蜜點 35%。"
-      )
+          "這兩個是看風格不是看好壞。近期聯盟大約是追打 31%、揮空 25%、甜蜜點 35%。",
+      ])
     );
     return holder;
   }

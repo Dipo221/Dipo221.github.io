@@ -494,11 +494,24 @@ a.card:focus-visible {
 .badge.is-hot { background: var(--hot-bg); color: var(--hot); }
 .badge.is-debut { background: var(--accent-soft); color: var(--accent); }
 
+/*
+ * 這排在手機上一定會換行——第一排排成一行要 373px，內文欄只有 194px。
+ * 所以要管的不是換不換行，是斷在哪。
+ *
+ * 中文預設可以在任兩個字之間斷，於是「甜蜜點 50%」會被切成
+ * 「甜蜜／點 50%」。keep-all 禁掉字與字之間的斷點，配上 metaRow()
+ * 在每個「·」後面插的 <wbr>，換行就只會發生在項目與項目之間。
+ *
+ * break-word 是最後的保險：keep-all 之後如果真的冒出一個比欄位還寬、
+ * 又完全沒有斷點的東西（例如很長的英文傷勢名稱），沒有它會撐出橫向捲動。
+ */
 .card-meta {
   color: var(--muted);
   font-size: var(--fs-sm);
   line-height: 1.5;
   margin-top: 5px;
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 .card-meta .sep {
@@ -945,6 +958,61 @@ a.card:focus-visible {
 /* 連著兩段免責說明的話，段落之間不需要跟正文一樣的 28px */
 .disclaimer + .disclaimer {
   margin-top: 10px;
+}
+
+/*
+ * 名詞解釋的摺疊。
+ *
+ * 收起來只剩一行，但字一個都沒少——這是收起來不是刪掉，
+ * 「barrel 是公開公式算的、不是 MLB 官方欄位」那種話點開就看得到。
+ *
+ * 刻意跟 .disclaimer 同一個字級與顏色：它不是主要內容，不要做成
+ * 看起來像按鈕的東西，跟榜單搶注意力。
+ */
+.notes {
+  margin-top: 28px;
+}
+
+.notes-summary {
+  /* 整條可按，上下各 12px 讓它到得了 44px 的觸控下限 */
+  padding: 12px 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  cursor: pointer;
+  /* 預設的三角形在各家瀏覽器長得不一樣，關掉自己畫 */
+  list-style: none;
+}
+
+/* list-style 對 Safari 的箭頭沒用，要另外關 */
+.notes-summary::-webkit-details-marker {
+  display: none;
+}
+
+/* ＋／－ 是這個站既有的開合語彙（我的球員的投手格也是這兩個字） */
+.notes-summary::after {
+  content: "＋";
+  margin-left: 6px;
+}
+
+.notes[open] .notes-summary::after {
+  content: "－";
+}
+
+.notes-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+/* 摺疊裡面的段落自己排，不要吃到外面那條 28px 的上緣空白 */
+.notes .disclaimer {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.notes .disclaimer:last-child {
+  margin-bottom: 0;
 }
 
 .source {

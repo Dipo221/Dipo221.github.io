@@ -60,7 +60,7 @@
 
   <footer class="container"><p><a href="./">← 回工具</a></p></footer>
 
-  <script src="script.js?v=8"></script>
+  <script src="script.js?v=9"></script>
   <script>
     const out = document.getElementById("out");
     let passed = 0;
@@ -844,6 +844,117 @@
       showTab("強擊球");
       check("沒有升溫降溫徽章", board.querySelectorAll(".badge.is-up, .badge.is-down").length, 0);
       check("畫面上不出現升溫或降溫", /升溫|降溫/.test(board.textContent), false);
+    }
+
+    /*
+     * 手機上這排一定會換行——第一排排成一行要 373px，卡片內文欄只有 194px。
+     * 所以測的不是「有沒有換行」，是「斷點在不在正確的位置」。
+     *
+     * 斷點沒辦法直接斷言（那是排版引擎的事，而且跟字型有關），
+     * 但能斷言造出斷點的那兩個東西還在：每個分隔點後面的 <wbr>，
+     * 以及禁掉中文字間斷點的 word-break。少了任何一個，
+     * 「甜蜜點」就會被切成「甜蜜／點」，而畫面上只是看起來醜，不會壞掉。
+     */
+    group("卡片內文只在項目之間換行");
+    {
+      showTab("強擊球"); pickTeam(""); pickView("d14");
+
+      const row = board.querySelector(".card-meta-swing");
+      check("四項之間有三個分隔點", row.querySelectorAll(".sep").length, 3);
+      check("每個分隔點後面跟一個 wbr", row.querySelectorAll("wbr").length, 3);
+
+      /*
+       * wbr 一定要排在 sep 後面而不是前面。
+       * 排前面的話斷行會發生在「·」之前，上一行會以項目結尾、
+       * 下一行以「·」開頭，看起來像少了東西。
+       */
+      const kids = Array.prototype.map.call(row.childNodes, (n) =>
+        n.nodeType === 3 ? "字" : n.nodeName.toLowerCase() + (n.className ? "." + n.className : "")
+      );
+      check("順序是 字·wbr 字·wbr…", kids, [
+        "字", "span.sep", "wbr", "字", "span.sep", "wbr", "字", "span.sep", "wbr", "字",
+      ]);
+
+      // 只有一項的時候不該冒出孤零零的分隔點或 wbr
+      pickView("d3");
+      const lone = board.querySelector(".card-meta-swing");
+      check("兩項就只有一個 wbr", lone.querySelectorAll("wbr").length, 1);
+      check("wbr 數量永遠跟分隔點一樣", lone.querySelectorAll("wbr").length, lone.querySelectorAll(".sep").length);
+
+      pickView("d14");
+
+      /*
+       * 另外一半在 CSS 裡，這頁量不到。
+       *
+       * 這頁只載根目錄的 style.css，不載 tools/mlb/style.css——替身 DOM 是
+       * 挪到畫面外的，載了工具的樣式會讓 position:fixed 的抽屜與遮罩蓋住
+       * 上面的 PASS/FAIL。所以 word-break: keep-all 沒有斷言守著。
+       *
+       * 那條規則跟這裡的 <wbr> 是一組的，少了它 <wbr> 等於沒用：
+       * 中文預設可以字字斷，瀏覽器會挑「甜蜜點」中間切下去而不是用 <wbr>。
+       * 動 .card-meta 的斷行相關屬性時，要自己在 375px 的手機寬度上看一次。
+       */
+    }
+
+    /*
+     * 說明文字是「看一次就記得」的東西，但它每次進來都攤在榜單底下，
+     * 手機上佔掉的高度比一張球員卡還多。收進 <details> 之後預設只剩一行。
+     *
+     * 這一組最重要的是「字一個都沒少」——收起來跟刪掉是兩件事，
+     * 而收起來之後，畫面上少了兩段話這件事沒有人會發現。
+     */
+    group("說明收進摺疊，但一個字都沒少");
+    {
+      showTab("強擊球"); pickTeam(""); pickView("d14");
+
+      const fold = board.querySelector("details.notes");
+      check("說明包在 details 裡", !!fold, true);
+      check("預設是收起來的", fold.hasAttribute("open"), false);
+      check("摺疊列寫著這是什麼", fold.querySelector("summary").textContent, "這些數字怎麼算的");
+      const loose = Array.prototype.filter.call(
+        board.querySelectorAll(".disclaimer"),
+        (p) => !p.closest("details.notes")
+      );
+      check("榜單底下沒有散落的說明", loose.length, 0);
+
+      // 收起來不是刪掉：兩段話都還在 DOM 裡，點開就看得到
+      check("強擊球的定義還在", /強擊球＝擊球初速 95 mph 以上/.test(fold.textContent), true);
+      check("第二排的說明還在", /追打＝好球帶外的球揮了幾成/.test(fold.textContent), true);
+      check("摺疊裡是兩段", fold.querySelectorAll(".disclaimer").length, 2);
+
+      /*
+       * barrel 那段有一句「不是 MLB 官方標記的那個欄位」。
+       * 那是誠實聲明不是裝飾，收起來可以，弄丟不行。
+       */
+      showTab("Barrel");
+      const bfold = board.querySelector("details.notes");
+      check("Barrel 也收在摺疊裡", !!bfold, true);
+      check("沒有假裝是官方數字", /不是 MLB 官方標記的那個欄位/.test(bfold.textContent), true);
+    }
+
+    /*
+     * 「最快可回歸」的說明本來寫死在 index.html 的 <main> 裡，
+     * 所以每一區底下都掛著三行在講 IL——包括新聞和連勝連敗。
+     * 現在它只由傷兵那兩區自己畫。
+     */
+    group("IL 的說明只出現在傷兵那兩區");
+    {
+      const hasNote = () => /「最快可回歸」是用 IL 天數與起算日/.test(board.textContent);
+
+      showTab("傷兵異動"); pickTeam(""); pickView("all");
+      check("傷兵異動底下有", hasNote(), true);
+      showTab("傷兵名單"); pickTeam("");
+      check("傷兵名單底下有", hasNote(), true);
+
+      showTab("強擊球"); pickView("d14");
+      check("強擊球底下沒有", hasNote(), false);
+      showTab("新聞"); pickView("all");
+      check("新聞底下沒有", hasNote(), false);
+      showTab("連勝連敗");
+      check("連勝連敗底下沒有", hasNote(), false);
+
+      // 全站通用的那段（更新間隔）不歸各區管，要一直在
+      check("更新間隔的說明還在頁面上", /實際更新間隔大約是一到三小時/.test(document.body.textContent), true);
     }
 
     group("球員異動：四種檢視");
