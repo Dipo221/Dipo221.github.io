@@ -52,8 +52,15 @@ CSS 的 fallback 逐字元生效，所以拉丁與數字吃 Space Grotesk、中�
 | | 數值 |
 |---|---|
 | 卡片 | `padding: 14~16px` · `radius: 8px` · 左側 3px 色條 · hover `translateX(2px)` |
-| 圓角鈕 / chip | `padding: 6~7px 12~15px` · `radius: 999px` · `0.85~0.9375rem` |
+| 圓角鈕 / chip | `padding: 9px 15px` · `radius: 999px` · `0.9375rem` |
 | 過場 | `0.15s`，全站統一 |
+
+直向的 9px 不是憑手感挑的，是湊 44px 點擊區：`0.9375rem` 配 `line-height: 1.6`
+剛好 24px，加上下各 9px 和 1px 框就是 44。字級或行高動了要跟著重算。
+
+**已知例外**：`tools/open-now` 的 `.chip` 是 `6px 12px`、`0.85rem`，量出來 36px。
+那排篩選標籤在窄螢幕是單排橫向捲動，加高會吃掉第一屏——而那個工具的重點就是
+一打開先看到有哪幾家開著。刻意留的，不是漏改，新元件不要拿它當範本。
 
 **技術慣例**：無 build step、全域 script（IIFE + `window.X` 暴露）、無 ES module。
 localStorage key 一律 `<範圍>:<功能>`，例如 `open-now:github-token`、`mingyang:theme`。
