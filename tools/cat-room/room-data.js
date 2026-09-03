@@ -20,6 +20,7 @@ window.RoomData = {
   objects: {
     "window": [8, 2, 4, 4],
     "bowl": [16, 9, 1, 1],
-    "wand": [5, 5, 2, 2]
+    "wand": [5, 5, 2, 2],
+    "bed": [1, 4, 4, 5]
   }
 };
