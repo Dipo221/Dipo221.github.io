@@ -13,7 +13,7 @@
   <!-- crossorigin 不能省：字體一律走 CORS 模式，漏掉會變成抓兩次 -->
   <link rel="preload" as="font" type="font/woff2" href="fonts/space-grotesk-latin.woff2" crossorigin />
   <script src="theme.js?v=1"></script>
-  <link rel="stylesheet" href="style.css?v=8" />
+  <link rel="stylesheet" href="style.css?v=10" />
 </head>
 <body>
   <header class="hero hero-home">
@@ -30,6 +30,39 @@
       <ul class="fact-list">
         <li><span class="fact-key">研究</span>TKU 人工智慧機器人碩士班</li>
         <li><span class="fact-key">工讀</span>味全龍 商品部</li>
+      </ul>
+    </section>
+
+    <!--
+      實驗室這區刻意只有「往外的連結」，用膠囊不用卡片——
+      卡片在這個站等於「點下去會進到我自己寫的頁面」，混用的話
+      訪客分不出哪個會把他踢出站外。之後真的做出實驗室工具，
+      在下面補一個 <h3 class="tool-group">實驗室工具</h3> + .tool-grid，
+      那時候卡片和膠囊的分工才有意義。
+    -->
+    <section id="lab">
+      <h2>實驗室</h2>
+      <p class="lab-lead">Not making ICs. It&rsquo;s Intelligent Control.</p>
+      <ul class="fact-list lab-links">
+        <li>
+          <span class="fact-key">程式碼</span>
+          <ul class="link-list">
+            <li><a href="https://github.com/tkuiclabwhite/ros2_kid" target="_blank" rel="noopener">kid</a></li>
+            <li><a href="https://github.com/tkuiclabwhite/ros2_adult" target="_blank" rel="noopener">adult</a></li>
+          </ul>
+        </li>
+        <li>
+          <span class="fact-key">筆記</span>
+          <ul class="link-list">
+            <!--
+              一定要用 notion.site 的網址，不能用 Notion 裡「複製連結」給的
+              app.notion.com/p/…——那是工作區內部連結，沒登入的人點開只有登入牆。
+              notion.site 的網址是按下 Publish 之後才會產生的。
+            -->
+            <li><a href="https://deserted-dolphin-f51.notion.site/src-3cd24f0bca048180aaa1c5e91508f07c" target="_blank" rel="noopener">src 架構</a></li>
+            <li><a href="https://deserted-dolphin-f51.notion.site/hurocup_interface-3c724f0bca0481098808d5a287695ffa" target="_blank" rel="noopener">hurocup_interface</a></li>
+          </ul>
+        </li>
       </ul>
     </section>
 
