@@ -9,6 +9,62 @@
    ============================================================ */
 
 /* ------------------------------------------------------------
+   點陣字型
+
+   手機的介面條要跟房間是同一個世界的東西，所以連字都得是像素的。
+
+   **拉丁的 8-bit 字型（Press Start 2P 那類）在這裡一個字都幫不上。**
+   這一條實際顯示的是「住了 9 天」「Disi 在地板上睡著了」，全是中文；
+   拉丁字型只會讓中文退回一般字體，變成半個 8-bit 半個不是。
+
+   Cubic 11（方形黑體）的授權書開頭明文寫著可以無限制地複製與分發，
+   底下再附完整的 SIL OFL 1.1，全文在 ../../fonts/cubic-11-OFL.txt。
+   這是硬條件不是偏好——repo 是公開的，等於在再散布這個檔案。
+
+   **只能用 11 的整數倍**（11 / 22 / 33 / 44）。它是 11px 設計的點陣字，
+   其他大小會被重新取樣，字就糊了，而糊掉的像素字比一般字體更難看。
+   11px 在手機上太小，所以內文一律 22px。
+
+   400 KB 不小，所以桌機不該付。**而「桌機沒有元素在用它」是不夠的**——
+   量出來的：桌機明明一個元素都沒套用（elementsUsingCubic 是空陣列），
+   瀏覽器還是發了一個 initiatorType 是 css 的請求去抓它。
+   猜是媒體查詢生效前那一瞬間的版面觸發的，但原因不重要，重要的是
+   「沒人用就不會下載」這條保證不成立。
+
+   所以整個 @font-face **關進媒體查詢裡**：桌機連這個字型的定義都不存在，
+   要不到也就不可能抓。手機抓一次就進快取。
+   ------------------------------------------------------------ */
+@media (max-width: 899px) {
+  @font-face {
+    font-family: "Cubic 11";
+    src: url("../../fonts/cubic-11.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+}
+
+/* ------------------------------------------------------------
+   房間的木頭色，給介面條用
+
+   這幾個值是 art/room.py 的 PALETTE **手抄過來的**，因為 CSS 讀不到
+   Python。抄兩份就會走鐘，所以 pixel.py 有一條 lint 會把這一段跟
+   PALETTE 比一次，對不起來就 fail（見 lint_hud_palette）。
+
+   字母就是磚號表裡的字母，改色去改 room.py，不要改這裡。
+   ------------------------------------------------------------ */
+.hud {
+  --w-line: #1c1410;   /* o  描邊 */
+  --w-side: #563c26;   /* j  側面（最暗） */
+  --w-face: #805a38;   /* w  正面 */
+  --w-top: #a6784c;    /* W  頂面 */
+  --w-lit: #c49664;    /* A  頂面最靠光的一條 */
+  --w-beam: #70543a;   /* T  樑與簷板的頂面 */
+  --w-text: #e2d0ba;   /* Q  全房間最亮的顏色，拿來當字 */
+  --hud-bg: #281c16;   /* 比屋頂（v）再暗一階，讓木牌跳得出來 */
+}
+
+/* ------------------------------------------------------------
    時段 token
 
    房間本體現在是一張 PNG（art/room-pano.png），顏色烤在圖裡，
@@ -86,6 +142,9 @@
  * 代價是 main 不再吃根目錄 main.container 的上下 padding，自己補在 .room-column。
  */
 .room-bleed {
+  /* 手機是 0-1-3（條在上面），桌機把 .hud 換成 2 就排到房間下面去了 */
+  order: 1;
+
   /*
    * 房間以外的東西吃掉多少高度。這是在瀏覽器裡**量出來的**
    * （document.scrollHeight - room.clientHeight），不是照 CSS 加總估的——
@@ -93,18 +152,19 @@
    * art/room.py 的 LAYOUT 是同一組數字：校對圖說房間多大，瀏覽器就該是多大，
    * 對不起來表示有一邊過期了。
    *
-   * **這裡的 340 現在只服務手機**（桌機在下面 min-width: 900px 那一段是 0，
-   * 滿版之後房間以外沒有東西了，不必量）。待辦第 15 項只做桌機，
-   * 手機這一輪整個沒動。
+   * **手機現在也滿版了**（待辦第 18 項），所以這裡不再是「量出來的」，
+   * 是**定義出來的**：房間以上只有一條 120px 的介面條，房間吃掉剩下的全部。
+   * 桌機在下面 min-width: 900px 那一段是 0，那邊連介面條都沒有。
    *
-   * 340 = 量到的 418 **扣掉頁尾那 78px**。手機本來就會上下滑，硬要把頁尾
-   * 也塞進第一屏，只會換來一隻小 11px 的貓；340 剛好讓房間、提示、按鈕
-   * 同時看得到，頁尾在下面等著。
+   * 340 那一版的來歷留在這裡，因為那個數字曾經是對的：它是量到的 418
+   * 扣掉頁尾 78px，剛好讓房間、提示、三顆按鈕同時看得到。它會消失是因為
+   * **提示和按鈕都不在房間下面了**——提示搬進介面條，按鈕整排刪掉換成
+   * 點房間裡的東西（待辦第 5 項）。不是把它調小，是它服務的東西沒了。
    *
-   * 這是一個常數，所以提示文字換行的時候會失準幾十 px。可以接受：
-   * 猜太小就多一點捲動，猜太大就少一點貓，沒有哪一邊會壞掉。
+   * 這個 136 一定要跟 .hud 的 height 一樣。兩邊對不起來的下場是安靜的：
+   * 猜大了房間浮在一條暗邊上，猜小了憑空多一條捲軸。
    */
-  --chrome: 340px;
+  --chrome: 136px;
 
   /*
    * 房間的寬度。兩個限制都寫成寬度，規則才看得出來是同一條。
@@ -139,7 +199,14 @@
    * 房間的左邊會變成永遠碰不到的地方。safe 在溢出時自動退回 start。
    */
   justify-content: safe center;
-  padding-top: 20px;
+  /*
+   * 以前這裡是 20px，那是房間跟上面標題之間的一口氣。
+   * 標題已經變成介面條裡的木牌，兩者是貼著的一整塊，中間再留白就變成
+   * 一條說不出來歷的暗帶——而且房間 100svh - 136px 再加 20px
+   * 剛好比視窗高 20px，**憑空多一條捲軸**。
+   * `--chrome` 是「房間以外吃掉多少」，這條留白也算在裡面，所以它必須是 0。
+   */
+  padding-top: 0;
   /*
    * 捲軸藏起來：橫的捲軸壓在像素房間下面很難看，而且視角本來就會跟著貓跑
    * （script.js 的 follow()），房間自己會移動，那就是「還有更多」的提示。
@@ -171,16 +238,10 @@
  * 因為滿版之後貓多大是螢幕決定的，不是我們決定的（1440x900 是 123px）。
  */
 @media (min-width: 900px) {
+  /* padding-top 現在兩邊都是 0，理由搬到上面 .room-bleed 那條去了 */
   .room-bleed {
     --chrome: 0px;
     --w-max: 2560px;
-    /*
-     * 那 20px 是房間跟上面標題之間的一口氣。桌機的標題已經不在了，
-     * 留著它就變成畫面最上面一條 20px 的暗邊，而且房間 100svh 加上它
-     * 剛好比視窗高 20px——**憑空多一條捲軸**，捲下去只看得到那 20px。
-     * --chrome 是 0 的前提就是「房間以外沒有東西」，這條也算在裡面。
-     */
-    padding-top: 0;
   }
 }
 
@@ -216,15 +277,25 @@
    */
   width: var(--w-by-height);
 
-  background-image: url("art/room-pano.png?v=3");
+  background-image: url("art/room-pano.png?v=4");
   background-size: 100% 100%;
   background-repeat: no-repeat;
   /* 非整數倍放大不要糊掉。整份美術的前提就是這一行 */
   image-rendering: pixelated;
 
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  /*
+   * **框和圓角都拿掉了**（2026-09-03，兩邊都滿版之後）。
+   *
+   * 它們的前提是「房間是版面裡的一塊，外面有東西襯它」。桌機從上一輪起
+   * 就沒有外面了，手機這一輪也是——房間現在是介面條底下的整個畫面。
+   * 一條 1px 的框在滿版底下不是裝飾，是畫面邊緣一圈說不出來歷的細線。
+   *
+   * 順帶修掉一個算不準：框是實心的，content-box 之下它**加在**房間高度上，
+   * 所以 --chrome 得多扣 2px 才對得起來。少扣就是憑空多 2px 的捲軸。
+   * 沒有框就沒有這條要記的事。
+   */
+  border: 0;
 
   /*
    * 站規全域是 border-box，這裡要**改回 content-box**，不是隨手覆寫。
@@ -242,46 +313,12 @@
 }
 
 /*
- * 滿版的房間不要框也不要圓角——它已經是整個畫面了，沒有「外面」可以襯托它。
- * 框留在手機是因為那邊房間還是版面裡的一塊。
+ * 桌機的介面條在下面「手機的介面條」那一段之後另外覆寫。
  *
- * 只歸零 border-width 不動 box-sizing：content-box 那條的理由（1px 的框會
- * 把 aspect-ratio 算歪、磚格不再是正方形）在手機上仍然成立，
- * 兩邊共用同一條規則比較不會有人以後只改一邊。
- */
-@media (min-width: 900px) {
-  .room {
-    border-width: 0;
-    border-radius: 0;
-  }
-
-  /*
-   * 標題列在桌機上不見了。這是待辦第 15 項的重點——明陽要的是點進來就是
-   * 房間，不是一張圖配上下文字。天數那句沒有消失，它跟著 .room-column
-   * 一起移到摺線下面（`index.html` 的 #tagline 還在，只是換了位置）。
-   *
-   * **底下那些東西是留著的，不是刪掉的。** 提示、三顆按鈕、禮物列、頁尾
-   * 現在排在房間下面，捲一下就到。刪掉的話桌機會變成完全不能互動的一頁——
-   * 取代它們的是待辦第 5 項（點房間裡的東西）、第 7 項（提示浮出來）和
-   * 第 17 項（禮物箱），那三項做完這一區才會真的空掉。
-   * 在那之前「要捲一下才摸得到貓」是這一輪已知的代價，不是漏掉。
-   *
-   * 回首頁也一樣留在最下面，等第 16 項的漢堡選單來收（明陽 2026-09-02 同意）。
-   */
-  .hero {
-    display: none;
-  }
-
-  /*
-   * 房間吃滿一屏，所以下面這一區是「另一個畫面」不是「同一頁的下半部」。
-   * 給它一段留白，捲下來的時候才不會像是房間被切掉了一角。
-   */
-  .room-column {
-    padding-top: 56px;
-  }
-}
-
-/*
+ * **這不是排版偏好，是串接順序。** 覆寫寫在這裡會被後面的 .hud 基本樣式
+ * 蓋掉（同一個 specificity，後面的贏），媒體查詢不會因為它是媒體查詢就比較大。
+ * 第一次寫就踩到了：桌機的房間尺寸對，但介面條照樣長在最上面。
+ *
  * 時段。一整片色乘上去，把整個房間調暗調色。
  *
  * 疊在貓**上面**是刻意的：環境光本來就會照到貓身上，
@@ -414,6 +451,32 @@
   pointer-events: none;
 }
 
+/*
+ * 房間裡可以點的東西（待辦第 5 項）。
+ *
+ * 位置與大小是 script.js 從 room-data.js 算出來寫成行內樣式的，
+ * 這裡只管長相——**一格座標都不要寫在這個檔案裡**，
+ * 寫了就變成第二份會過期的真相。
+ *
+ * z-index 6 是要蓋過天空那層（5）。底下每一層都是 pointer-events: none，
+ * 但層數只要有人再加一層就會擋住，所以熱區直接放到最上面比較不容易壞。
+ *
+ * 一格磚在手機上約 63px、桌機約 82px，都過得了 44px 的可點下限，
+ * 所以不用另外撐開。min-width/height 是給更小的螢幕當保險的。
+ */
+.hotspot {
+  position: absolute;
+  z-index: 6;
+  min-width: 44px;
+  min-height: 44px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+
 /* 飼料。堆在碗口上，位置是碗那塊磚裡的第 4~12 行、第 8~11 列 */
 .bowl.is-full::after {
   content: "";
@@ -461,6 +524,18 @@
   height: calc(100% * var(--cat-src) / var(--room-h));
   z-index: 2;
   cursor: pointer;
+  /*
+   * 牠是 <button>（待辦第 5 項，摸貓變成三個動作之一），
+   * 所以要把瀏覽器預設的框、底色、內距清掉。少清一樣，
+   * 貓身上就會多一圈瀏覽器畫的灰框。
+   */
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
   /* JS 每一幀寫 transform，這裡不能加 transition，否則會拖成橡皮筋 */
   will-change: transform;
   -webkit-tap-highlight-color: transparent;
@@ -531,6 +606,207 @@ body[data-art="sprite"] .cat-sprite {
 }
 
 /* ------------------------------------------------------------
+   手機的介面條
+
+   手機滿版的做法**不是把房間變大**，是承認上面那塊本來就不是房間——
+   它是介面，只要長得像同一個世界的東西就好。所以房間維持 20x11
+   一個字沒動，art/room.py、七張圖、room-data.js 全部不受影響。
+
+   （曾經認真評估過另一條：把房間加高成 20x19 去填滿手機。
+   那條會逼著每一個 y 座標位移、讓 M3 的家具在還沒定形的房間裡排版，
+   而且桌機會整個垮掉——19 列在 1440x900 上算出來只有 947px 寬，
+   比視窗還窄，2026-09-03 剛做好的桌機滿版會白做。所以砍掉了。）
+
+   木牌是 CSS 畫的，不是 PNG。這是刻意的：PNG 就要進 art/、要跑 pixel.py、
+   要加 ?v=，而它的形狀只是幾個矩形，用 border + 硬停點的漸層就畫得出來。
+
+   四條顏色帶的順序照房間的家具規則：頂面最亮（A）、次亮（W）、
+   正面（w）、底下一條側面（j），四周 o 描邊。房間裡每一件木頭家具
+   都是這樣畫的，介面條照抄才會像同一個世界。
+   ------------------------------------------------------------ */
+
+/*
+ * main 排成一欄，這樣介面條在手機排在房間**上面**、在桌機排到房間下面，
+ * 靠的是 order 不是兩份 DOM。
+ *
+ * 只有一份 DOM 這件事是承重的，不是為了少寫幾行：#note 上面有
+ * role="status" aria-live="polite"，複製成兩份的話螢幕閱讀器會唸兩次，
+ * 而把其中一份藏起來又會變成「唸得到的那份沒顯示、顯示的那份唸不到」。
+ */
+main {
+  display: flex;
+  flex-direction: column;
+}
+
+.hud {
+  order: 0;
+  position: relative;
+  /*
+   * 120px 是挑的，但挑之前算過：介面條裡的東西是固定高度的，
+   * 整條變高只是上下多留白。88px 拉到 152px（差 64px）只讓一次看得到的
+   * 房間從 5.7 欄變成 6.2 欄——**這個高度幾乎不影響看得到多少**，
+   * 所以照留白舒不舒服挑就好。120 是三個裡面最好看的那個。
+   *
+   * 後來加到 136 是為了讓提示那一行**放得下兩行**。原因見 .hud-note：
+   * 一行只夠 15 個中文字，而現有的句子已經有貼到邊的。多這 16px
+   * 只讓貓從 94px 變 92px，換掉一整類「句子被默默切掉」的錯。
+   */
+  height: 136px;
+  padding: 16px 12px 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--hud-bg);
+  border-bottom: 4px solid var(--w-line);
+  font-family: "Cubic 11", var(--font-body);
+  /* 點陣字被抗鋸齒糊掉就沒有意義了 */
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+}
+
+/* 跟房間的接縫。一條樑的頂面，不然介面條的暗底會跟屋頂的暗色糊在一起 */
+.hud::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--w-beam);
+}
+
+.hud-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/*
+ * 漢堡選單。**目前是純裝飾**——待辦第 16 項才會讓它真的打得開。
+ * 所以它是 div 加 aria-hidden，不是 <button>：一顆會被鍵盤聚焦、
+ * 會被螢幕閱讀器唸成「按鈕」、按下去卻什麼都不會發生的東西，
+ * 比沒有還糟。第 16 項接上去的時候要把它換成真的 <button>。
+ */
+.hud-menu {
+  flex: none;
+  width: 32px;
+  height: 29px;
+  background: repeating-linear-gradient(180deg,
+      var(--w-lit) 0 5px, transparent 5px 12px);
+}
+
+.hud-sign {
+  flex: none;
+  margin: 0;
+  padding: 4px 12px 8px;
+  border: 2px solid var(--w-line);
+  /*
+   * 硬停點的漸層 = 四條實心色帶，不是漸層。這樣才是像素畫的畫法，
+   * 而且一格一格對得起來（4px 一條，房間在手機上一個來源像素約 3.9px）。
+   */
+  background: linear-gradient(180deg,
+      var(--w-lit) 0 4px,
+      var(--w-top) 4px 8px,
+      var(--w-face) 8px calc(100% - 6px),
+      var(--w-side) calc(100% - 6px) 100%);
+  color: var(--w-text);
+  /* 44 = 11 x 4。Cubic 11 只能用 11 的整數倍，其他大小會糊 */
+  font-size: 44px;
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+.hud-days {
+  margin-left: auto;
+  flex: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--w-lit);
+}
+
+/*
+ * 貓在做什麼。
+ *
+ * **22px 的中文一行只放得下大約 15 個字**，而 showNote() 現有的句子
+ * 已經有貼到邊的（「Disi 聽到碗的聲音就過來了。」）。所以留兩行的高度，
+ * 大約 30 個字——這是「文案不小心寫太長」與「畫面被字塞爆」之間的空間。
+ *
+ * 高度寫死成兩行不是為了美觀，是**不讓底下的房間跟著字數上下跳**。
+ * 只有一行的時候字靠上，看起來就跟只留一行一樣。
+ */
+.hud-note {
+  margin: 0;
+  height: 2.4em;
+  font-size: 22px;
+  line-height: 1.2;
+  color: var(--w-text);
+  overflow: hidden;
+  transition: opacity var(--speed);
+}
+
+.hud-note.is-empty {
+  opacity: 0;
+}
+
+/*
+ * 桌機**沒有介面條**（明陽 2026-09-03：「電腦版就都維持現在這樣」）。
+ * 但整條不能 display: none——#note 住在裡面，而且它是全頁唯一 aria-live
+ * 的節點，藏掉等於桌機的螢幕閱讀器再也聽不到貓在做什麼。
+ *
+ * 所以是：木牌那一列拿掉、外觀全部剝掉、order 把它排到房間下面，
+ * 只留一行字。位置跟以前一樣是房間下面的第一行。
+ *
+ * **font-family 一定要還原成繼承的。** 留著 "Cubic 11" 的話，桌機雖然
+ * 看起來一樣，瀏覽器卻會為了算繪這行字去下載那 400 KB——
+ * 「桌機一毛都不用付」是靠這一行成立的，不是靠版面上看不到它。
+ *
+ * **這一段一定要排在 .hud 那些基本樣式後面。** 放到上面那個
+ * min-width: 900px 區塊裡會被蓋掉——媒體查詢不會因為是媒體查詢就贏，
+ * 同一個 specificity 就是後面的贏。
+ */
+@media (min-width: 900px) {
+  .hud {
+    order: 2;
+    height: auto;
+    gap: 0;
+    background: none;
+    border-bottom: 0;
+    font-family: inherit;
+    -webkit-font-smoothing: auto;
+    /*
+     * 房間吃滿一屏，所以下面這一區是「另一個畫面」不是「同一頁的下半部」。
+     * 給它一段留白，捲下來的時候才不會像是房間被切掉了一角。
+     * 那段留白以前掛在 .room-column 上，現在提示排在它前面，所以掛這裡。
+     */
+    padding: 56px 0 0;
+  }
+
+  .hud::after,
+  .hud-row {
+    display: none;
+  }
+
+  .hud-note {
+    max-width: 560px;
+    height: auto;
+    margin: 0 auto;
+    padding: 0 20px;
+    min-height: 1.6em;
+    color: var(--text);
+    font-size: var(--fs-lead);
+    line-height: inherit;
+    text-align: center;
+  }
+
+  /* 提示搬走之後這一區的第一個元素貼著上面，補回原本 .note 的 16px 節奏 */
+  .room-column {
+    padding-top: 16px;
+  }
+}
+
+/* ------------------------------------------------------------
    訊息與操作
    ------------------------------------------------------------ */
 
@@ -541,59 +817,17 @@ body[data-art="sprite"] .cat-sprite {
  * 讓它離標題近一點才像「畫面被它接管了」，那正是滿版要的效果。
  */
 .room-column {
+  order: 3;
   padding-bottom: 44px;
 }
 
-.note {
-  max-width: 560px;
-  margin: 16px auto 0;
-  min-height: 1.6em;
-  color: var(--text);
-  font-size: var(--fs-lead);
-  text-align: center;
-  transition: opacity var(--speed);
-}
-
-/* 沒話講的時候留著高度，不要讓底下的按鈕跳上跳下 */
-.note.is-empty {
-  opacity: 0;
-}
-
-.actions {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  max-width: 560px;
-  margin: 18px auto 0;
-}
-
-.action {
-  /* 圓角鈕的手感照站規：radius 999px、0.9375rem。
-     padding 直接寫 6~7px 的話高度只有 38px，摸不到 44 的可點擊下限，
-     所以改用 min-height 撐開，視覺節奏維持一樣 */
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 7px 18px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--bg-elevated);
-  color: var(--text);
-  font-family: inherit;
-  font-size: var(--fs-sm);
-  cursor: pointer;
-  transition: background-color var(--speed), border-color var(--speed), transform var(--speed);
-}
-
-.action:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.action:active {
-  transform: scale(0.97);
-}
+/*
+ * .note / .actions / .action 都刪掉了。
+ *
+ * 提示搬進 .hud（同一個 #note 節點，只是換了位置與長相），
+ * 三顆按鈕變成房間裡可以點的東西（.hotspot 與 .cat，待辦第 5 項）。
+ * `.hero` 也一起走了——標題現在是 .hud-sign 那塊木牌。
+ */
 
 .meta {
   max-width: 560px;
@@ -676,10 +910,14 @@ footer a:hover {
 
 /*
  * 對比要夠，而且絕對不能加動畫——要立刻出現。
- * 貓本身不在這裡：牠是 div、不可聚焦，點牠只是滑鼠的順手路徑，
- * 鍵盤與讀螢幕走的是「摸摸」那顆按鈕。
+ *
+ * **貓現在也在這個清單裡。** 以前牠是 div、不可聚焦，鍵盤與讀螢幕走的是
+ * 「摸摸」那顆按鈕；那顆按鈕刪掉之後，牠自己就是唯一的入口，
+ * 所以牠一定要有看得見的聚焦框，不然鍵盤使用者按 Tab 會不知道自己在哪。
+ * 碗和逗貓棒（.hotspot）是透明的，更需要——它們聚焦時**只有這個框看得到**。
  */
-.action:focus-visible,
+.cat:focus-visible,
+.hotspot:focus-visible,
 .motion-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
@@ -713,16 +951,19 @@ body[data-motion="reduced"] .cat.is-purring .cat-sprite {
 /* ------------------------------------------------------------
    窄螢幕
    ------------------------------------------------------------ */
-@media (max-width: 400px) {
-  .actions {
-    gap: 8px;
+/*
+ * 介面條在窄一點的手機上要縮。375px 是設計基準，但 320px 的機器還在，
+ * 那上面 22px 的中文一行只剩 13 個字。**只能縮成 11**（Cubic 11 只吃
+ * 11 的整數倍，中間值會被重新取樣，糊掉的像素字比一般字體更難看），
+ * 而 11px 太小——所以縮的是木牌那塊標題，內文維持 22 讓它多換一行。
+ */
+@media (max-width: 359px) {
+  .hud-sign {
+    font-size: 33px;
+    padding: 4px 8px 6px;
   }
 
-  .action {
-    padding: 7px 14px;
-  }
-
-  .note {
-    font-size: var(--fs-sm);
+  .hud-row {
+    gap: 10px;
   }
 }

@@ -302,14 +302,19 @@
    * 這句講的是 Disi，不是你跟牠的關係，所以算自固定日期而不是存檔——
    * 所有人看到同一個數字，而且清掉 localStorage 牠也不會突然變回剛搬來。
    *
-   * 不重複寫名字：正上方的 h1 就是「Disi」，再寫一次會變成
+   * 不重複寫名字：左邊那塊木牌就是「Disi」，再寫一次會變成
    * 「Disi ／ Disi 已經在這邊生活了…」。主詞由標題提供就夠了。
+   *
+   * **句子縮短過**（2026-09-03）。原本是「已經在這邊生活了 N 天」，
+   * 那時候它自己佔一整行；現在它跟木牌擠在介面條的同一列，
+   * 而 22px 的點陣中文一個字就是 22px 寬，那句會把木牌擠出畫面。
+   * 這不是文案偏好，是**版面的硬限制**——見 style.css 的 .hud-days。
    */
   function renderTagline() {
     const el = document.getElementById("tagline");
     if (!el) return;
     const days = World.daysHere(Date.now());
-    el.textContent = days < 1 ? "今天剛搬進來" : "已經在這邊生活了 " + days + " 天";
+    el.textContent = days < 1 ? "剛搬來" : "住了 " + days + " 天";
   }
 
   function renderMeta() {
@@ -799,11 +804,42 @@
     Save.save(state);
   }
 
-  document.getElementById("act-pet").addEventListener("click", pet);
-  document.getElementById("act-feed").addEventListener("click", feed);
-  document.getElementById("act-wand").addEventListener("click", wand);
+  /*
+   * 可以點的不是按鈕列，是房間裡的東西（待辦第 5 項）。
+   *
+   * `.actions` 那三顆整排刪掉了。摸點貓、餵點碗、玩點逗貓棒——
+   * 去找東西比按按鈕更像在跟一個房間相處，而且滿版之後版面上
+   * 本來也沒有地方擺一排鈕了。
+   *
+   * **座標一格都不手抄。** room-data.js 是 art/pixel.py 從磚號表直接產的，
+   * 所以「碗在哪一格」只有一個答案；以後每加一件家具，它的可點區塊
+   * 自動就有座標。手抄的那一版錯起來是安靜的：按鈕還在、點下去有反應，
+   * 只是熱區跟畫面上的東西差了一格。
+   */
+  function hotspot(name, label, fn) {
+    const box = RD && RD.objects && RD.objects[name];
+    // 房間裡沒這個東西就不要生一顆點得到卻看不見的按鈕
+    if (!box) return;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "hotspot";
+    // 東西是畫在 room-pano.png 裡的，不是元素，所以熱區是蓋上去的一塊
+    b.setAttribute("aria-label", label);
+    b.style.left = (box[0] / COLS * 100) + "%";
+    b.style.top = (box[1] / ROWS * 100) + "%";
+    b.style.width = (box[2] / COLS * 100) + "%";
+    b.style.height = (box[3] / ROWS * 100) + "%";
+    b.addEventListener("click", fn);
+    room.appendChild(b);
+  }
 
-  // 直接摸貓本人比按鈕直覺
+  hotspot("bowl", "餵食", feed);
+  hotspot("wand", "拿逗貓棒逗牠", wand);
+
+  /*
+   * 貓本人。牠在 HTML 裡已經是 <button> 了——牠會動，熱區沒辦法用
+   * 固定的百分比蓋上去，只能是牠自己。
+   */
   catEl.addEventListener("click", pet);
 
   /* ---------------------------------------------------------------- */

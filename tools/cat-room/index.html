@@ -12,28 +12,62 @@
     ?v= 是給瀏覽器快取用的版本號，改到這些檔案時記得一起加一。
   -->
   <link rel="preload" as="font" type="font/woff2" href="../../fonts/space-grotesk-latin.woff2" crossorigin />
+  <!--
+    手機介面條用的點陣字（Cubic 11，方形黑體）。400 KB。
+
+    **那個 media 是必要的不是保險**：preload 是無條件下載的，不加的話
+    桌機也會抓一次，而桌機根本沒有介面條。
+
+    擋桌機的其實有兩層，而且**兩層都需要**：這裡擋 preload，style.css 那邊
+    把整個 @font-face 關進同一個媒體查詢擋 CSS 自己發的請求。
+    只做 style.css 的 font-family 覆寫是不夠的——量過，桌機一個元素都沒
+    套用到它，瀏覽器照樣發了一個請求出去。
+
+    授權在 ../../fonts/cubic-11-OFL.txt，明文允許再散布（repo 是公開的，
+    等於在再散布它）。理由與尺寸的規矩寫在 style.css 的「點陣字型」那一段。
+  -->
+  <link rel="preload" as="font" type="font/woff2" href="../../fonts/cubic-11.woff2" media="(max-width: 899px)" crossorigin />
   <script src="../../theme.js?v=1"></script>
   <link rel="stylesheet" href="../../style.css?v=8" />
-  <link rel="stylesheet" href="style.css?v=11" />
+  <link rel="stylesheet" href="style.css?v=12" />
 </head>
 <body>
-  <header class="hero">
-    <div class="container">
-      <h1>Disi</h1>
-      <!--
-        小標的內容由 script.js 填（天數每天會變，寫死在這裡沒有意義）。
-        script.js 排在 body 尾端且是同步的，會在第一次 paint 之前跑完，所以不會閃。
-      -->
-      <p class="tagline" id="tagline"></p>
-    </div>
-  </header>
-
   <!--
     main 刻意不是 .container：房間要滿版，所以它排在文字欄外面。
     用負 margin 把它從欄裡拉出來也可以，但那個算式要用 100vw，
     而 100vw 在有捲軸的桌機是含捲軸寬的，整頁會多出十幾 px 的橫向捲動。
   -->
   <main>
+    <!--
+      手機的介面條。滿版之後房間上面只剩這一條，下面什麼都沒有。
+
+      **它在桌機不是消失，是被 order 排到房間下面、外觀剝光只剩一行字。**
+      理由是 #note 住在這裡，而它是全頁唯一 aria-live 的節點——
+      整條藏掉的話桌機的螢幕閱讀器就再也聽不到貓在做什麼了。
+      複製成兩份也不行，那會變成唸兩次。所以只有一份 DOM，靠 CSS 換位置。
+
+      裡面的東西照 art/room.py 的木頭規則畫（頂面最亮、正面、側面），
+      字是 Cubic 11 點陣字。詳細寫在 style.css 的「手機的介面條」那一段。
+    -->
+    <div class="hud">
+      <div class="hud-row">
+        <!--
+          漢堡選單目前是**純裝飾**，待辦第 16 項才會讓它真的打得開。
+          所以是 div + aria-hidden 不是 <button>：一顆聚焦得到、
+          會被唸成「按鈕」、按下去卻沒反應的東西比沒有還糟。
+        -->
+        <div class="hud-menu" aria-hidden="true"></div>
+        <h1 class="hud-sign">Disi</h1>
+        <!-- 天數每天會變，由 script.js 填 -->
+        <p class="hud-days" id="tagline"></p>
+      </div>
+      <!--
+        22px 的中文一行只放得下大約 15 個字，超過會被切掉（CSS 沒有換行）。
+        所以寫進這一格的句子有長度上限，見 script.js 的 setNote()。
+      -->
+      <p class="hud-note is-empty" id="note" role="status" aria-live="polite"></p>
+    </div>
+
     <!--
       房間比視窗寬的時候（手機）靠這一層左右滑動來看，桌機則是整間剛好放得下。
       視角會自己跟著貓跑，見 script.js 的 follow()。
@@ -70,22 +104,23 @@
         <div class="room-sky" data-when="night" aria-hidden="true"></div>
         <div class="room-beam" aria-hidden="true"></div>
         <div class="bowl" id="bowl" aria-hidden="true"></div>
-        <!-- .cat 只管位置（JS 每幀寫 transform），外觀與反應動畫都在 .cat-sprite -->
-        <div class="cat" id="cat" data-anim="sit" role="img" aria-label="一隻貓">
+        <!--
+          .cat 只管位置（JS 每幀寫 transform），外觀與反應動畫都在 .cat-sprite。
+
+          它是 <button> 不是 div：摸貓現在是這一頁三個動作之一（待辦第 5 項），
+          按鈕列已經刪掉了。div 加 onclick 沒有鍵盤焦點、按 Enter 沒反應、
+          螢幕閱讀器也讀不到，等於只有滑鼠使用者摸得到貓。
+
+          碗和逗貓棒的熱區是 script.js 從 room-data.js 生出來的（它們畫在
+          背景圖裡，不是元素）；貓不行，牠每幀都在動，只能是牠自己。
+        -->
+        <button class="cat" id="cat" type="button" data-anim="sit" aria-label="摸摸 Disi">
           <span class="cat-sprite" id="cat-sprite" aria-hidden="true"></span>
-        </div>
+        </button>
       </div>
     </div>
 
     <div class="container room-column">
-      <p class="note is-empty" id="note" role="status" aria-live="polite"></p>
-
-      <div class="actions">
-        <button class="action" id="act-pet" type="button">摸摸</button>
-        <button class="action" id="act-feed" type="button">餵食</button>
-        <button class="action" id="act-wand" type="button">逗貓棒</button>
-      </div>
-
       <p class="meta" id="meta"></p>
 
       <!-- 貓叼回來的東西。沒有分數也沒有進度條，這排就是唯一看得見的累積 -->
@@ -127,7 +162,7 @@
     畫面看起來是對的，只有座標默默錯掉。`python pixel.py` 會在這支
     真的變了的時候印一行提醒（見 write_room_data()）。
   -->
-  <script src="room-data.js?v=2"></script>
-  <script src="script.js?v=12"></script>
+  <script src="room-data.js?v=3"></script>
+  <script src="script.js?v=13"></script>
 </body>
 </html>

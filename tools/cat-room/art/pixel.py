@@ -21,7 +21,9 @@
 lint 抓的是機械錯誤（行長不齊、色盤外的字元、孤兒像素、幀間差異過大），
 不是美感。美感只能靠看。
 """
+import io
 import os
+import re
 import sys
 
 try:
@@ -721,6 +723,50 @@ def lint_sky_tod():
     return msgs
 
 
+HUD_CSS = os.path.join(os.path.dirname(__file__), "..", "style.css")
+
+# 手機介面條在 CSS 裡用到的木頭色，對應到 room.py 的哪個字元。
+# 加一條新的 --w-* 就在這裡登記，不然 lint 只會說「多了一個」。
+HUD_VARS = {
+    "--w-line": "o", "--w-side": "j", "--w-face": "w",
+    "--w-top": "W", "--w-lit": "A", "--w-beam": "T", "--w-text": "Q",
+}
+
+
+def lint_hud_palette():
+    """介面條的木頭色有沒有跟 PALETTE 走鐘。
+
+    那幾個值是 style.css 裡**手抄**的十六進位——CSS 讀不到 Python，
+    而把整份色盤產成一個 .css 檔要多一個檔案和多一個 ?v=，不划算。
+    所以改成「可以抄，但抄錯要有人喊」。
+
+    走鐘的樣子是安靜的：介面條還是木頭色，只是比房間裡的木頭深一階或
+    淺一階，看起來像另一塊木頭。一格一格比對誰也不會做，機器做。
+    """
+    msgs = []
+    try:
+        with io.open(HUD_CSS, encoding="utf-8") as fh:
+            css = fh.read()
+    except IOError as e:
+        return ["HUD palette: cannot read style.css (%s)" % e]
+
+    found = dict(re.findall(r"(--w-[a-z]+):\s*(#[0-9a-fA-F]{6})", css))
+    for var, ch in sorted(HUD_VARS.items()):
+        want = "#%02x%02x%02x" % room.PALETTE[ch]
+        got = found.pop(var, None)
+        if got is None:
+            msgs.append("HUD palette: %s missing from style.css" % var)
+        elif got.lower() != want:
+            msgs.append("HUD palette: %s = %s, PALETTE[%r] is %s"
+                        % (var, got, ch, want))
+    for var in sorted(found):
+        msgs.append("HUD palette: %s in style.css but not registered here" % var)
+
+    if not msgs:
+        msgs.append("hud palette: %d vars match room.PALETTE" % len(HUD_VARS))
+    return msgs
+
+
 def lint_room():
     """房間的機械檢查。每一條都對應一種「跑得起來但畫面是壞的」的錯。"""
     msgs = []
@@ -1040,7 +1086,7 @@ if __name__ == "__main__":
     print("\n".join(problems))
 
     print("\n--- room ---")
-    room_problems = lint_room()
+    room_problems = lint_room() + lint_hud_palette()
     print("\n".join(room_problems))
 
     # 這幾個關鍵字是「圖會壞掉」的錯，不是「圖不好看」。
@@ -1049,7 +1095,7 @@ if __name__ == "__main__":
              if "not in palette" in m or "unknown tile" in m
              or ", want" in m or "outside the room" in m or "CONTRAST" in m
              or "SKY_TOD" in m or m.startswith("FACE ")
-             or m.startswith("BLINK ")]
+             or m.startswith("BLINK ") or m.startswith("HUD palette:")]
     if fatal:
         sys.exit("\nfix the map first, nothing rendered")
 

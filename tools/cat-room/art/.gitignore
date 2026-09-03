@@ -9,3 +9,17 @@ squint.png
 room-tiles.png
 room-view.png
 room-tod.png
+
+# 2026-09-03 手機滿版那一輪的比較圖與驗收圖，都不是 pixel.py 產的，
+# 是幾支丟在 %TEMP% 的一次性腳本畫的：
+#
+#   tall-room.png  當時還在想「把房間加高成 20x19」的三種畫法（整條路後來砍了）
+#   hud*.png       介面條要多高、要不要分兩條、中文點陣字長什麼樣
+#   phone.png      做完之後的驗收圖。preview 的截圖工具壞了（UnknownVizError），
+#                  所以改成把瀏覽器量到的真座標餵給 Pillow 重畫一次
+#
+# 進版控沒有意義：它們不會跟著程式重生，改完版面就過期，而過期的驗收圖
+# 比沒有還糟——下一個人會拿它當現況。
+tall-room.png
+hud*.png
+phone.png
