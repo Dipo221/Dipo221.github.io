@@ -277,7 +277,7 @@
    */
   width: var(--w-by-height);
 
-  background-image: url("art/room-pano.png?v=5");
+  background-image: url("art/room-pano.png?v=6");
   background-size: 100% 100%;
   background-repeat: no-repeat;
   /* 非整數倍放大不要糊掉。整份美術的前提就是這一行 */
