@@ -291,6 +291,39 @@ h2 .count {
   margin-top: 0;
 }
 
+/*
+ * 抽屜最下面的「回首頁」。上面那條線是要跟區塊清單分開：
+ * 清單是在這一頁裡換區，這個是離開這一頁，不該長得像第十個區塊。
+ * 所以形狀跟 .nav-item 一樣（點得到），顏色走 footer 連結那組（次要）。
+ */
+.drawer-foot {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.drawer-home {
+  display: block;
+  /* 這三個數值跟 .nav-item 對齊，量出來一樣是 46px */
+  font-size: 0.95rem;
+  padding: 11px 12px;
+  border-radius: var(--radius);
+  color: var(--muted);
+  text-decoration: none;
+  transition: background var(--speed), color var(--speed);
+}
+
+.drawer-home:hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.drawer-home:focus-visible {
+  /* 跟 .nav-item 一樣往內縮，往外描的框會被抽屜邊緣切掉 */
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 /* ---------- 兩個下拉（檢視、球隊） ---------- */
 
 .filter {
@@ -1068,6 +1101,7 @@ a.card:focus-visible {
   .card,
   .filter select,
   .nav-item,
+  .drawer-home,
   .drawer-close,
   .scrim,
   .drawer,
