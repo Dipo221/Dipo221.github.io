@@ -928,6 +928,28 @@ a.card:focus-visible {
   margin-left: 3px;
 }
 
+/*
+ * 帶單位的大數字（連續場次那一區）。
+ *
+ * 2.2ch 要移到數字本身而不是留在外框上：外框現在還得裝一個「場」，
+ * 尺寸卡在外框的話「12場」跟「5場」差一個字元寬，右邊的名字會左右跳一格。
+ * 移到 .rank-num 之後數字在自己的欄位裡靠右對齊，單位永遠貼在它後面。
+ *
+ * flex-shrink 要一起關掉，而且不能寫成 min-width: 0。.rank 是 flex，
+ * 這一格預設會被壓縮，但 .rank-num 的 min-width 不會跟著縮——
+ * 320px 下實測外框被壓成 26.8px、裡面的數字還是 45.6px，
+ * 結果「場」疊在數字上、數字再壓過右邊的名字 4.8px。
+ */
+.rank-value.has-unit {
+  flex-shrink: 0;
+}
+
+.rank-value.has-unit .rank-num {
+  display: inline-block;
+  min-width: 2.2ch;
+  text-align: right;
+}
+
 /* ---------- 連勝／連敗 ---------- */
 
 .streak-cols {

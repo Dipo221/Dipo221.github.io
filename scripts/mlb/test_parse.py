@@ -8,7 +8,7 @@ CI 會跑這支，失敗就讓整個 workflow 停下來，不要拿壞掉的 par
 """
 
 import sys
-from datetime import date
+from datetime import date, timedelta
 
 sys.path.insert(0, __file__.rsplit("\\", 1)[0].rsplit("/", 1)[0])
 
@@ -242,6 +242,89 @@ check("缺值回 None 不回 False", parse.in_zone(None), None)
 check("髒值回 None", parse.in_zone("abc"), None)
 check("None 不等於 False", parse.in_zone(None) is False, False)
 
+group("打席結果：算不算一次打席")
+check("一安", parse.is_plate_appearance("single"), True)
+check("三振", parse.is_plate_appearance("strikeout"), True)
+check("四壞", parse.is_plate_appearance("walk"), True)
+check("高飛犧牲打", parse.is_plate_appearance("sac_fly"), True)
+"""
+這一條是白名單存在的理由。跑者在打席進行中被牽制出局、半局就這樣結束的話，
+那個 play 掛在當時站在打擊區的人身上、result.type 也照樣寫 "atBat"，
+但官方紀錄上他那個打席不存在。
+實例：2026-09-01 的 Ty France，PBP 看起來 5 個打席，boxscore 寫 4 打數。
+"""
+check("牽制阻殺不是打席", parse.is_plate_appearance("pickoff_caught_stealing_2b"), False)
+check("盜壘不是打席", parse.is_plate_appearance("stolen_base_2b"), False)
+check("暴投不是打席", parse.is_plate_appearance("wild_pitch"), False)
+# 看不懂的事件寧可少算也不要多算：多算會讓打數憑空多一個而且對不出來
+check("沒看過的事件不算", parse.is_plate_appearance("some_new_event_2027"), False)
+check("None", parse.is_plate_appearance(None), False)
+
+group("打席結果：打數與安打")
+check("二壘打是安打也是打數",
+      [parse.is_hit("double"), parse.is_at_bat("double")], [True, True])
+check("全壘打是安打", parse.is_hit("home_run"), True)
+check("三振是打數但不是安打",
+      [parse.is_at_bat("strikeout"), parse.is_hit("strikeout")], [True, False])
+check("失誤上壘是打數但不是安打",
+      [parse.is_at_bat("field_error"), parse.is_hit("field_error")], [True, False])
+check("野手選擇是打數", parse.is_at_bat("fielders_choice"), True)
+# 這幾種是「有打席但沒有打數」，連續安打的整場跳過規則全靠它們
+check("四壞不是打數", parse.is_at_bat("walk"), False)
+check("故意四壞不是打數", parse.is_at_bat("intent_walk"), False)
+check("觸身不是打數", parse.is_at_bat("hit_by_pitch"), False)
+check("犧牲觸擊不是打數", parse.is_at_bat("sac_bunt"), False)
+check("妨礙打擊不是打數", parse.is_at_bat("catcher_interf"), False)
+# 高飛犧牲打也不算打數，但它不能跟上面那幾種一起跳過，見下一組
+check("高飛犧牲打不是打數", parse.is_at_bat("sac_fly"), False)
+
+group("打席結果：上壘")
+check("安打算上壘", parse.reached_base("single"), True)
+check("四壞算上壘", parse.reached_base("walk"), True)
+check("故意四壞算上壘", parse.reached_base("intent_walk"), True)
+check("觸身算上壘", parse.reached_base("hit_by_pitch"), True)
+"""
+下面三種人是站上壘包了，但官方的連續上壘紀錄不算它們——
+上壘率的分子本來就只有安打、四壞、觸身三項，
+而且失誤與野手選擇不是打者的功勞。
+"""
+check("失誤上壘不算", parse.reached_base("field_error"), False)
+check("野手選擇不算", parse.reached_base("fielders_choice"), False)
+check("妨礙打擊不算", parse.reached_base("catcher_interf"), False)
+check("高飛犧牲打不算", parse.reached_base("sac_fly"), False)
+
+group("高飛犧牲打要跟犧牲觸擊分開")
+"""
+規則 9.23(b) 對這兩者的處理是相反的：整場打席全是四壞、觸身、妨礙打擊
+或「犧牲觸擊」的話連續安打不中斷；但有一次「高飛犧牲打」而且沒安打就斷。
+
+兩者都不算打數，所以只看 is_at_bat 分不出來——這個函式存在的唯一理由
+就是把這兩種拆開。少了它，一場兩次四壞加一次高飛犧牲打的比賽
+會跟一場三次四壞的比賽走同一條路，而正確答案剛好相反。
+"""
+check("高飛犧牲打", parse.is_sac_fly("sac_fly"), True)
+# 高飛犧牲打造成雙殺是另一個 eventType，漏掉的話那種比賽會被當成整場跳過
+check("高飛犧牲打雙殺也是", parse.is_sac_fly("sac_fly_double_play"), True)
+check("犧牲觸擊不是（規則對它的處理相反）", parse.is_sac_fly("sac_bunt"), False)
+check("四壞不是", parse.is_sac_fly("walk"), False)
+check("一般高飛球出局不是", parse.is_sac_fly("field_out"), False)
+check("None 不會炸", parse.is_sac_fly(None), False)
+check("每種高飛犧牲打都算打席", sorted(parse._SAC_FLY_EVENTS - parse._PA_EVENTS), [])
+check("每種高飛犧牲打都不算打數",
+      sorted(c for c in parse._SAC_FLY_EVENTS if parse.is_at_bat(c)), [])
+
+group("打席分類的包含關係")
+"""
+這四條是不變式，不是抽樣。三個集合各自維護，改了一邊忘了另一邊
+就會在畫面上出現「7 場連續安打但只有 6 支安打」這種自相矛盾的數字，
+而那看起來像 bug 不像資料。fetch 的健檢也守同一條，這裡是提早攔。
+"""
+check("非打數的事件都在打席清單裡", sorted(parse._NON_AB_EVENTS - parse._PA_EVENTS), [])
+check("每種安打都算打席", sorted(parse._HIT_EVENTS - parse._PA_EVENTS), [])
+check("每種上壘都算打席", sorted(parse._ON_BASE_EVENTS - parse._PA_EVENTS), [])
+check("每種安打都算打數", sorted(c for c in parse._HIT_EVENTS if not parse.is_at_bat(c)), [])
+check("每種安打都算上壘", sorted(parse._HIT_EVENTS - parse._ON_BASE_EVENTS), [])
+
 group("新聞分類")
 check(
     "傷兵",
@@ -471,6 +554,278 @@ group("平均初速")
 # 拿來跨球員比較是不公平的。平均沒有這個問題。
 check("平均初速", row["avgEV"], 95.0)
 check("最高初速還在（排序的第三順位要用）", row["maxEV"], 108.0)
+
+
+# ---------------------------------------------------------------------------
+# 連續安打與連續上壘。hitstreaks.py 也是純函式（吃快取 dict 吐 list），
+# 一樣放這支跑。這一段守的是三件容易寫錯又不容易看出來的事：
+#   1 沒有打數的比賽不算中斷也不算延續
+#   2 窗內與整季兩份資料不能混著算，會在接縫上重複計算場次
+#   3 打到一半的比賽不能進來，會讓連續場次當場歸零、下個打席又跳回來
+# ---------------------------------------------------------------------------
+
+import hitstreaks  # noqa: E402
+
+
+def days(n, start=date(2026, 8, 1)):
+    return [(start + timedelta(days=i)).isoformat() for i in range(n)]
+
+
+def line(day, ab, h, pa, ob, sf=0):
+    """一場的打擊成績。pk 只有同一天的雙重賽排序用得到，這裡用日期當 pk 就夠。
+
+    sf（高飛犧牲打）預設 0，只有規則 9.23(b) 那組會給值——
+    每一列都寫出來會讓人以為它跟其他測試有關係。"""
+    return {"date": day, "pk": day, "ab": ab, "h": h, "pa": pa, "ob": ob, "sf": sf}
+
+
+def multi_cache(players):
+    """players 是 {pid: (名字, [(日期, ab, h, pa, ob[, sf]), ...])} → 強擊球快取的形狀。"""
+    games = {}
+    for pid, (name, rows) in players.items():
+        for row in rows:
+            day, ab, h, pa, ob = row[:5]
+            g = games.setdefault(day, {"date": day, "batters": {}})
+            g["batters"][pid] = {"name": name, "teamId": 147,
+                                 "ab": ab, "h": h, "pa": pa, "ob": ob,
+                                 "sf": row[5] if len(row) > 5 else 0}
+    return {"games": games}
+
+
+def log_rows(rows, kind="R"):
+    """整季逐場的 API 形狀。rows 是 [(日期, ab, h, pa, bb, hbp[, sf]), ...]。
+
+    gamePk 直接用日期字串——擋進行中的比賽只在乎它跟快取的 key 對不對得上。"""
+    out = []
+    for row in rows:
+        day, ab, h, pa, bb, hbp = row[:6]
+        out.append(
+            {"date": day, "gameType": kind, "game": {"gamePk": day},
+             "stat": {"atBats": ab, "hits": h, "plateAppearances": pa,
+                      "baseOnBalls": bb, "hitByPitch": hbp,
+                      "sacFlies": row[6] if len(row) > 6 else 0}}
+        )
+    return out
+
+
+group("連續安打：從最後一場往回數")
+r = hitstreaks.run([
+    line("2026-08-28", 4, 0, 4, 0),   # 0 安，斷在這裡
+    line("2026-08-29", 4, 1, 4, 1),
+    line("2026-08-30", 3, 2, 4, 3),
+    line("2026-08-31", 4, 1, 4, 1),
+], "hit")
+check("三場", r["games"], 3)
+check("起算日是這段的第一場", r["since"], "2026-08-29")
+check("安打累計", r["h"], 4)
+check("打數累計不含被斷掉那場", r["ab"], 11)
+check("有斷過，不用往前補", r["broke"], True)
+
+group("連續安打：沒有打數的比賽整場跳過")
+"""
+官方規則：整場只有四壞、犧牲打（打數 0）的比賽既不中斷也不延續連續安打。
+少了這一條，一場保送兩次的比賽會把 20 場的連續安打砍成 0——
+而那不是「保守估計」，是印一個錯的數字在畫面上。
+"""
+walked = [
+    line("2026-08-29", 4, 1, 4, 1),
+    line("2026-08-30", 0, 0, 2, 2),   # 兩次四壞，沒有打數
+    line("2026-08-31", 4, 1, 4, 1),
+]
+r = hitstreaks.run(walked, "hit")
+check("只保送的那場不算一場", r["games"], 2)
+check("但連續沒有被它中斷（不是 1）", r["games"] != 1, True)
+check("一路數到頭都沒斷", r["broke"], False)
+check("起算日跳過那場，回到更早的", r["since"], "2026-08-29")
+# 同一份資料換成連續上壘：那場有兩次上壘，是實實在在的一場
+r = hitstreaks.run(walked, "onBase")
+check("連續上壘看得到那場，三場", r["games"], 3)
+check("上壘累計", r["ob"], 4)
+
+group("連續安打：高飛犧牲打會中斷（規則 9.23(b)）")
+"""
+上一組那條豁免不含高飛犧牲打。官方的寫法是：整場打席全是四壞、觸身、
+妨礙打擊或「犧牲觸擊」才不中斷，但「只要有一次高飛犧牲打而且沒安打就斷」。
+
+兩場的打數都是 0，答案卻相反——所以判斷不能只看打數。
+這一組跟上一組要一起看，任何一邊單獨看都會覺得另一邊寫錯了。
+"""
+sacfly = [
+    line("2026-08-29", 4, 1, 4, 1),
+    line("2026-08-30", 0, 0, 3, 2, 1),   # 兩次四壞＋一次高飛犧牲打，打數還是 0
+    line("2026-08-31", 4, 1, 4, 1),
+]
+r = hitstreaks.run(sacfly, "hit")
+check("斷在高飛犧牲打那場，只剩最後一場", r["games"], 1)
+check("而且是真的斷了，不是資料不夠", r["broke"], True)
+check("起算日是最後一場", r["since"], "2026-08-31")
+# 同一組日期、同樣 0 打數，差別只在那一欄
+check("犧牲觸擊那場（sf=0）仍然是跳過的 2 場",
+      hitstreaks.run(walked, "hit")["games"], 2)
+# 連續上壘沒有這條規則：高飛犧牲打不算上壘，那場本來就會斷
+check("連續上壘那場沒上壘也是斷的", hitstreaks.run([
+    line("2026-08-30", 0, 0, 1, 0, 1),
+    line("2026-08-31", 4, 1, 4, 1),
+], "onBase")["games"], 1)
+# 有打數又有高飛犧牲打而且有安打：正常延續，不要被 sf 誤傷
+check("有安打的話高飛犧牲打不影響", hitstreaks.run([
+    line("2026-08-30", 3, 1, 5, 1, 1),
+    line("2026-08-31", 4, 1, 4, 1),
+], "hit")["games"], 2)
+
+group("同一份資料，兩個榜答案不一樣")
+# ob 在快取那邊就已經照 parse.reached_base 篩過了，這裡驗的是彙總只看 ob 不看 h
+nohit = [
+    line("2026-08-30", 3, 0, 4, 1),   # 有打數、0 安，但靠四壞上壘
+    line("2026-08-31", 4, 2, 4, 2),
+]
+check("連續上壘兩場", hitstreaks.run(nohit, "onBase")["games"], 2)
+check("連續安打只有一場（8/30 有打數但沒安打，斷了）",
+      hitstreaks.run(nohit, "hit")["games"], 1)
+
+group("連續場次：邊界")
+r = hitstreaks.run([], "hit")
+check("沒有資料回 0 場", r["games"], 0)
+check("沒有資料不算「沒斷過」的候選（靠 games 擋）", r["broke"], False)
+r = hitstreaks.run([line("2026-08-31", 4, 0, 4, 0)], "hit")
+check("最後一場就掛了", r["games"], 0)
+check("而且是真的斷了", r["broke"], True)
+check("起算日是 None", r["since"], None)
+
+group("候選人：判斷「有沒有斷過」而不是「數字夠不夠大」")
+"""
+只出賽三場、三場都上壘的替補也可能是一段 20 場的連續上壘，
+他窗內的數字卻只有 3。用「夠不夠長」當條件會漏掉這種人。
+"""
+cands = hitstreaks.candidates(multi_cache({
+    "1": ("Rolling", [(d, 4, 1, 4, 1) for d in days(6)]),
+    # 最舊那場掛蛋 → 窗內就知道是 5 場，那已經是精確值，不用補
+    "2": ("Stopped", [(days(6)[0], 4, 0, 4, 0)]
+          + [(d, 4, 1, 4, 1) for d in days(6)[1:]]),
+    "3": ("Sparse", [(d, 4, 1, 4, 1) for d in days(6)[3:]]),
+    "4": ("Cold", [(d, 4, 0, 4, 0) for d in days(6)]),
+    # 一直被保送沒安打：連續安打斷了，但連續上壘還在延續
+    "5": ("Walker", [(d, 3, 0, 4, 1) for d in days(6)]),
+}))
+check("窗內沒斷過的要補", 1 in cands, True)
+check("窗內就斷掉的不用補", 2 in cands, False)
+check("只打三場但沒斷過的也要補", 3 in cands, True)
+check("完全沒上壘的不是候選", 4 in cands, False)
+check("只要有一個榜沒斷就算候選", 5 in cands, True)
+
+group("兩個榜：門檻兩邊不一樣")
+# 六場每場一安一上壘：連續安打過門檻（5），連續上壘不到（10）
+six = multi_cache({"9": ("Sixer", [(d, 4, 1, 4, 1) for d in days(6)])})
+b = hitstreaks.boards(six, {}, date(2026, 8, 6))
+check("連續安打 6 場上榜", b["hit"][0]["games"], 6)
+check("連續上壘 6 場不到 10，上不了榜", b["onBase"], [])
+check("playerId 是數字不是字串", b["hit"][0]["playerId"], 9)
+check("名字與球隊跟著出來", (b["hit"][0]["name"], b["hit"][0]["teamId"]), ("Sixer", 147))
+check("最後一場的日期", b["hit"][0]["last"], "2026-08-06")
+
+group("兩個榜：太久沒出賽就不算還在延續中")
+# 進 IL 的人技術上沒有斷，但「今天誰手感燙」的榜上不該有傷兵
+check("差 3 天還在（邊界含進去）",
+      len(hitstreaks.boards(six, {}, date(2026, 8, 9))["hit"]), 1)
+check("差 4 天就下榜", hitstreaks.boards(six, {}, date(2026, 8, 10))["hit"], [])
+
+group("兩個榜：排序是場次多到少，同分比期間成績")
+b = hitstreaks.boards(multi_cache({
+    "1": ("SixOne", [(d, 4, 1, 4, 1) for d in days(6)]),
+    "2": ("SixTwo", [(d, 4, 2, 4, 2) for d in days(6)]),
+    "3": ("Seven", [(d, 4, 1, 4, 1) for d in days(7)]),
+}), {}, date(2026, 8, 7))
+check("場次多的在前", [r["name"] for r in b["hit"]], ["Seven", "SixTwo", "SixOne"])
+check("七場那個是 7", b["hit"][0]["games"], 7)
+check("同樣六場，安打多的排前面", b["hit"][1]["hits"], 12)
+
+# ---------------------------------------------------------------------------
+# 窗只有 14 天，一段 35 場的連續上壘在窗內看起來只有 12 場。
+# 這幾條測的是「往前補」那條路徑。
+# ---------------------------------------------------------------------------
+
+D = days(20, date(2026, 7, 22))          # 07-22 ~ 08-10
+WINDOW = D[-6:]                          # 快取只留最後六場
+CACHE = multi_cache({"9": ("Streaker", [(d, 4, 1, 4, 1) for d in WINDOW])})
+SEASON = [(d, 4, 1, 4, 1, 0) for d in D]
+
+group("整季逐場：補完之後是 20 場不是 6 場")
+b = hitstreaks.boards(CACHE, {9: log_rows(SEASON)}, date(2026, 8, 11))
+check("連續安打 20 場", b["hit"][0]["games"], 20)
+check("連續上壘 20 場（這下過門檻了）", b["onBase"][0]["games"], 20)
+check("起算日是整季那段的第一場", b["hit"][0]["since"], "2026-07-22")
+# 26 表示窗內那六場被算了兩次——兩份資料混著加就會長這樣
+check("沒有把窗內那六場重複算成 26", b["hit"][0]["games"] != 26, True)
+check("名字仍以快取最後一場為準（季中交易要跟著換隊）", b["hit"][0]["name"], "Streaker")
+
+group("整季逐場：打到一半的比賽要擋掉")
+"""
+gameLog 打到一半就看得到當下的數字。一個 0 安 2 打數的第五局會讓
+一段 20 場的連續安打當場歸零，下一個打席安打了又跳回來。
+更糟的是同一個榜上會有兩套標準——沒補整季的人是從快取來的，而快取只收 Final。
+擋法是拿快取的 gamePk 當「窗裡哪些已經打完」的名單。
+"""
+live = log_rows(SEASON) + [
+    {"date": "2026-08-11", "gameType": "R", "game": {"gamePk": "live-not-in-cache"},
+     "stat": {"atBats": 2, "hits": 0, "plateAppearances": 2,
+              "baseOnBalls": 0, "hitByPitch": 0}}
+]
+b = hitstreaks.boards(CACHE, {9: live}, date(2026, 8, 11))
+check("進行中的那場沒有把連續砍掉", b["hit"][0]["games"], 20)
+
+group("整季逐場：只算例行賽")
+# 季初春訓的比賽混進來的話，連續場次會從二月開始數
+spring = log_rows([("2026-03-05", 4, 0, 4, 0, 0)], kind="S") + log_rows(SEASON)
+b = hitstreaks.boards(CACHE, {9: spring}, date(2026, 8, 11))
+check("春訓那場 0 安沒有中斷例行賽的連續", b["hit"][0]["games"], 20)
+
+group("整季逐場：沒補到的人用窗內的答案")
+# logs 有東西但不含這個人 → 不能因此把他整個弄丟
+b = hitstreaks.boards(CACHE, {12345: log_rows(SEASON)}, date(2026, 8, 11))
+check("退回窗內的 6 場", b["hit"][0]["games"], 6)
+
+group("整季逐場：高飛犧牲打那一欄真的有讀到")
+"""
+這條守的是 statsapi.game_logs 的 fields 清單。sacFlies 沒列進去的話
+API 會把整欄拿掉，而拿掉的結果是「所有比賽都沒有高飛犧牲打」——
+不會報錯，只會安靜地把規則 9.23(b) 退回成錯的那版。
+兩份資料只差 08-01 那場的最後一欄，答案差 10 場。
+"""
+mid = D[10]  # 08-01，窗（08-05 起）前面的那段
+broke_it = [(d, 0, 0, 3, 2, 0, 1) if d == mid else (d, 4, 1, 4, 1, 0) for d in D]
+skipped = [(d, 0, 0, 3, 2, 0, 0) if d == mid else (d, 4, 1, 4, 1, 0) for d in D]
+b = hitstreaks.boards(CACHE, {9: log_rows(broke_it)}, date(2026, 8, 11))
+check("有高飛犧牲打就斷在那裡，只剩 9 場", b["hit"][0]["games"], 9)
+check("起算日是斷點的下一場", b["hit"][0]["since"], D[11])
+b = hitstreaks.boards(CACHE, {9: log_rows(skipped)}, date(2026, 8, 11))
+check("同一場沒有高飛犧牲打就整場跳過，19 場", b["hit"][0]["games"], 19)
+# 那場有兩次上壘，連續上壘不受影響，20 場都在
+check("連續上壘兩種情形都是 20 場", b["onBase"][0]["games"], 20)
+
+group("快取那條路也要帶得動高飛犧牲打")
+# 上一組走的是整季逐場。這組走窗內快取，兩條路都要照同一條規則。
+sf_cache = multi_cache({"9": ("SacFly", [
+    (days(8)[0], 4, 1, 4, 1),
+    (days(8)[1], 0, 0, 3, 2, 1),      # 四壞兩次＋高飛犧牲打，打數 0
+] + [(d, 4, 1, 4, 1) for d in days(8)[2:]])})
+b = hitstreaks.boards(sf_cache, {}, date(2026, 8, 8))
+# 沒把 sf 帶進來的話那場會被跳過，答案會是 7 而不是 6
+check("斷在第二場，之後 6 場", b["hit"][0]["games"], 6)
+# 那場兩次四壞是實實在在的上壘，連續上壘沒斷 → 他仍然是候選人。
+# 候選的條件是「有一個榜沒斷」，不是「兩個榜都沒斷」。
+check("連續上壘沒斷，所以還是候選人", 9 in hitstreaks.candidates(sf_cache), True)
+
+group("兩個榜：空快取不要炸掉")
+check("沒有 games", hitstreaks.boards({}, {}, TODAY), {"hit": [], "onBase": []})
+check("games 是空的", hitstreaks.boards({"games": {}}, {}, TODAY), {"hit": [], "onBase": []})
+check("沒有候選人", hitstreaks.candidates({}), set())
+
+group("兩個榜：場次不可能多於安打（上壘）")
+# 每一場都要有安打才算連續，所以總數一定 >= 場次。
+# 這條破了表示欄位串了或接縫重複算，fetch 的健檢也守同一條。
+allb = hitstreaks.boards(CACHE, {9: log_rows(SEASON)}, date(2026, 8, 11))
+check("連續安打", [r for r in allb["hit"] if r["hits"] < r["games"]], [])
+check("連續上壘", [r for r in allb["onBase"] if r["onBase"] < r["games"]], [])
 
 print("\n%d passed, %d failed" % (passed, failed))
 sys.exit(1 if failed else 0)

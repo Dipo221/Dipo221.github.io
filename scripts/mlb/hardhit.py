@@ -30,8 +30,11 @@ import parse
 
 # 2：加了 barrel（要仰角）。
 # 3：加了選球（追打／揮空）與甜蜜點，而且開始逐球數而不是只數擊球。
+# 4：加了每場的打擊成績（打數／安打／打席／上壘），連續場次要用。
+# 5：加了高飛犧牲打。它不算打數，但依規則 9.23(b) 會中斷連續安打，
+#    所以光看打數是 0 分不出「整場四壞」跟「四壞加高飛犧牲打」。
 # 升版會整份重建，不試著相容舊格式。
-CACHE_VERSION = 3
+CACHE_VERSION = 5
 REQUEST_GAP = 0.25  # 逐場請求之間的間隔，別把人家伺服器打太兇
 
 # 每個時間窗的最低擊球數。一場大概 3.5 顆有初速紀錄的擊球，
@@ -82,21 +85,32 @@ def _blank(name, team_id):
         "ch": 0,      # 追打（揮了帶外的球）
         "sw": 0,      # 揮棒數
         "wh": 0,      # 揮空數
+        # 打擊成績：這場的官方欄位，連續安打／連續上壘從這裡算
+        "ab": 0,      # 打數
+        "h": 0,       # 安打
+        "pa": 0,      # 打席
+        "ob": 0,      # 上壘次數（安打＋四壞＋觸身）
+        "sf": 0,      # 高飛犧牲打，規則 9.23(b) 要用，理由見 parse.is_sac_fly
     }
 
 
 def summarize_game(pbp, home_id, away_id):
     """
-    把一場的逐打席壓成每位打者一筆，兩組數字：
+    把一場的逐打席壓成每位打者一筆，三組數字：
 
       接觸品質  bb/hh/br/ss/max/sum/la/lan  球棒碰到球之後發生了什麼
       選球      p/oz/ch/sw/wh               他決定要不要揮的那一瞬間
+      打擊成績  ab/h/pa/ob/sf               這個打席最後記成什麼
 
     第二組是後來補的。原本只存接觸品質，等於只量「揮出去之後」，
     對「他有沒有在打該打的球」完全是瞎的——而打者手感掉下去的時候，
     最先壞的是選球（開始追壞球、開始揮空），結果是後來才崩的。
 
-    兩組都從同一份 playByPlay 讀，沒有多打任何一個請求。
+    第三組是連續安打／連續上壘要用的。前兩組都是「過程」，數不出
+    「他昨天到底有沒有安打」這種結果題；而連續場次是結果題。
+    分類規則在 parse.py，那裡有跟官方 boxscore 對帳的結果。
+
+    三組都從同一份 playByPlay 讀，沒有多打任何一個請求。
 
     打者屬於哪一隊靠 halfInning 判斷：上半局是客隊進攻。
     """
@@ -109,6 +123,28 @@ def summarize_game(pbp, home_id, away_id):
         if not pid:
             continue
         team_id = away_id if about.get("halfInning") == "top" else home_id
+
+        """
+        打席層級的結果。這一段要在 playEvents 迴圈外面，因為一個打席只算一次，
+        而 playEvents 是逐球——寫在裡面的話一個打席會被算成五、六個打席。
+
+        故意用 result.eventType 而不是 result.type：type 是 "atBat" 的 play
+        不一定是打席（跑者被牽制結束半局也長這樣），細節在 parse.py。
+        """
+        event_type = (play.get("result") or {}).get("eventType")
+        if parse.is_plate_appearance(event_type):
+            rec = batters.setdefault(
+                str(pid), _blank(batter.get("fullName", ""), team_id)
+            )
+            rec["pa"] += 1
+            if parse.is_at_bat(event_type):
+                rec["ab"] += 1
+            if parse.is_hit(event_type):
+                rec["h"] += 1
+            if parse.reached_base(event_type):
+                rec["ob"] += 1
+            if parse.is_sac_fly(event_type):
+                rec["sf"] += 1
 
         for event in play.get("playEvents", []):
             """

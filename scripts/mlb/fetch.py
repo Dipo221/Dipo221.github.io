@@ -26,6 +26,7 @@ sys.path.insert(0, HERE)
 
 import feeds  # noqa: E402
 import hardhit  # noqa: E402
+import hitstreaks  # noqa: E402
 import parse  # noqa: E402
 import statsapi  # noqa: E402
 
@@ -182,6 +183,17 @@ def build(today=None):
            "／".join("%s %d 人" % (k, len(v)) for k, v in sorted(barrels.items())),
            fetched))
 
+    # ---- 連續安打與連續上壘 ----
+    # 也是吃同一份快取，但多打一到兩個請求：窗只有 14 天，
+    # 一路數到窗頭還沒斷的人可能有更長的連續場次，那些人要用整季逐場補。
+    # 候選人通常 30 出頭，一個批次請求就問完了，理由寫在 hitstreaks 的 docstring。
+    log("  連續安打與連續上壘…")
+    cands = hitstreaks.candidates(cache)
+    logs = api.game_logs(cands, season) if cands else {}
+    hit_streaks = hitstreaks.boards(cache, logs, today)
+    log("    候選 %d 人（補了 %d 人的整季）；連續安打 %d 人、連續上壘 %d 人"
+        % (len(cands), len(logs), len(hit_streaks["hit"]), len(hit_streaks["onBase"])))
+
     # ---- 成績排行（次要視圖）----
     log("  近期成績排行…")
     hot = []
@@ -262,7 +274,12 @@ def build(today=None):
     payload = {
         "generatedAt": now,
         "season": season,
-        "windows": {"moves": MOVE_DAYS, "hardHit": HARDHIT_DAYS, "callups": CALLUP_DAYS},
+        "windows": {
+            "moves": MOVE_DAYS,
+            "hardHit": HARDHIT_DAYS,
+            "callups": CALLUP_DAYS,
+            "streakActive": hitstreaks.ACTIVE_DAYS,
+        },
         "teams": [teams[k] for k in sorted(teams)],
         "ilMoves": moves,
         "ilBoard": il_board,
@@ -271,6 +288,13 @@ def build(today=None):
         "hotStats": hot,
         "callups": callups,
         "streaks": {"wins": wins, "losses": losses},
+        # 不叫 streaks 是因為那個名字已經被球隊的連勝連敗佔走了。
+        # 兩個都是「連續」但一個是球隊一個是打者，混在同一個 key 底下
+        # 前端會分不出來。
+        "hitStreaks": hit_streaks,
+        # 門檻跟著資料一起送，前端才不用自己抄一份 5 跟 10——
+        # 榜空的時候要跟使用者說「目前沒有人達到 N 場」，那個 N 只能有一個出處
+        "hitStreakMin": hitstreaks.MIN_GAMES,
         "news": news,
         "source": {
             "name": "MLB Stats API",
@@ -315,6 +339,23 @@ def health_check(payload, players_payload):
     # 球季中 14 天窗一定有人上榜；空的表示快取壞了或 playByPlay 全數失敗
     if in_season and not payload.get("hardHits", {}).get("d14"):
         problems.append("球季中強擊球 14 天榜是空的")
+
+    streaks = payload.get("hitStreaks") or {}
+    # 五月起才檢查：門檻是 5 場與 10 場，四月頭幾天全聯盟都還沒打到 10 場，
+    # 那時候空的是對的。五月一號每隊都打了快 30 場，兩個榜都空就是壞了。
+    if month >= 5 and in_season and not streaks.get("hit") and not streaks.get("onBase"):
+        problems.append("球季中連續安打與連續上壘兩個榜都是空的")
+
+    # 每一場都要有安打（上壘）才算連續，所以總數不可能少於場次。
+    # 少了就表示兩個榜的欄位串了，或是窗內與整季兩份資料在接縫上重複算了場次。
+    for kind, num in (("hit", "hits"), ("onBase", "onBase")):
+        for row in streaks.get(kind) or []:
+            if (row.get(num) or 0) < row.get("games", 0):
+                problems.append(
+                    "%s 榜的 %s：%d 場但只有 %d 次"
+                    % (kind, row.get("name", "?"), row.get("games", 0), row.get(num) or 0)
+                )
+                break
     return problems
 
 

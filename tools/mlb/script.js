@@ -62,6 +62,15 @@ const MLB = (function () {
       { id: "d7", label: "近 7 天" },
       { id: "d3", label: "近 3 天" },
     ] },
+    /*
+     * 檢視的 id 刻意用 data.hitStreaks 的 key 而不是全小寫，這樣
+     * 拿到 view 就能直接索引，中間不用再擺一張 onbase→onBase 的對照表。
+     * 那種表就是漏改一邊的地方。
+     */
+    { id: "hitstreak", label: "連續場次", group: "打擊", team: true, views: [
+      { id: "hit", label: "連續安打" },
+      { id: "onBase", label: "連續上壘" },
+    ] },
 
     { id: "callups", label: "球員異動", group: "其他", team: true, views: [
       { id: "all", label: "全部" },
@@ -1275,6 +1284,115 @@ const MLB = (function () {
     return hitBoard("barrels");
   }
 
+  /*
+   * 棒球的比率照慣例寫三位小數，而且不寫前面那個 0（.429 不是 0.429）。
+   * 這不是省字，是打擊率／上壘率一看就認得的形狀。
+   */
+  function rate3(num, den) {
+    if (!den) return null;
+    return (num / den).toFixed(3).replace(/^0/, "");
+  }
+
+  const STREAK_MIN = { hit: 5, onBase: 10 };
+
+  function streakMin(key) {
+    // 門檻的正本在 hitstreaks.py，跟著 data.json 一起送過來。
+    // 舊的 data.json 沒有這個欄位，那時候用寫死的值頂著就好
+    const v = (data.hitStreakMin || {})[key];
+    return typeof v === "number" ? v : STREAK_MIN[key];
+  }
+
+  /*
+   * 連續安打與連續上壘。兩個檢視共用版面，差別在看哪一欄數字。
+   *
+   * 每一列都同時帶著安打與上壘，所以連續安打榜上也看得到他這段期間上壘幾次，
+   * 反過來也是——一段 10 場的連續上壘裡有幾支安打，跟強擊球那頁互相對照
+   * 的用意一樣：只有一個數字看不出這段是靠打的還是靠選的。
+   */
+  function renderHitStreak() {
+    const view = currentView() || "hit";
+    const isHit = view === "hit";
+    const rows = ((data.hitStreaks || {})[view] || []).filter(function (s) {
+      return matchesTeam(s.teamId);
+    });
+
+    if (!rows.length) {
+      return notice(
+        activeTeam
+          ? "這一隊目前沒有人在榜上"
+          : "目前沒有人的" + (isHit ? "連續安打" : "連續上壘") +
+            "達到 " + streakMin(view) + " 場"
+      );
+    }
+
+    const wrap = el("div", "cards");
+    rows.forEach(function (s) {
+      const card = playerCard("hot", { id: s.playerId, name: s.name });
+      const rank = el("div", "rank");
+      /*
+       * 這裡的大數字後面要帶「場」。強擊球那邊的 28 就是 28 球，
+       * 這邊光一個 12 看不出是場次還是安打數，而兩者在同一張卡上都存在。
+       */
+      const value = el("div", "rank-value has-unit");
+      value.appendChild(el("span", "rank-num", s.games));
+      value.appendChild(el("span", "rank-unit", "場"));
+      rank.appendChild(value);
+
+      const body = el("div", "rank-body");
+      body.appendChild(cardHead(s.name, posOf(s.playerId), teamName(s.teamId), "hot"));
+
+      body.appendChild(
+        metaRow(
+          isHit
+            ? [
+                s.ab + " 打數 " + s.hits + " 安",
+                "打擊率 " + rate3(s.hits, s.ab),
+                s.since ? shortDate(s.since) + " 起" : "",
+                "期間上壘 " + s.onBase + " 次",
+              ]
+            : [
+                s.pa + " 打席 " + s.onBase + " 次上壘",
+                "上壘率 " + rate3(s.onBase, s.pa),
+                s.since ? shortDate(s.since) + " 起" : "",
+                "其中 " + s.hits + " 支安打",
+              ]
+        )
+      );
+
+      rank.appendChild(body);
+      card.appendChild(rank);
+      wrap.appendChild(card);
+    });
+
+    const holder = el("div");
+    holder.appendChild(wrap);
+    /*
+     * 這一區的規則不寫出來會被誤解成 bug：使用者看到一個 12 場的連續安打，
+     * 中間明明有一場沒安打，會以為數字算錯了——而那場其實是四壞加犧牲觸擊、
+     * 一個打數都沒有。這種「看起來像錯的但其實是規則」一定要交代。
+     *
+     * 犧牲打不能只寫「犧牲打」三個字帶過，因為官方對兩種犧牲打的處理是相反的：
+     * 高飛犧牲打會斷，犧牲觸擊不會。含糊寫的話，看到高飛犧牲打那天斷掉的人
+     * 會拿這段說明來對照，然後認定是程式算錯。
+     */
+    holder.appendChild(
+      foldedNotes("這兩個榜怎麼算的", [
+        "連續安打：整場沒有打數的比賽（只有四壞、觸身或犧牲觸擊）不算中斷，也不算一場，" +
+          "會直接跳過去接上前一場；但同樣沒有打數，只要那場有高飛犧牲打又沒安打就算中斷——" +
+          "這是官方規則 9.23(b) 的寫法。連續上壘：只認安打、四壞、觸身，" +
+          "靠失誤或野手選擇站上壘包不算。",
+        "算的是「現在還在延續中」的那一段，不是本季最長紀錄。連續 " +
+          ((data.windows || {}).streakActive || 3) + " 天沒出賽就會下榜，" +
+          "因為進 IL 的人技術上連續場次沒有斷，但這個榜要看的是誰現在正熱。",
+        "兩個榜的門檻不一樣（連續安打 " + streakMin("hit") + " 場、連續上壘 " +
+          streakMin("onBase") + " 場），因為上壘多了四壞跟觸身兩條路，" +
+          "同樣的場次難度差很多。數字是從逐打席的紀錄自己重算的，" +
+          "只算到上一場打完為止，進行中的比賽不會即時反映。",
+      ])
+    );
+    return holder;
+  }
+
   function renderCallups() {
     const view = currentView();
     let rows = (data.callups || []).filter(function (c) {
@@ -1423,6 +1541,12 @@ const MLB = (function () {
     board: { render: renderBoard, count: function () { return (data.ilBoard || []).length; } },
     hardhit: { render: renderHardHit, count: function () { return board("hardHits", "d14").length; } },
     barrels: { render: renderBarrels, count: function () { return board("barrels", "d14").length; } },
+    // 選單上的筆數用連續安打那一榜當代表，跟強擊球拿 d14 當代表是同一個道理：
+    // 兩個檢視相加會是一個誰都對不起來的數字（同一個人可能兩榜都在）
+    hitstreak: {
+      render: renderHitStreak,
+      count: function () { return ((data.hitStreaks || {}).hit || []).length; },
+    },
     callups: { render: renderCallups, count: function () { return (data.callups || []).length; } },
     streaks: {
       render: renderStreaks,

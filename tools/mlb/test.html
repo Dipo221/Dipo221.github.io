@@ -60,7 +60,7 @@
 
   <footer class="container"><p><a href="./">← 回工具</a></p></footer>
 
-  <script src="script.js?v=9"></script>
+  <script src="script.js?v=10"></script>
   <script>
     const out = document.getElementById("out");
     let passed = 0;
@@ -247,7 +247,7 @@
     const DATA = {
       generatedAt: d(0) + "T15:15:07Z",
       season: 2026,
-      windows: { moves: 7, hardHit: 14, callups: 14 },
+      windows: { moves: 7, hardHit: 14, callups: 14, streakActive: 3 },
       teams: TEAMS,
       ilMoves: [
         {
@@ -360,6 +360,25 @@
         wins: [{ teamId: 143, code: "W5", n: 5, wins: 78, losses: 60, type: "wins" }],
         losses: [{ teamId: 136, code: "L5", n: 5, wins: 64, losses: 74, type: "losses" }],
       },
+      /*
+       * 連續場次。兩個榜刻意不是同一批人也不是同一個數字——
+       * 同一個人在兩邊的場次本來就會不一樣（連續安打會被 0 安的比賽斷掉，
+       * 連續上壘不會），寫成一樣的話「檢視有沒有真的切過去」就測不出來。
+       *
+       * Streak Man 的連續安打是 12 場、上壘 15 場，差的三場是他有上壘沒安打；
+       * Walk Machine 只在上壘榜上，他 22 場裡只有 6 支安打，其餘靠選球。
+       */
+      hitStreaks: {
+        hit: [
+          { playerId: 665487, name: "Streak Man", teamId: 143, games: 12, since: d(-13), last: d(0), ab: 48, hits: 20, pa: 55, onBase: 26 },
+          { playerId: 691406, name: "Short Streak", teamId: 136, games: 6, since: d(-6), last: d(0), ab: 23, hits: 8, pa: 26, onBase: 10 },
+        ],
+        onBase: [
+          { playerId: 700008, name: "Walk Machine", teamId: 142, games: 22, since: d(-24), last: d(-1), ab: 70, hits: 6, pa: 95, onBase: 33 },
+          { playerId: 665487, name: "Streak Man", teamId: 143, games: 15, since: d(-16), last: d(0), ab: 60, hits: 22, pa: 69, onBase: 31 },
+        ],
+      },
+      hitStreakMin: { hit: 5, onBase: 10 },
       news: [
         { title: "Buxton hits the IL with hip impingement", link: "https://example.com/a", source: "MLB Trade Rumors", date: d(0) + "T10:00:00Z", cat: "injury" },
         { title: "Pirates Select Christian Bethancourt", link: "https://example.com/b", source: "MLB Trade Rumors", date: d(0) + "T09:00:00Z", cat: "move" },
@@ -537,9 +556,9 @@
       check("id 沒有重複", tabIds.length, new Set(tabIds).size);
       check("每一區都有 render", Object.keys(MLB.SECTIONS).filter((k) => typeof MLB.SECTIONS[k].render !== "function"), []);
       check("每一區都有 count", Object.keys(MLB.SECTIONS).filter((k) => typeof MLB.SECTIONS[k].count !== "function"), []);
-      check("九個區塊", MLB.TABS.length, 9);
+      check("十個區塊", MLB.TABS.length, 10);
       check("群組是照順序連在一起的", MLB.TABS.map((t) => t.group), [
-        "我的", "我的", "傷兵", "傷兵", "打擊", "打擊", "其他", "其他", "其他",
+        "我的", "我的", "傷兵", "傷兵", "打擊", "打擊", "打擊", "其他", "其他", "其他",
       ]);
     }
 
@@ -576,12 +595,13 @@
 
     group("選單");
     {
-      check("九項都在", tabs.querySelectorAll(".nav-item").length, 9);
+      check("十項都在", tabs.querySelectorAll(".nav-item").length, 10);
       check("四個群組標題", texts(".nav-group", tabs), ["我的", "傷兵", "打擊", "其他"]);
       // 標題只是分隔用的字，不能變成可以按、可以 Tab 到的東西
       check("群組標題不是按鈕", tabs.querySelectorAll(".nav-group button, button.nav-group").length, 0);
       check("順序照 TABS", texts(".nav-item span:first-child", tabs), [
-        "關注名單", "我的球員", "傷兵異動", "傷兵名單", "強擊球", "Barrel", "球員異動", "連勝連敗", "新聞",
+        "關注名單", "我的球員", "傷兵異動", "傷兵名單", "強擊球", "Barrel", "連續場次",
+        "球員異動", "連勝連敗", "新聞",
       ]);
       check("選單上帶筆數（傷兵名單 3 人）", navCount("傷兵名單"), 3);
       check("傷兵異動 4 筆", navCount("傷兵異動"), 4);
@@ -930,6 +950,85 @@
       const bfold = board.querySelector("details.notes");
       check("Barrel 也收在摺疊裡", !!bfold, true);
       check("沒有假裝是官方數字", /不是 MLB 官方標記的那個欄位/.test(bfold.textContent), true);
+    }
+
+    group("連續場次：兩個檢視是兩份榜");
+    {
+      showTab("連續場次");
+      pickTeam("");
+
+      check("預設看連續安打", viewSelect.value, "hit");
+      check("兩個檢視", optionLabels(), ["連續安打", "連續上壘"]);
+      check("選單筆數用連續安打那榜當代表", navCount("連續場次"), 2);
+
+      check("照場次多到少", names(), ["Streak Man", "Short Streak"]);
+      check("大數字是場次", texts(".rank-num"), ["12", "6"]);
+      /*
+       * 場次後面一定要帶單位。強擊球那邊的 28 就是 28 球，這一區光一個 12
+       * 看不出是場次還是安打數——而同一張卡上「20 安」也在，兩個都是數字。
+       */
+      check("每張卡都帶「場」", texts(".rank-unit"), ["場", "場"]);
+
+      check("期間成績", /48 打數 20 安/.test(board.textContent), true);
+      check("打擊率三位小數", /打擊率 \.417/.test(board.textContent), true);
+      // 棒球的比率不寫前面那個 0，寫成 0.417 就不是打擊率的樣子了
+      check("不留前面的 0", /0\.417/.test(board.textContent), false);
+      check("起算日", /\d+\/\d+ 起/.test(board.textContent), true);
+      // 另一個數字當對照：一段連續安打裡上壘幾次，看得出他是打的還是選的
+      check("連續安打榜帶上壘當對照", /期間上壘 26 次/.test(board.textContent), true);
+
+      pickView("onBase");
+      check("整份榜換人換順序", names(), ["Walk Machine", "Streak Man"]);
+      check("數字也換了", texts(".rank-num"), ["22", "15"]);
+      check("換成打席與上壘", /95 打席 33 次上壘/.test(board.textContent), true);
+      check("上壘率", /上壘率 \.347/.test(board.textContent), true);
+      check("連續上壘榜帶安打當對照", /其中 6 支安打/.test(board.textContent), true);
+      /*
+       * 同一個人在兩邊的場次本來就不一樣——連續安打會被 0 安的比賽斷掉，
+       * 連續上壘不會。兩邊印出同一個數字才是壞了。
+       */
+      check("同一個人兩邊不同數字", texts(".rank-num")[1] !== "12", true);
+
+      pickTeam(143);
+      check("篩球隊後只剩一個", names(), ["Streak Man"]);
+      pickTeam(136);
+      check("這一隊在這個榜上沒人", /這一隊目前沒有人在榜上/.test(board.textContent), true);
+      pickView("hit");
+      check("換個榜這一隊就有人了", names(), ["Short Streak"]);
+      pickTeam("");
+    }
+
+    /*
+     * 這一區的規則不寫出來會被當成 bug：使用者看到 12 場連續安打，
+     * 中間明明有一場沒安打，會以為算錯了——而那場其實一個打數都沒有。
+     */
+    group("連續場次：規則要寫出來");
+    {
+      showTab("連續場次"); pickTeam(""); pickView("hit");
+      const fold = board.querySelector("details.notes");
+      check("說明收在摺疊裡", !!fold, true);
+      check("摺疊列寫著這是什麼", fold.querySelector("summary").textContent, "這兩個榜怎麼算的");
+      check("摺疊裡是三段", fold.querySelectorAll(".disclaimer").length, 3);
+
+      check("沒有打數的比賽不算中斷", /不算中斷，也不算一場/.test(fold.textContent), true);
+      /*
+       * 兩種犧牲打的規則是相反的，說明裡一定要分開講。
+       * 只寫「犧牲打」三個字的話，看到高飛犧牲打那天斷掉的人會拿這段對照，
+       * 然後認定是程式算錯——文案含糊會讓對的程式看起來像壞的。
+       */
+      check("犧牲觸擊寫成不中斷", /只有四壞、觸身或犧牲觸擊）不算中斷/.test(fold.textContent), true);
+      check("高飛犧牲打寫成會中斷", /高飛犧牲打又沒安打就算中斷/.test(fold.textContent), true);
+      check("有標出規則編號好查證", /9\.23\(b\)/.test(fold.textContent), true);
+      check("上壘不含失誤與野手選擇", /靠失誤或野手選擇站上壘包不算/.test(fold.textContent), true);
+      check("講明是延續中不是本季最長", /不是本季最長紀錄/.test(fold.textContent), true);
+      // 天數跟門檻都是資料送過來的，不能在前端寫死第二份
+      check("停賽幾天下榜的天數是資料給的", /連續 3 天沒出賽就會下榜/.test(fold.textContent), true);
+      check("兩個門檻都寫出來", /連續安打 5 場、連續上壘 10 場/.test(fold.textContent), true);
+      /*
+       * 這條是誠實聲明。使用者看比賽轉播的時候會邊看邊重整，
+       * 不寫的話他會以為資料壞了——而其實是我們刻意只算到上一場打完。
+       */
+      check("有講進行中的比賽不算", /進行中的比賽不會即時反映/.test(fold.textContent), true);
     }
 
     /*
@@ -1423,6 +1522,8 @@
         { playerId: 665487, name: "Fernando Tatis Jr.", teamId: 143, hardHits: 28, battedBalls: 44, rate: 0.636, maxEV: 115.1, avgEV: 92.1, games: 12 },
       ];
       delete OLD.barrels;
+      delete OLD.hitStreaks;
+      delete OLD.hitStreakMin;
       OLD.news = OLD.news.map(function (n) {
         const copy = Object.assign({}, n);
         delete copy.cat;
@@ -1454,6 +1555,13 @@
       check("整區沒資料也只是空著", board.querySelectorAll(".notice").length, 1);
       check("選單上算出來是 0 筆", navCount("Barrel"), 0);
 
+      showTab("連續場次");
+      check("整區沒資料也只是空著", board.querySelectorAll(".notice").length, 1);
+      check("選單上算出來是 0 筆", navCount("連續場次"), 0);
+      // 門檻是跟著 data.json 送來的，舊檔沒有那個欄位時要退回寫死的值，
+      // 不能在畫面上冒出「達到 undefined 場」
+      check("沒有門檻欄位就退回預設值", /達到 5 場/.test(board.textContent), true);
+
       showTab("新聞");
       check("每篇都沒有 cat 就整個藏起檢視下拉", viewSelect.disabled, true);
       // 全部倒進「其他」等於假裝有分類，寧可先不給這個功能
@@ -1474,10 +1582,11 @@
     {
       const EMPTY = {
         generatedAt: d(0) + "T00:00:00Z", season: 2026,
-        windows: { moves: 7, hardHit: 14, callups: 14 }, teams: TEAMS,
+        windows: { moves: 7, hardHit: 14, callups: 14, streakActive: 3 }, teams: TEAMS,
         ilMoves: [], ilBoard: [],
         hardHits: { d14: [], d7: [], d3: [] }, barrels: { d14: [], d7: [], d3: [] },
         callups: [], streaks: { wins: [], losses: [] }, news: [], hotStats: [],
+        hitStreaks: { hit: [], onBase: [] }, hitStreakMin: { hit: 5, onBase: 10 },
       };
       load({ "mlb:watch": [] }, EMPTY, { players: [] }, INDEX);
 
@@ -1491,6 +1600,9 @@
       check("沒有擊球資料也不爆", board.querySelectorAll(".notice").length, 1);
       showTab("Barrel");
       check("Barrel 一樣", board.querySelectorAll(".notice").length, 1);
+      showTab("連續場次");
+      check("沒有人在延續中也不爆", board.querySelectorAll(".notice").length, 1);
+      check("空的時候要說門檻是幾場", /達到 5 場/.test(board.textContent), true);
       showTab("球員異動");
       check("沒有登錄異動也不爆", board.querySelectorAll(".notice").length, 1);
       showTab("新聞");
@@ -1501,7 +1613,7 @@
       check("關注名單照樣開得起來", board.querySelectorAll(".ghost-btn").length, 1);
 
       // 每一區的筆數都要是 0，不能有哪一區去讀不存在的欄位而變成 undefined
-      check("選單上每一區都算得出 0", MLB.TABS.map((t) => navCount(t.label)), [0, 0, 0, 0, 0, 0, 0, 0, 0]);
+      check("選單上每一區都算得出 0", MLB.TABS.map((t) => navCount(t.label)), [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     }
 
     /* ---------------------------------------------------------- */

@@ -277,6 +277,90 @@ def is_sweet_spot(launch_angle):
 
 
 """
+打席結果的分類，連續安打／連續上壘要靠它把 playByPlay 還原成官方打擊成績。
+
+三個集合的答案是抄 statsapi 自己的 /v1/eventTypes——那份 meta 每一種事件
+都標了 plateAppearance 與 hit 兩個旗標，不是看描述自己猜的。
+
+為什麼用白名單而不是「排掉幾種跑壘事件」：allPlays 裡 result.type 寫著
+"atBat" 的 play 不一定是一次打席。跑者在打席進行中被牽制出局、半局就這樣
+結束的話，那個 play 會掛在當時站在打擊區的人身上、type 也照樣是 "atBat"，
+但事件是 pickoff_caught_stealing_2b，官方紀錄上他那個打席根本不存在
+（實例：2026-09-01 的 Ty France，PBP 看起來 5 個打席，boxscore 寫 4 打數）。
+黑名單漏一種就會多算一個打數，白名單漏一種只會少算，而且對得出來。
+
+驗證方式：12 場、266 名打者，從 PBP 推出來的 AB／H／BB／HBP／PA
+拿去比官方 boxscore 的同四欄，零筆不合。
+"""
+_PA_EVENTS = frozenset([
+    "single", "double", "triple", "home_run",
+    "field_out", "force_out", "fielders_choice", "fielders_choice_out",
+    "double_play", "grounded_into_double_play", "triple_play",
+    "strikeout", "strike_out", "strikeout_double_play", "strikeout_triple_play",
+    "field_error", "batter_interference", "fan_interference",
+    "walk", "intent_walk", "hit_by_pitch",
+    "sac_fly", "sac_fly_double_play", "sac_bunt", "sac_bunt_double_play",
+    "catcher_interf",
+])
+
+_HIT_EVENTS = frozenset(["single", "double", "triple", "home_run"])
+
+# 上了打席但不算「打數」：四壞、故意四壞、觸身、高飛犧牲打、犧牲觸擊、妨礙打擊。
+# 打數 0 是連續安打那條豁免的入口，但這一組不等於那條豁免：
+# 高飛犧牲打在這裡面，它卻是會中斷連續安打的。差別由 _SAC_FLY_EVENTS 處理，見下面。
+_NON_AB_EVENTS = frozenset([
+    "walk", "intent_walk", "hit_by_pitch",
+    "sac_fly", "sac_fly_double_play", "sac_bunt", "sac_bunt_double_play",
+    "catcher_interf",
+])
+
+"""
+上壘只認安打、四壞、觸身這三種。
+
+失誤上壘（field_error）和野手選擇（fielders_choice）不算——
+官方的連續上壘紀錄就是不算它們，而且那兩種本來就不是打者的功勞。
+妨礙打擊（catcher_interf）也不算，理由一樣。
+"""
+_ON_BASE_EVENTS = _HIT_EVENTS | frozenset(["walk", "intent_walk", "hit_by_pitch"])
+
+"""
+高飛犧牲打要跟犧牲觸擊分開數，因為官方規則對這兩者的處理相反。
+
+規則 9.23(b)：整場的打席全部是四壞、觸身、妨礙打擊或「犧牲觸擊」的話，
+連續安打不中斷；但只要有一次「高飛犧牲打」而且沒安打，連續安打就斷了。
+
+兩者都不算打數，所以光看打數是 0 分不出來——一場三次四壞的比賽要跳過，
+一場兩次四壞加一次高飛犧牲打的比賽要中斷，而兩場的打數都是 0。
+"""
+_SAC_FLY_EVENTS = frozenset(["sac_fly", "sac_fly_double_play"])
+
+
+def is_plate_appearance(event_type):
+    """這個 play 算不算打者的一次打席。看不懂的事件一律不算。"""
+    return event_type in _PA_EVENTS
+
+
+def is_hit(event_type):
+    """一安到全壘打。"""
+    return event_type in _HIT_EVENTS
+
+
+def is_at_bat(event_type):
+    """算不算一個打數。必然是 is_plate_appearance 的子集，測試有守這條。"""
+    return event_type in _PA_EVENTS and event_type not in _NON_AB_EVENTS
+
+
+def reached_base(event_type):
+    """打者有沒有靠自己上壘（安打／四壞／觸身）。"""
+    return event_type in _ON_BASE_EVENTS
+
+
+def is_sac_fly(event_type):
+    """高飛犧牲打。不是打數，但會中斷連續安打，所以要單獨數一欄。"""
+    return event_type in _SAC_FLY_EVENTS
+
+
+"""
 新聞主題分類用的關鍵字。
 
 只看標題，所以一定會誤判——「其他」是誠實的出口，不要為了讓每篇都有標籤

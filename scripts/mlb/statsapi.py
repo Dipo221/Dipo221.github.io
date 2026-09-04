@@ -147,6 +147,48 @@ def date_range_leaders(group, start, end, sort_stat, limit=25):
     return stats[0].get("splits", []) if stats else []
 
 
+def game_logs(person_ids, season):
+    """
+    整季逐場打擊成績，回 {playerId: [{date, gameType, stat}, ...]}（由舊到新）。
+
+    連續場次只有在「快取那 14 天窗從頭到尾沒中斷」的人身上才需要它——
+    那種人的連續場次可能比窗還長，窗內看到的數字會是低估。實測聯盟同時
+    符合這個條件的大約 30 人，所以這裡一輪只打一到兩個請求。
+
+    兩個省流量的手段都要有：
+      hydrate  一次問 40 個人，不是一人一個請求
+      fields   只留用得到的那幾個統計欄位。實測整季一人 207KB → 18.5KB，差 11 倍
+
+    註：people endpoint 的 hydrate 是真的有效（跟 teams 那個被無聲忽略的
+    hydrate=roster(person) 不一樣），已實測回得出 splits。
+    """
+    out = {}
+    ids = list(person_ids)
+    for i in range(0, len(ids), 40):
+        chunk = ids[i : i + 40]
+        if not chunk:
+            continue
+        data = get(
+            "/v1/people",
+            personIds=",".join(str(x) for x in chunk),
+            hydrate="stats(group=[hitting],type=[gameLog],season=%d)" % season,
+            fields=",".join([
+                "people", "id", "stats", "splits", "date", "gameType", "stat",
+                "atBats", "hits", "baseOnBalls", "hitByPitch", "plateAppearances",
+                # 高飛犧牲打不算打數，卻會中斷連續安打（規則 9.23(b)），
+                # 所以要單獨一欄，理由見 parse.is_sac_fly
+                "sacFlies",
+                # gamePk 是拿來擋進行中的比賽的，見 hitstreaks._from_log
+                "game", "gamePk",
+            ]),
+        )
+        for p in data.get("people", []):
+            stats = p.get("stats") or []
+            splits = stats[0].get("splits", []) if stats else []
+            out[p["id"]] = sorted(splits, key=lambda s: s.get("date") or "")
+    return out
+
+
 def people(person_ids):
     """批次查球員，主要是要 mlbDebutDate 來判定是不是初登板。"""
     out = {}
