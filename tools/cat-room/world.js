@@ -185,7 +185,7 @@ const World = (function () {
     { id: "tie", label: "你的髮圈" },
     { id: "pebble", label: "一顆小石頭" },
     { id: "paper", label: "一顆皺掉的紙團" },
-    { id: "sock", label: "一隻襪子（另一隻不知道去哪了）" }
+    { id: "sock", label: "一隻襪子(另一隻不知道去哪了)" }
   ];
 
   /*
