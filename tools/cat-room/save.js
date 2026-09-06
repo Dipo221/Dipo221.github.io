@@ -28,8 +28,16 @@ const Save = (function () {
       fed: { count: 0, lastAt: null },
       pet: { count: 0 },
       gifts: [],
-      // v2 的訪客貓與圖鑑會用到這兩個，先留著讓存檔格式不用再改一次版
-      room: { items: [] },
+      /*
+       * items 是 v2 的訪客貓與圖鑑要用的，先留著讓存檔格式不用再改一次版。
+       *
+       * lampOn 是吊燈、deskLampOn 是桌燈的開關（M3，2026-09-04 與 09-05）。
+       * **它們不違反上面那條**：這是使用者自己按的狀態，
+       * 不是時間到了會自己變的數值。沒有人不來牠就會自己把燈關掉這種事。
+       *
+       * 兩盞燈各存各的，因為它們各關各的。預設都是開著。
+       */
+      room: { items: [], lampOn: true, deskLampOn: true },
       seenCats: []
     };
   }
@@ -54,6 +62,11 @@ const Save = (function () {
     if (!Array.isArray(out.gifts)) out.gifts = [];
     if (!Array.isArray(out.seenCats)) out.seenCats = [];
     if (!Array.isArray(out.room.items)) out.room.items = [];
+    // 壞掉的存檔會讓它變成字串或 null，而 "false" 是真的——
+    // 那會變成一盞關不掉的燈。只認真正的 false，其餘一律當作開著。
+    // **舊存檔沒有 deskLampOn，這條同時也是它的預設值**
+    out.room.lampOn = out.room.lampOn !== false;
+    out.room.deskLampOn = out.room.deskLampOn !== false;
 
     // 存檔壞掉時這些會是 NaN 或字串，往下算時間會整個爛掉，先擋起來
     if (typeof out.firstSeen !== "number" || !isFinite(out.firstSeen)) out.firstSeen = now;

@@ -32,6 +32,7 @@ except ImportError:
     sys.exit("need Pillow:  pip install Pillow")
 
 import disi
+import gifts
 import room
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -247,17 +248,107 @@ def save_asset(img, fname):
         ASSETS_CHANGED.append(fname)
 
 
-def light_palette():
+def light_palette(table=None):
     """發光層的調色盤：沒登記的字元一律黑。
 
     黑在 screen 底下等於沒作用，所以這張圖不用去背，也不用管形狀——
     形狀本來就跟底圖一模一樣，因為它是同一份資料算的。
+
+    `table` 是要用哪一張登記表。有兩張、而且**必須是兩張**：窗和燈各有
+    自己的開關，混成一張的話關燈會把窗外的夜色一起關掉（見 room.py 的
+    LAMP_EMISSIVE）。預設是窗那張，因為那是原本就有的那一層。
     """
-    return dict((ch, room.EMISSIVE.get(ch, (0, 0, 0))) for ch in room.PALETTE)
+    t = room.EMISSIVE if table is None else table
+    return dict((ch, t.get(ch, (0, 0, 0))) for ch in room.PALETTE)
 
 
 def build_room_light(name="pano"):
     save_asset(room_image(name, light_palette()), "room-light.png")
+
+
+def object_box(name, oname):
+    """某個具名物件佔的像素範圍 (x0, y0, x1, y1)，含頭含尾。"""
+    spec = room.ROOMS[name]
+    for n, x, y in spec["place"]:
+        if n == oname:
+            o = room.OBJECTS[n]
+            return (x * TILE, y * TILE,
+                    (x + o["w"]) * TILE - 1, (y + o["h"]) * TILE - 1)
+    raise KeyError("%r 不在 %s 的 place 裡" % (oname, name))
+
+
+def light_image(name, owner):
+    """一盞燈自己那一層：它的燈泡與鐵皮在發光，加上它往下打出來的光錐。
+
+    前半段跟窗那層同一個做法（同一份磚號表換一次調色盤）。後半段是
+    **這個專案第一片不是從字元地圖來的像素**，理由寫在 room.py 的 LAMP_CONE。
+
+    **中間那段圈範圍是必要的，不是保險。** `u`/`U` 現在有兩個主人
+    （吊燈跟桌燈），不圈的話兩盞燈都會出現在對方那張圖上——
+    關掉其中一盞會把另一盞一起關掉，而那個 bug 只有在「剛好關掉一盞」的時候
+    才看得到。room.LIGHTS 的 key 就是物件的名字，圈的就是那個物件的格子。
+
+    光錐是加法不是 screen：這張圖等一下才會被 CSS 拿去 screen，
+    在這裡就先 screen 一次等於算了兩遍，亮部會爆掉。
+    """
+    bulb, cone = room.LIGHTS[owner]
+    img = room_image(name, light_palette(room.LAMP_EMISSIVE))
+    p = img.load()
+    w, h = img.size
+
+    bx0, by0, bx1, by1 = object_box(name, owner)
+    for y in range(h):
+        for x in range(w):
+            if not (bx0 <= x <= bx1 and by0 <= y <= by1):
+                p[x, y] = (0, 0, 0)
+
+    lx, ly = bulb
+    for y in range(h):
+        dy = y - ly
+        if dy <= 0:
+            continue                       # 罩子不透光，燈上面是暗的
+        fall = 1.0 - dy / cone["reach"]
+        if fall <= 0:
+            break                          # 再往下都歸零了，不用掃完
+        half = 7.0 + dy * cone["spread"]   # 光錐在這一列有多寬
+        for x in range(w):
+            k = fall * min(1.0, max(0.0, (half - abs(x - lx)) / cone["feather"]))
+            if k <= 0:
+                continue
+            c = p[x, y]
+            p[x, y] = tuple(min(255, c[i] + int(round(cone["tint"][i] * k * cone["amp"])))
+                            for i in range(3))
+    return img
+
+
+def build_room_lights(name="pano"):
+    """一盞燈一張圖。檔名就是物件的名字，CSS 那邊的 class 與變數也是。"""
+    for owner in room.LIGHTS:
+        save_asset(light_image(name, owner), "room-%s.png" % owner)
+
+
+def screen_image(name="pano"):
+    """螢幕那一層：整張黑，只有兩塊螢幕的畫面是亮的。
+
+    **它圈的是矩形不是顏色**，跟窗和燈那兩層不一樣。理由寫在 room.py 的
+    SCREEN_RECTS：螢幕上用的六個字元裡有五個滿房間都是（牆的描邊、枕頭、
+    書背、燈罩），照字元圈會讓半個房間跟著發光。
+
+    亮的內容就是**畫面上原本那幾格的顏色**——螢幕發的光就是它顯示的東西，
+    這裡不用另外挑一組顏色。所以改了 PLAYER 或 CRITTER，發光層自己就跟著對。
+    """
+    base = room_image(name)
+    img = Image.new("RGB", base.size, (0, 0, 0))
+    src, dst = base.load(), img.load()
+    for x0, y0, x1, y1 in room.SCREEN_RECTS:
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                dst[x, y] = src[x, y]
+    return img
+
+
+def build_room_screen(name="pano"):
+    save_asset(screen_image(name), "room-screen.png")
 
 
 def build_sky_rgba(name, tod):
@@ -283,6 +374,26 @@ def build_sky_rgba(name, tod):
 def build_room_sky(name="pano"):
     for tod in room.SKY_TOD:
         save_asset(build_sky_rgba(name, tod), "room-sky-%s.png" % tod)
+
+
+def gifts_image():
+    """禮物圖示排成一條 16px 高的帶子，一樣禮物一格。
+
+    **是 RGBA 不是 RGB**，跟房間那幾張不一樣：房間永遠鋪滿整個方框，
+    圖示是躺在木頭面板上的東西，四周必須真的透明。
+
+    橫著排不是直的，因為 CSS 只要動 `background-position-x` 就換得了圖示，
+    直的還要算 y。一條 96x16 的帶子壓完不到 1 KB。
+    """
+    ids = list(gifts.GIFTS)
+    img = Image.new("RGBA", (len(ids) * TILE, TILE), (0, 0, 0, 0))
+    for i, gid in enumerate(ids):
+        blit(img, gifts.GIFTS[gid], i * TILE, 0, 1, room.PALETTE)
+    return img
+
+
+def build_gifts():
+    save_asset(gifts_image(), "gifts.png")
 
 
 def write_room_data(name="pano"):
@@ -482,15 +593,56 @@ TOD_TINT = {
     "night": (96, 110, 152),
 }
 
-# style.css 的 --room-glow：發光層的不透明度。
+# style.css 的 --room-glow：**窗那層**發光層的不透明度。
 #
-# 為什麼非有它不可：multiply **只能往暗走**。一間暖房間的夜晚重點在光
-# （窗、之後的燈），而光被乘暗就沒有意義了。所以夜晚另外疊一層 screen。
+# 為什麼非有它不可：multiply **只能往暗走**。一間暖房間的夜晚重點在光，
+# 而光被乘暗就沒有意義了。所以夜晚另外疊一層 screen。
 #
 # dusk 是 0 不是折衷值。room.EMISSIVE 登記的是**藍色的夜空**，
 # 黃昏開著它等於在一片橘裡面點一扇藍窗，會把 dusk 那條唯一的回報打掉。
-# 等 M3 有了檯燈（暖色的發光像素），黃昏才會需要它。
+#
+# 吊燈進來之後這條**還是 0**。燈是暖的、確實需要黃昏也亮，但它已經不在
+# 這張表裡了——它有自己的一層跟自己的不透明度（下面 LAMP_GLOW），
+# 因為它點得下去、關掉的時候不能連窗一起關。
 TOD_GLOW = {"day": 0.0, "dawn": 0.30, "dusk": 0.0, "night": 1.0}
+
+# style.css 的 --lamp-glow：**燈那層**的不透明度。乘上「燈開著沒有」。
+#
+# 跟上面那條分開的原因是開關（見 room.py 的 LAMP_EMISSIVE），
+# 分開之後順便解決了另一件事：燈的曲線本來就跟窗不一樣。窗是外面的光，
+# 白天最亮、半夜最暗；燈剛好相反。
+#
+# **day 不是 0**。0 的話白天按那顆燈會完全沒有反應——一個按下去沒有回饋的
+# 按鈕比沒有按鈕還糟（index.html 的漢堡選單就是為了這條才刻意不做成 button）。
+#
+# 白天那個值是放大到 8 倍掃過 0.22 / 0.35 / 0.50 挑的：0.22 要兩張並排才
+# 看得出差別，0.50 會在中午的磚上壓出一塊明顯的暖斑（正午的燈不該做到那件事）。
+# 0.35 剛好——**燈泡自己亮起來**是回饋的主體，牆上那一圈只是附帶的。
+# **一盞燈一張表，key 就是物件的名字**，跟 room.LIGHTS 同一組 key。
+# 加第三盞就在這裡多一行、CSS 多一個 --<名字>-glow，lint_glow() 自己會跟上。
+LAMP_GLOW = {
+    # 吊燈：0.35 是放大到 8 倍掃過 0.22 / 0.35 / 0.50 挑的。
+    "lamp": {"day": 0.35, "dawn": 0.55, "dusk": 0.75, "night": 1.0},
+    # 桌燈（2026-09-05）。**白天比吊燈低**：一盞正午的桌燈本來就幾乎看不出來，
+    # 而它離桌面只有 30px，光全落在桌面上，值再高會在桌板上壓出一塊死白。
+    # 夜裡反過來給滿——那時候它是這張桌子的主光源。
+    "desklamp": {"day": 0.25, "dawn": 0.50, "dusk": 0.70, "night": 1.0},
+}
+
+# style.css 的 --screen-glow：**螢幕那層**的不透明度（M3 的書桌，2026-09-05）。
+#
+# 這是第三層，而且是**第一個沒有開關的**。窗關不掉、燈關得掉、
+# 螢幕永遠開著——它不是「進來按一下」的東西，是那張桌子在說「有人在這裡工作」。
+#
+# 值是照時段色片的亮度反推的，不是挑的：色片壓掉多少就補回多少。
+# 四個時段色片的亮度分別是 255 / 191 / 204 / 110，
+# 缺口就是 0.00 / 0.25 / 0.20 / 0.57。
+#
+# **day 不留 0**。0 的話白天的螢幕就是一塊畫在牆上的圖案；
+# 0.15 只把它推亮一點點，剛好夠讓它讀成「開著的」而不會在正午發光。
+# 夜裡給到 0.85 而不是 0.57，因為半夜的螢幕本來就該比白天更搶眼——
+# 那時候整個房間只剩兩塊光。
+SCREEN_GLOW = {"day": 0.15, "dawn": 0.45, "dusk": 0.40, "night": 0.85}
 
 
 def screen(b, l):
@@ -517,6 +669,8 @@ def build_room_tod(name="pano", scale=3, gap=14, pad=16):
     font = room_font(13)
     base = paste_cat(room_image(name))
     light = room_image(name, light_palette())
+    lamps = [(light_image(name, o).load(), LAMP_GLOW[o]) for o in room.LIGHTS]
+    scr = screen_image(name)
     bw, bh = base.size
     w, h = bw * scale, bh * scale
 
@@ -526,16 +680,23 @@ def build_room_tod(name="pano", scale=3, gap=14, pad=16):
     d = ImageDraw.Draw(out)
     y = pad
     for tod in order:
-        tint, glow = TOD_TINT[tod], TOD_GLOW[tod]
+        tint = TOD_TINT[tod]
+        # 燈畫成**開著**：這張圖是拿來判斷「夜裡看不看得見貓」的，
+        # 而看得見與否現在有一半靠那盞燈。關著的樣子就是把燈那層拿掉
+        layers = ([(light.load(), TOD_GLOW[tod])]
+                  + [(lp, tab[tod]) for lp, tab in lamps]
+                  + [(scr.load(), SCREEN_GLOW[tod])])
         # 算在 1x 上再放大，不是放大了再算。NEAREST 只是把像素複製，
         # 兩種順序結果一樣，但這樣少算九倍的像素
         shot = base.copy()
-        px, lp = shot.load(), light.load()
+        px = shot.load()
         for yy in range(bh):
             for xx in range(bw):
                 c = px[xx, yy][:3]
                 c = [c[i] * tint[i] // 255 for i in range(3)]
-                if glow:
+                for lp, glow in layers:
+                    if not glow:
+                        continue
                     g = lp[xx, yy][:3]
                     c = [int(round(c[i] * (1 - glow) + screen(c[i], g[i]) * glow))
                          for i in range(3)]
@@ -546,9 +707,11 @@ def build_room_tod(name="pano", scale=3, gap=14, pad=16):
         shot.paste(sky, (0, 0), sky)
         wall = tuple(room.PALETTE["b"][i] * tint[i] // 255 for i in range(3))
         d.text((pad, y),
-               "%-5s tint #%02x%02x%02x  glow %.2f  ->  brick #%02x%02x%02x L%.0f"
-               % (tod, tint[0], tint[1], tint[2], glow,
-                  wall[0], wall[1], wall[2], luma(wall)),
+               "%-5s tint #%02x%02x%02x  glow %.2f  %s  screen %.2f"
+               "  ->  brick #%02x%02x%02x L%.0f"
+               % (tod, tint[0], tint[1], tint[2], TOD_GLOW[tod],
+                  "  ".join("%s %.2f" % (o, LAMP_GLOW[o][tod]) for o in room.LIGHTS),
+                  SCREEN_GLOW[tod], wall[0], wall[1], wall[2], luma(wall)),
                fill=(205, 210, 224), font=font)
         out.paste(shot.resize((w, h), Image.NEAREST), (pad, y + lh))
         y += lh + h + gap
@@ -602,20 +765,50 @@ def shares(counts):
                   key=lambda p: -p[1])
 
 
+def room_chars(name):
+    """整間房間攤成一張字元表：先鋪 bg，再照 place 蓋上物件。
+
+    跟 `room_image()` 同一個疊法，只是輸出字元不是顏色。**這件事必須跟算圖
+    一模一樣**——lint 量的要是畫面上真的那間房間，不是磚號表上那間。
+    """
+    spec = room.ROOMS[name]
+    w, h = spec["cols"] * TILE, spec["rows"] * TILE
+    grid = [["."] * w for _ in range(h)]
+
+    def stamp(rows, ox, oy):
+        for y, line in enumerate(rows):
+            for x, ch in enumerate(line):
+                if ch != "." and 0 <= oy + y < h and 0 <= ox + x < w:
+                    grid[oy + y][ox + x] = ch
+
+    for ty, line in enumerate(spec["bg"]):
+        for tx, ch in enumerate(line):
+            stamp(room.TILES[ch], tx * TILE, ty * TILE)
+    for oname, ox, oy in spec["place"]:
+        o = room.OBJECTS[oname]
+        for i, tile in enumerate(o["tiles"]):
+            stamp(tile, (ox + i % o["w"]) * TILE, (oy + i // o["w"]) * TILE)
+    return grid
+
+
 def floor_colours(name):
     """地板那幾列實際鋪出來的顏色佔比。
 
     不是「FLOOR 這塊磚裡有什麼色」——磚號表上深板、接頭、一般板的**數量**
     才決定地板整體看起來多亮。所以要照真的鋪法數。
+
+    **物件也算進來，這是 2026-09-04 修的。** 以前只數 `bg`，所以擺在地板上的
+    東西完全不在這條 lint 的視野裡。TODO 寫著「家具如果鋪了大面積的淺色地毯，
+    那塊也算地板，一樣會被擋」——那句話是假的，鋪下去一聲都不會吭。
+    地毯正好是最容易踩到的那一件：它是**一大片、躺在貓底下、而且很想畫得溫暖**。
     """
     spec = room.ROOMS[name]
     r0, r1 = spec["floor_rows"]
     counts = {}
-    for line in spec["bg"][r0:r1]:
-        for ch in line:
-            for r in room.TILES[ch]:
-                for c in r:
-                    counts[c] = counts.get(c, 0) + 1
+    for row in room_chars(name)[r0 * TILE:r1 * TILE]:
+        for ch in row:
+            if ch != ".":
+                counts[ch] = counts.get(ch, 0) + 1
     return counts
 
 
@@ -765,6 +958,161 @@ def lint_hud_palette():
     if not msgs:
         msgs.append("hud palette: %d vars match room.PALETTE" % len(HUD_VARS))
     return msgs
+
+
+def lint_glow():
+    """兩層發光層的四個時段值，CSS 抄的跟這裡算的一不一樣。
+
+    跟 lint_hud_palette 同一個理由和同一個做法：CSS 讀不到 Python，值只能手抄，
+    那就「可以抄，但抄錯要有人喊」。
+
+    **有了吊燈之後這條才真的需要。** 以前只有一張表（--room-glow），
+    抄錯了是四個時段整片的亮度不對，一眼就看得到。現在有兩張，
+    而且燈那張還多一個開關——抄錯的樣子會變成「白天按燈沒反應」
+    或者「半夜關燈把窗一起關掉」，兩個都要剛好在那個時段點下去才會發現。
+
+    比的是這支的 TOD_GLOW / LAMP_GLOW / SCREEN_GLOW 跟 style.css 的
+    --room-glow / --<每盞燈>-glow / --screen-glow。
+    順帶擋一件事：`.room[data-lamp="off"]` **必須排在四個時段後面**，
+    優先權同分的時候比的是誰寫在後面，搬到前面去夜裡的燈就關不掉了。
+    """
+    msgs = []
+    try:
+        with io.open(HUD_CSS, encoding="utf-8") as fh:
+            css = fh.read()
+    except IOError as e:
+        return ["GLOW: cannot read style.css (%s)" % e]
+
+    # .room 自己那條是 day，其餘三個掛在 [data-tod="…"] 上
+    blocks = dict(re.findall(r"\.room\[data-tod=\"(\w+)\"\]\s*\{(.*?)\}", css, re.S))
+    head = re.search(r"^\.room\s*\{(.*?)\}", css, re.S | re.M)
+    if head:
+        blocks["day"] = head.group(1)
+
+    tables = ([("--room-glow", TOD_GLOW)]
+              + [("--%s-glow" % o, LAMP_GLOW[o]) for o in room.LIGHTS]
+              + [("--screen-glow", SCREEN_GLOW)])
+    for var, table in tables:
+        for tod, want in sorted(table.items()):
+            body = blocks.get(tod)
+            if body is None:
+                msgs.append("GLOW: no .room block for %s in style.css" % tod)
+                continue
+            hit = re.search(re.escape(var) + r":\s*([0-9.]+)", body)
+            if not hit:
+                msgs.append("GLOW: %s missing from the %s block" % (var, tod))
+            elif abs(float(hit.group(1)) - want) > 1e-9:
+                msgs.append("GLOW: %s in %s is %s, pixel.py says %.2f"
+                            % (var, tod, hit.group(1), want))
+
+    # 每一盞關得掉的燈都要有一條 off 規則，而且**都要排在四個時段後面**
+    last_tod = max(css.find('.room[data-tod="%s"]' % t) for t in TOD_GLOW if t != "day")
+    for owner in room.LIGHTS:
+        sel = '.room[data-%s="off"]' % owner
+        off = css.find(sel)
+        if off < 0:
+            msgs.append("GLOW: style.css has no %s — %s 關不掉" % (sel, owner))
+        elif off < last_tod:
+            msgs.append("GLOW: %s 排在時段前面，關燈會被時段蓋回去" % sel)
+
+    if not msgs:
+        msgs.append("glow: %d layers x %d tods match style.css, %d off rules last"
+                    % (2 + len(room.LIGHTS), len(TOD_GLOW), len(room.LIGHTS)))
+    return msgs
+
+
+def lint_emissive_owner(name="pano"):
+    """會發光的字元只准出現在**登記過的燈**身上。
+
+    `u`/`U` 在燈那幾張圖裡是亮的。哪天有人拿 `U` 去畫海報上的月亮、
+    杯子的高光、或者貓眼的反光，那個東西白天看起來完全正常，**半夜會自己發光**
+    ——而且是掛在某一盞燈的開關上，要把那盞燈關掉它才會熄。
+
+    這種錯不會有任何錯誤訊息，而且只在夜裡才看得到，白天改圖的人不會發現。
+    所以用機器擋：把整間房間攤平，`LAMP_EMISSIVE` 那幾個字元的每一格
+    都必須落在 `room.LIGHTS` 其中一盞的格子裡。
+
+    **2026-09-05 從「只准在吊燈裡」放寬成「只准在某一盞燈裡」**，
+    因為桌燈進來了。放寬的同時 `light_image()` 也開始圈範圍——
+    不圈的話兩盞燈會出現在對方那張圖上，關一盞會把另一盞一起關掉。
+    """
+    boxes = {}
+    for owner in room.LIGHTS:
+        try:
+            boxes[owner] = object_box(name, owner)
+        except KeyError:
+            return ["EMISSIVE: 房間裡沒有 %s，room.LIGHTS 跟 place 對不上" % owner]
+
+    def inside(x, y):
+        return any(x0 <= x <= x1 and y0 <= y <= y1
+                   for x0, y0, x1, y1 in boxes.values())
+
+    stray = []
+    for y, row in enumerate(room_chars(name)):
+        for x, ch in enumerate(row):
+            if ch in room.LAMP_EMISSIVE and not inside(x, y):
+                stray.append((x, y, ch))
+    chars = "".join(sorted(room.LAMP_EMISSIVE))
+    if stray:
+        x, y, ch = stray[0]
+        return ["EMISSIVE: %d px of %s outside every light, first at (%d,%d) = %r"
+                % (len(stray), chars, x, y, ch)]
+    return ["emissive: %s only inside %s"
+            % (chars, " / ".join(sorted(boxes)))]
+
+
+GIFT_WORLD = os.path.join(os.path.dirname(__file__), "..", "world.js")
+
+
+def lint_gifts():
+    """禮物的 id 在三個地方各寫了一份，這條把三份對起來。
+
+    三份分別是：這裡的 `gifts.GIFTS`（圖）、`world.js` 的 `GIFTS`（名字與掉落）、
+    `style.css` 的 `[data-gift="..."]`（哪一格圖）。**三份都是必要的**——
+    美術跑在 Python、掉落跑在瀏覽器、取圖跑在 CSS，沒有一個地方能同時管到三邊。
+
+    漂掉的樣子非常安靜：圖照樣載得進來、清單照樣列得出來，只是襪子旁邊
+    畫的是一顆石頭。或者更糟，某一樣禮物在 CSS 裡沒有規則，
+    它就會拿到帶子最左邊那格——**每一次都畫成葉子**，而且看起來很正常。
+
+    順帶擋掉「靠索引串起來」的誘惑：只要三邊都用 id，gifts.py 裡重排順序
+    就只是換一下 PNG 的欄序，不會有任何一樣東西畫錯。
+    """
+    mine = set(gifts.GIFTS)
+    msgs = []
+    for label, path, pattern in (
+            ("world.js", GIFT_WORLD, r'id:\s*"([a-z]+)"'),
+            ("style.css", HUD_CSS, r'\[data-gift="([a-z]+)"\]')):
+        try:
+            with io.open(path, encoding="utf-8") as fh:
+                found = set(re.findall(pattern, fh.read()))
+        except IOError as e:
+            msgs.append("GIFTS: cannot read %s (%s)" % (label, e))
+            continue
+        for gid in sorted(mine - found):
+            msgs.append("GIFTS: %r has an icon but %s doesn't know it" % (gid, label))
+        for gid in sorted(found - mine):
+            msgs.append("GIFTS: %s has %r but there's no icon for it" % (label, gid))
+    if not msgs:
+        msgs.append("gifts: %d icons match world.js and style.css" % len(mine))
+    return msgs
+
+
+def lint_clip():
+    """有沒有物件想畫到自己的格子外面去。
+
+    **這條是被同一個坑咬第二次才裝的。** 書櫃的頂板後緣、海報的托架最後一列，
+    兩次都是畫完之後才發現少一角——物件的格子會把超出去的部分靜靜切掉，
+    不報錯、不留痕跡，圖上看起來只像「那裡本來就長這樣」。兩次都是把整張
+    字元表倒出來逐格比對才抓到的，而那不是每次改圖都會做的事。
+
+    數字是 room.py 的 px() 自己數的（它本來就在做邊界檢查，順手加一而已）。
+    要讓某件東西真的長出去，就把它的格子加大，不要放寬這條。
+    """
+    if room.CLIPPED:
+        return ["CLIP: %s 被格子切掉了"
+                % "  ".join("%s %d px" % kv for kv in sorted(room.CLIPPED.items()))]
+    return ["clip: %d objects, none drawn outside its own box" % len(room.OBJECTS)]
 
 
 def lint_room():
@@ -1086,7 +1434,8 @@ if __name__ == "__main__":
     print("\n".join(problems))
 
     print("\n--- room ---")
-    room_problems = lint_room() + lint_hud_palette()
+    room_problems = (lint_room() + lint_hud_palette() + lint_glow()
+                     + lint_emissive_owner() + lint_clip() + lint_gifts())
     print("\n".join(room_problems))
 
     # 這幾個關鍵字是「圖會壞掉」的錯，不是「圖不好看」。
@@ -1095,7 +1444,9 @@ if __name__ == "__main__":
              if "not in palette" in m or "unknown tile" in m
              or ", want" in m or "outside the room" in m or "CONTRAST" in m
              or "SKY_TOD" in m or m.startswith("FACE ")
-             or m.startswith("BLINK ") or m.startswith("HUD palette:")]
+             or m.startswith("BLINK ") or m.startswith("HUD palette:")
+             or m.startswith("GLOW: ") or m.startswith("EMISSIVE: ")
+             or m.startswith("CLIP: ") or m.startswith("GIFTS: ")]
     if fatal:
         sys.exit("\nfix the map first, nothing rendered")
 
@@ -1105,7 +1456,10 @@ if __name__ == "__main__":
     build_anim()
     build_rooms()
     build_room_light()
+    build_room_lights()
+    build_room_screen()
     build_room_sky()
+    build_gifts()
     bumped = write_room_data()
     build_room_tiles()
     build_room_view()
@@ -1114,7 +1468,10 @@ if __name__ == "__main__":
     rooms = " ".join("room-%s.png" % n for n in room.ROOMS)
     skies = " ".join("room-sky-%s.png" % t for t in room.SKY_TOD)
     print("\nwrote " + SHEET_PNG + " / proof.png / squint.png / " + gifs)
-    print("wrote " + rooms + " / room-light.png / " + skies)
+    lamps = " ".join("room-%s.png" % o for o in room.LIGHTS)
+    print("wrote " + rooms + " / room-light.png / " + lamps
+          + " / room-screen.png / " + skies)
+    print("wrote gifts.png (%d)" % len(gifts.GIFTS))
     print("wrote room-tiles.png / room-view.png / room-tod.png")
     print("wrote ../room-data.js")
     for where, changed in (

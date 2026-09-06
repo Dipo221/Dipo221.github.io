@@ -29,7 +29,7 @@
   <link rel="preload" as="font" type="font/woff2" href="../../fonts/cubic-11.woff2" media="(max-width: 899px)" crossorigin />
   <script src="../../theme.js?v=1"></script>
   <link rel="stylesheet" href="../../style.css?v=10" />
-  <link rel="stylesheet" href="style.css?v=14" />
+  <link rel="stylesheet" href="style.css?v=21" />
 </head>
 <body>
   <!--
@@ -81,7 +81,7 @@
         <!--
           牆、地板、屋頂、窗、碗都畫在 art/room-pano.png 裡了，不再是一堆 div。
           留在這裡的只有「會變的東西」：光束、碗裡的飼料、貓。
-          疊圖順序改用 z-index 明寫（光束 1、貓 2、時段色片 3、發光層 4、天空 5），
+          疊圖順序改用 z-index 明寫（光束 1、貓 2、時段色片 3、四層發光層 4、天空 5），
           因為時段那層要蓋在貓上面，靠 DOM 順序排不出來。
 
           時段色片與發光層都是 .room 的虛擬元素（::before / ::after），
@@ -102,6 +102,28 @@
         <div class="room-sky" data-when="dawn" aria-hidden="true"></div>
         <div class="room-sky" data-when="dusk" aria-hidden="true"></div>
         <div class="room-sky" data-when="night" aria-hidden="true"></div>
+        <!--
+          吊燈打出來的光。**跟上面那層發光層是分開的兩張圖**，因為燈點得下去
+          可以關掉，而窗不行——合成一張只會有一個不透明度，半夜關個燈
+          會把窗外的夜色一起關掉，窗變成一個黑洞。
+          開關寫在 .room 的 data-lamp 上（見 script.js 的 lampSwitch()）。
+          它跟天空那四層一樣沒有座標，靠 inset: 0 對位。
+        -->
+        <div class="room-lamp" aria-hidden="true"></div>
+        <!--
+          桌燈打出來的光。**跟吊燈是兩張圖，因為是兩個開關**——
+          兩盞用的是同一組發光色，所以產圖的時候會照物件的格子把對方圈掉，
+          不然關掉一盞會把另一盞一起關掉。
+          開關寫在 .room 的 data-desklamp 上（見 script.js 的 lampSwitch()）。
+        -->
+        <div class="room-desklamp" aria-hidden="true"></div>
+        <!--
+          書桌上那兩塊螢幕發的光。**第四層，也是唯一一個沒有開關的**——
+          窗關不掉、兩盞燈各關各的、螢幕永遠亮著。
+          分成四層是因為四條曲線不一樣（窗白天最亮、燈剛好相反、
+          螢幕夜裡最搶眼），合成一張只會有一個不透明度。
+        -->
+        <div class="room-screen" aria-hidden="true"></div>
         <div class="room-beam" aria-hidden="true"></div>
         <div class="bowl" id="bowl" aria-hidden="true"></div>
         <!--
@@ -122,9 +144,32 @@
 
     <div class="container room-column">
       <p class="meta" id="meta"></p>
+    </div>
 
-      <!-- 貓叼回來的東西。沒有分數也沒有進度條，這排就是唯一看得見的累積 -->
-      <ul class="gifts" id="gifts"></ul>
+    <!--
+      貓叼回來的東西，收在房間裡那個紙箱裡（待辦第 17 項）。
+      沒有分數也沒有進度條，這張清單就是唯一看得見的累積——
+      **空的時候也不會變成「你還沒拿到任何東西」**，理由在 style.css 的 .gift-empty。
+
+      預設 hidden。它是 fixed 不是貼在房間裡，因為房間會左右捲，
+      理由寫在 style.css 的「禮物箱」那一段。
+
+      role="dialog" + aria-modal 掛在木牌上不是掛在整層上：
+      aria-modal 的意思是「這塊以外的東西讀螢幕都跳過」，
+      掛在半透明那層上會連它自己的背景一起算進去。
+    -->
+    <div class="gift-panel" id="gift-panel" hidden>
+      <div class="gift-sheet" role="dialog" aria-modal="true" aria-labelledby="gift-title">
+        <h2 class="gift-title" id="gift-title">箱子裡</h2>
+        <ul class="gifts" id="gifts"></ul>
+        <!--
+          空的時候顯示的那一行。**它是 <ul> 的兄弟不是裡面的 <li>**：
+          清單裡放一個「還沒有東西」，螢幕閱讀器會唸成「清單，一個項目」，
+          而那正好是不對的——箱子裡有零個東西，不是一個。
+        -->
+        <p class="gift-empty" id="gift-empty" hidden></p>
+        <button class="gift-close" id="gift-close" type="button">關起來</button>
+      </div>
     </div>
   </main>
 
@@ -150,7 +195,7 @@
   -->
   <script src="world.js?v=4"></script>
   <script src="cat.js?v=1"></script>
-  <script src="save.js?v=1"></script>
+  <script src="save.js?v=3"></script>
   <script src="sprites.js?v=6"></script>
   <!--
     room-data.js 是 art/pixel.py 從磚號表產的，不要手改。
@@ -162,7 +207,7 @@
     畫面看起來是對的，只有座標默默錯掉。`python pixel.py` 會在這支
     真的變了的時候印一行提醒（見 write_room_data()）。
   -->
-  <script src="room-data.js?v=5"></script>
-  <script src="script.js?v=13"></script>
+  <script src="room-data.js?v=11"></script>
+  <script src="script.js?v=16"></script>
 </body>
 </html>

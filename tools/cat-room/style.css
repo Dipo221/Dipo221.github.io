@@ -52,8 +52,13 @@
    PALETTE 比一次，對不起來就 fail（見 lint_hud_palette）。
 
    字母就是磚號表裡的字母，改色去改 room.py，不要改這裡。
+
+   **掛在 main 上不是 .hud 上。** 原本只有介面條在用，所以放在 .hud；
+   禮物箱那個面板（待辦第 17 項）也是同一塊木頭，而它不在介面條裡面，
+   放在 .hud 上會拿不到值——CSS 變數是繼承的，不是全域的。
+   拿不到的樣子很難查：`var(--w-face)` 會整條宣告作廢，面板變成透明的。
    ------------------------------------------------------------ */
-.hud {
+main {
   --w-line: #1c1410;   /* o  描邊 */
   --w-side: #563c26;   /* j  側面（最暗） */
   --w-face: #805a38;   /* w  正面 */
@@ -86,14 +91,29 @@
    所以夜晚另外疊一層 screen 的發光層（見 .room::after），
    --room-glow 是它的不透明度。四個時段的值跟 pixel.py 的 TOD_GLOW 同一組。
 
-   還沒解決的：**黃昏的窗會變成一片灰**。天空是冷藍，任何暖色片乘下去都會
-   把它中和掉；發光層登記的又是夜裡那種藍，黃昏開它等於在一片橘裡點一扇藍窗。
-   窗要等待辦 A6（窗外天氣）拆成自己的一層才會有黃昏的顏色。
+   **發光層有四層，因為有四條不一樣的曲線。** --room-glow 管窗（外面的光，
+   白天最亮）、--lamp-glow 管吊燈、--desklamp-glow 管桌燈（兩盞都點得下去，
+   而且各關各的）、--screen-glow 管書桌上那兩塊螢幕（永遠亮著，沒有開關）。
+   四層的圖與曲線都是分開的，理由在 art/room.py 的 LIGHTS 與
+   SCREEN_RECTS——**合併只會有一個不透明度，四條曲線塞不進一個變數**。
+
+   「黃昏的窗會變成一片灰」那個問題**已經解決了**，這段以前寫著它還沒解決。
+   解法就是下面的 .room-sky：天空拆成自己一層、疊在四層發光層上面，
+   從此不吃時段色片，四個時段各有自己的天空色（art/room.py 的 SKY_TOD）。
    ------------------------------------------------------------ */
 .room {
   /* 白色乘上去等於什麼都沒做，這就是 day——**畫出來的顏色就是中午的顏色** */
   --room-tint: #ffffff;
   --room-glow: 0;
+  /*
+     吊燈那層。白天不是 0：中午按那顆燈也要看得到燈泡亮起來，
+     不然那是一顆按下去沒反應的按鈕。值怎麼挑的寫在 pixel.py 的 LAMP_GLOW。
+  */
+  --lamp-glow: 0.35;
+  /* 桌燈那層。**比吊燈低**：一盞正午的桌燈本來就幾乎看不出來 */
+  --desklamp-glow: 0.25;
+  /* 螢幕那層。永遠亮著，沒有開關。值怎麼挑的寫在 pixel.py 的 SCREEN_GLOW */
+  --screen-glow: 0.15;
   --room-beam: rgba(255, 240, 200, 0.16);
   --cat-fur: #d8cfc4;
 }
@@ -102,6 +122,9 @@
 .room[data-tod="dawn"] {
   --room-tint: #c0bce0;
   --room-glow: 0.3;
+  --lamp-glow: 0.55;
+  --desklamp-glow: 0.5;
+  --screen-glow: 0.45;
   --room-beam: rgba(255, 205, 165, 0.13);
   --cat-fur: #cfc4b8;
 }
@@ -109,6 +132,9 @@
 .room[data-tod="dusk"] {
   --room-tint: #ffc29e;
   --room-glow: 0;
+  --lamp-glow: 0.75;
+  --desklamp-glow: 0.7;
+  --screen-glow: 0.4;
   --room-beam: rgba(255, 170, 110, 0.15);
   --cat-fur: #cfc1b2;
 }
@@ -116,8 +142,27 @@
 .room[data-tod="night"] {
   --room-tint: #606e98;
   --room-glow: 1;
+  --lamp-glow: 1;
+  --desklamp-glow: 1;
+  --screen-glow: 0.85;
   --room-beam: rgba(150, 195, 245, 0.07);
   --cat-fur: #a9a298;
+}
+
+/*
+   燈關著。**這兩條一定要排在上面四個時段後面**——它們跟 .room[data-tod="…"]
+   的優先權一模一樣（都是一個 class 加一個屬性），同分的時候比的是誰寫在後面。
+   搬到前面去的話夜晚的燈就關不掉了，而且不會有任何錯誤訊息。
+
+   兩盞燈各有各的開關，所以是兩條規則、兩個屬性。`lint_glow()` 會照
+   `room.LIGHTS` 檢查「每一盞都有一條、而且都排在時段後面」。
+*/
+.room[data-lamp="off"] {
+  --lamp-glow: 0;
+}
+
+.room[data-desklamp="off"] {
+  --desklamp-glow: 0;
 }
 
 /* ------------------------------------------------------------
@@ -277,7 +322,7 @@
    */
   width: var(--w-by-height);
 
-  background-image: url("art/room-pano.png?v=6");
+  background-image: url("art/room-pano.png?v=12");
   background-size: 100% 100%;
   background-repeat: no-repeat;
   /* 非整數倍放大不要糊掉。整份美術的前提就是這一行 */
@@ -338,12 +383,11 @@
 }
 
 /*
- * 發光層。整張黑、只有會發光的像素是亮的（art/room-light.png），
+ * 發光層之一：窗。整張黑、只有會發光的像素是亮的（art/room-light.png），
  * 用 screen 疊在時段色片**上面**。黑色在 screen 底下等於沒作用，所以不用去背。
  *
  * 為什麼非有這一層不可：上面那層是 multiply，而 **multiply 只能往暗走**。
- * 一間暖房間的夜晚重點在光（現在是窗，M3 之後還有燈），
- * 光被乘暗就沒有意義了。--room-glow 白天是 0，這一層等於不存在。
+ * 一間暖房間的夜晚重點在光，而光被乘暗就沒有意義了。
  *
  * 疊在最上面（z-index 4）不是排版問題：光要打在色片**和貓**上面，
  * 順序換一下結果就是另一張圖了。art/pixel.py 的 build_room_tod() 照同樣的
@@ -360,6 +404,97 @@
   image-rendering: pixelated;
   mix-blend-mode: screen;
   opacity: var(--room-glow);
+  transition: opacity 1.2s linear;
+  pointer-events: none;
+}
+
+/*
+ * 發光層之二：吊燈（art/room-lamp.png，燈本身 + 它往下打出來的光錐）。
+ *
+ * **為什麼不跟上面那層合併成一張圖：燈點得下去，窗不行。** 合成一張的話
+ * 只有一個不透明度，半夜關燈會把窗外的夜色一起關掉，窗變成一個黑洞。
+ * 所以是兩張圖、兩個變數。完整的理由在 art/room.py 的 LAMP_EMISSIVE。
+ *
+ * 它是真的元素不是虛擬元素，因為 .room 的 ::before / ::after 都用掉了——
+ * 跟 .room-sky 那四個同一個理由。
+ *
+ * 跟 ::after 一樣 z-index 4：兩層都是 screen，而 screen 是可交換的，
+ * 誰先誰後算出來一樣，所以不必為了它們兩個再多一層。
+ *
+ * 那個 pixelated 是必要的不是裝飾：光錐是畫在 320x176 上的，
+ * 拿掉它瀏覽器會用雙線性放大，那一片就變成螢幕解析度的漸層——
+ * 整間房間就它一個不是像素了。
+ */
+.room-lamp {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  background-image: url("art/room-lamp.png?v=1");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  mix-blend-mode: screen;
+  opacity: var(--lamp-glow);
+  /*
+     **比其他層的 1.2s 短很多**，因為這一層有兩個理由會變：換時段，
+     還有人按了它。1.2s 對換時段剛好，對按鈕就太慢了——按下去要等一秒多
+     才看得到結果，會讓人以為沒按到，再按一次就變成關了又開。
+     0.35s 是燈泡真的會有的那種暖起來的時間，按起來跟得上手。
+  */
+  transition: opacity 0.35s linear;
+  pointer-events: none;
+}
+
+/*
+ * 發光層之三：桌燈（art/room-desklamp.png，燈罩下緣 + 它打在桌面上那圈光）。
+ *
+ * **跟吊燈是兩張圖，因為是兩個開關。** 兩盞用的是同一組發光色
+ * （art/room.py 的 LAMP_EMISSIVE），所以 pixel.py 的 light_image() 會照物件的
+ * 格子把對方圈掉——不圈的話兩盞燈都會出現在對方那張圖上，關掉一盞會把另一盞
+ * 一起關掉，而那個 bug 只有在「剛好只關一盞」的時候才看得到。
+ *
+ * transition 跟吊燈一樣是 0.35s：它一樣有一顆按鈕，1.2s 按起來會像沒反應。
+ */
+.room-desklamp {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  background-image: url("art/room-desklamp.png?v=2");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  mix-blend-mode: screen;
+  opacity: var(--desklamp-glow);
+  transition: opacity 0.35s linear;
+  pointer-events: none;
+}
+
+/*
+ * 發光層之四：兩塊螢幕（art/room-screen.png，書桌上那兩台）。
+ *
+ * **第一個沒有開關的光源。** 窗關不掉、燈關得掉、螢幕永遠亮著——
+ * 它不是「進來按一下」的東西，是那張桌子在說「有人在這裡工作」。
+ *
+ * 為什麼還是要自己一層而不是併進 room-light.png：那張是窗，
+ * 而窗的曲線跟螢幕相反（窗白天最亮，螢幕夜裡最搶眼）。合併只會有一個
+ * 不透明度，兩條曲線塞不進同一個變數裡。這就是 TODO 和 SIZES.md
+ * 早就寫著的「再加第三個光源就再複製一份」，這是第一次真的用到。
+ *
+ * 一樣 z-index 4：三層都是 screen，screen 可交換，誰先誰後算出來一樣。
+ *
+ * transition 用 1.2s 不是燈那個 0.35s——它沒有按鈕，唯一會變的理由是換時段，
+ * 所以要跟時段色片、跟窗那層一起溶。
+ */
+.room-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  background-image: url("art/room-screen.png?v=2");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  mix-blend-mode: screen;
+  opacity: var(--screen-glow);
   transition: opacity 1.2s linear;
   pointer-events: none;
 }
@@ -838,37 +973,155 @@ main {
   min-height: 1.4em;
 }
 
+/* ------------------------------------------------------------
+   禮物箱
+
+   點房間裡那個紙箱才會打開的面板（待辦第 17 項）。
+
+   **它從房間下面那排 chip 搬上來的。** 舊的長相是站台既有的 chip 語彙
+   （radius 999px、--fs-xs），那在滿版之前是對的；滿版之後房間佔滿第一屏，
+   那排 chip 在手機完全看不到、在桌機也在摺線下——等於沒有。
+
+   而且搬進房間不只是換位置：**禮物本來就是貓叼回來放在家裡的東西**，
+   收在箱子裡比列在頁面下方更像那件事。
+
+   為什麼是 fixed 不是貼在房間裡
+   -----------------------------
+
+   房間比視窗寬、而且會左右捲（.room-bleed）。面板要是 .room 的子元素，
+   它就會跟著房間捲——箱子在第 12 欄，手機一次只看得到 6.1 欄，
+   面板很容易整個捲到畫面外，而使用者只會看到「點了沒反應」。
+
+   長相照介面條那一套：CSS 畫的木牌、四條硬停點的顏色帶、Cubic 11。
+   跟 .hud-sign 是同一種東西，只是大一塊。
+   ------------------------------------------------------------ */
+.gift-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  /* 後面那間房間要看得到，但要退到後面去。純黑會把房間關掉 */
+  background: rgb(12 8 6 / 66%);
+}
+
 /*
- * 禮物。用既有的 chip 語彙（radius 999px、--fs-xs），
- * 這是這個站本來就有的東西，不是另開一套。
+ * **這一行是必要的不是保險。** [hidden] 的預設是 display: none，
+ * 但它輸給上面那條 display: grid（同樣是元素選擇器對屬性選擇器，
+ * 後者優先權還比較高）。少了它面板會從進站就一直開著，
+ * 而且不會有任何錯誤訊息——只是房間永遠蒙著一層。
  */
+.gift-panel[hidden] {
+  display: none;
+}
+
+.gift-sheet {
+  box-sizing: border-box;
+  width: min(420px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 14px 16px 16px;
+  border: 4px solid var(--w-line);
+  /* 硬停點的漸層 = 四條實心色帶。跟 .hud-sign 同一套，見那邊的說明 */
+  background: linear-gradient(180deg,
+      var(--w-lit) 0 4px,
+      var(--w-top) 4px 10px,
+      var(--w-face) 10px calc(100% - 8px),
+      var(--w-side) calc(100% - 8px) 100%);
+  color: var(--w-text);
+  /*
+   * Cubic 11 只有手機載得到（@font-face 關在媒體查詢裡，見檔案開頭）。
+   * 桌機會退回站台的內文字體——那沒關係，字級照樣挑 11 的整數倍，
+   * 22px 對一般字體也只是一個正常的大小。
+   */
+  font-family: "Cubic 11", var(--font-body);
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+}
+
+.gift-title {
+  margin: 0 0 10px;
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 400;
+  color: var(--w-lit);
+}
+
 .gifts {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  max-width: 560px;
-  margin: 12px auto 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
-/*
- * 禮物是關係層的東西，訪客連位置都不留。
- * script.js 那邊已經不會產生內容了，這條是為了連 margin 一起收掉——
- * 空的 <ul> 還是會佔 12px。
- */
-body[data-role="guest"] .gifts {
-  display: none;
+.gift {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  line-height: 32px;
 }
 
-.gift {
-  padding: 5px 13px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--accent-soft);
-  color: var(--muted);
-  font-size: var(--fs-xs);
+/*
+ * 圖示。一條 96x16 的帶子（art/gifts.py 畫的、pixel.py 產的），
+ * 放大兩倍是 192x32，所以一格 32px。
+ *
+ * **取哪一格是照 id 不是照索引**：下面一樣禮物一條規則。多寫六行換掉的是
+ * 一整類錯——gifts.py 或 world.js 重排順序的時候，靠索引的寫法會安靜地
+ * 把每一樣東西畫成別的東西。pixel.py 的 lint_gifts() 押著這六條跟那兩支同步。
+ *
+ * 順帶一個免費的好處：圖掛在 ::before 上，所以**箱子沒被打開過就不會下載**。
+ * 量過：進站那一輪的請求裡沒有它，點開之後才多出 717 B。
+ */
+.gift::before {
+  content: "";
+  flex: none;
+  width: 32px;
+  height: 32px;
+  background-image: url("art/gifts.png?v=1");
+  background-size: 192px 32px;
+  image-rendering: pixelated;
+}
+
+.gift[data-gift="leaf"]::before { background-position-x: 0; }
+.gift[data-gift="cap"]::before { background-position-x: -32px; }
+.gift[data-gift="tie"]::before { background-position-x: -64px; }
+.gift[data-gift="pebble"]::before { background-position-x: -96px; }
+.gift[data-gift="paper"]::before { background-position-x: -128px; }
+.gift[data-gift="sock"]::before { background-position-x: -160px; }
+
+/*
+ * 空的箱子。**不可以看起來像「你還沒有拿到任何東西」**——
+ * 沒有格子、沒有問號、沒有 0 / 6。那些都是在要求出席，
+ * 過不了 TODO 最前面那一關。空的時候它就是一個普通的箱子。
+ */
+.gift-empty {
+  margin: 0;
+  font-size: 22px;
+  line-height: 32px;
+  color: var(--w-top);
+}
+
+/*
+ * 「關起來」。**上下的 padding 是算出來的不是挑的**：22px 的字
+ * 加上 8 + 10 的 padding 加上兩條 2px 的邊剛好 44px，也就是手機上
+ * 可以點的下限。量過一版 4/6 的，只有 36px。
+ */
+.gift-close {
+  display: block;
+  margin: 14px 0 0 auto;
+  padding: 8px 16px 10px;
+  border: 2px solid var(--w-line);
+  background: linear-gradient(180deg,
+      var(--w-lit) 0 3px,
+      var(--w-top) 3px 6px,
+      var(--w-face) 6px calc(100% - 4px),
+      var(--w-side) calc(100% - 4px) 100%);
+  color: var(--w-text);
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
 }
 
 /* ------------------------------------------------------------
@@ -918,6 +1171,7 @@ footer a:hover {
  */
 .cat:focus-visible,
 .hotspot:focus-visible,
+.gift-close:focus-visible,
 .motion-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
@@ -931,10 +1185,17 @@ footer a:hover {
    呼吸和眨眼是低振幅的原地變化，留著，那也是療癒感的來源。
    走動本身由 script.js 擋掉，這裡處理純 CSS 的部分。
    ------------------------------------------------------------ */
-/* 時段的四層要一起停。少停一層的話換時段時其他層硬切、那一層還在溶，
-   會變成一段誰都沒設計過的過渡（::after 本來就漏了，補上） */
+/* 時段的五層要一起停。少停一層的話換時段時其他層硬切、那一層還在溶，
+   會變成一段誰都沒設計過的過渡（::after 本來就漏了，補上；
+   .room-lamp 是吊燈那層，2026-09-04 加進來的時候一起補）。
+
+   停掉之後按吊燈就是硬切。那是對的：這裡要拿掉的是「動」，
+   而一顆燈本來就可以是啪一聲就亮的 */
 body[data-motion="reduced"] .room::before,
 body[data-motion="reduced"] .room::after,
+body[data-motion="reduced"] .room-lamp,
+body[data-motion="reduced"] .room-desklamp,
+body[data-motion="reduced"] .room-screen,
 body[data-motion="reduced"] .room-sky,
 body[data-motion="reduced"] .room-beam {
   transition: none;

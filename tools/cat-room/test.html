@@ -34,7 +34,7 @@
 
   <script src="world.js?v=4"></script>
   <script src="cat.js?v=1"></script>
-  <script src="save.js?v=1"></script>
+  <script src="save.js?v=3"></script>
   <script src="sprites.js?v=6"></script>
   <script>
     const out = document.getElementById("out");
@@ -369,6 +369,20 @@
       // 舊存檔裡如果有已經被刪掉的禮物 id，不能顯示成 undefined
       check("不認得的 id 要有退路", World.giftLabel("這個id不存在"), "一個不知道是什麼的東西");
       check("空的 id 也不能爆", typeof World.giftLabel(undefined), "string");
+
+      /*
+       * 這一條是**故意寫死的**（待辦第 17 項）。
+       *
+       * 每一樣禮物在三個地方各有一份：world.js 這份名單、art/gifts.py 的圖示、
+       * style.css 的 [data-gift="..."]。`python pixel.py` 的 lint_gifts() 會
+       * 把三份對起來，但那支要有人去跑；這一條是留在瀏覽器裡的那半邊。
+       *
+       * **所以加一樣禮物本來就該讓這條紅。** 紅了不是要你改這行數字，
+       * 是要你去畫那一格圖示、補那一條 CSS，然後才回來改這裡。
+       * 沒有圖示的禮物在畫面上會拿到帶子最左邊那格——每一次都畫成葉子。
+       */
+      check("六樣禮物，加一樣就要畫一格圖示", World.GIFTS.map((g) => g.id).join(","),
+            "leaf,cap,tie,pebble,paper,sock");
     }
 
     group("行為：下午該睡，黃昏該動");
@@ -447,6 +461,9 @@
       check("firstSeen 就是現在", b.firstSeen, 1000);
       check("禮物清單是空陣列", b.gifts, []);
       check("v2 的圖鑑欄位先留著", b.seenCats, []);
+      // 新來的人進到的是一間亮著燈的房間，不是一間暗的
+      check("吊燈預設是開著的", b.room.lampOn, true);
+      check("桌燈預設也是開著的", b.room.deskLampOn, true);
 
       // 這裡刻意檢查「沒有」某些欄位——它們的缺席是設計決定，不是還沒做
       const keys = Object.keys(b).concat(Object.keys(b.cat));
@@ -472,6 +489,33 @@
       check("NaN 的 lastSeen 也要補", Save.migrate({ lastSeen: NaN }, now).lastSeen, now);
       check("gifts 不是陣列就重來", Save.migrate({ gifts: "不是陣列" }, now).gifts, []);
       check("room.items 不是陣列也要修", Save.migrate({ room: { items: 5 } }, now).room.items, []);
+
+      /*
+       * 吊燈的開關。只認真正的 false，其餘一律當作開著——
+       * 這幾條擋的是同一種壞法：字串 "false" 在 JS 裡是**真的**，
+       * 照著它走會變成一盞按了也關不掉、或者一進來就是暗的房間。
+       */
+      check("關著的燈要記得", Save.migrate({ room: { lampOn: false } }, now).room.lampOn, false);
+      check("開著的燈也要記得", Save.migrate({ room: { lampOn: true } }, now).room.lampOn, true);
+      check("舊存檔沒有這個欄位就當開著", Save.migrate({ room: { items: [] } }, now).room.lampOn, true);
+      check("字串 false 不算關", Save.migrate({ room: { lampOn: "false" } }, now).room.lampOn, true);
+      check("null 不算關", Save.migrate({ room: { lampOn: null } }, now).room.lampOn, true);
+
+      /*
+       * 桌燈（2026-09-05）。**兩盞燈要各自獨立**——這幾條擋的是
+       * 「兩個開關綁在同一個欄位上」那種寫法：關掉桌燈連吊燈一起熄，
+       * 而畫面上看起來只是「有點太暗」，不會有任何錯誤訊息。
+       */
+      check("桌燈關著要記得",
+            Save.migrate({ room: { deskLampOn: false } }, now).room.deskLampOn, false);
+      check("舊存檔沒有桌燈欄位就當開著",
+            Save.migrate({ room: { lampOn: false } }, now).room.deskLampOn, true);
+      check("關桌燈不會動到吊燈",
+            Save.migrate({ room: { deskLampOn: false } }, now).room.lampOn, true);
+      check("關吊燈不會動到桌燈",
+            Save.migrate({ room: { lampOn: false } }, now).room.deskLampOn, true);
+      check("桌燈的字串 false 也不算關",
+            Save.migrate({ room: { deskLampOn: "false" } }, now).room.deskLampOn, true);
 
       /*
        * 未來版本的存檔不能砍掉重來——那等於把人家養了半年的貓刪了。

@@ -342,11 +342,19 @@
    */
   function renderGifts() {
     const giftsEl = document.getElementById("gifts");
-    if (!giftsEl) return;
+    const emptyEl = document.getElementById("gift-empty");
+    if (!giftsEl || !emptyEl) return;
 
-    // 禮物是關係層的東西，訪客看不到
+    giftsEl.textContent = "";
+
+    /*
+     * 禮物是關係層的東西，訪客沒有。**但箱子照樣打得開**——
+     * 一個點得下去卻什麼都不講的東西比一個打不開的箱子更糟。
+     * 講的話也不要寫成「你還沒有」，那是在暗示他該去拿。
+     */
     if (!isOwner) {
-      giftsEl.textContent = "";
+      emptyEl.textContent = "這是 " + catName + " 自己收起來的東西。";
+      emptyEl.hidden = false;
       return;
     }
 
@@ -361,10 +369,20 @@
       counts[id] += 1;
     }
 
-    giftsEl.textContent = "";
+    /*
+     * 空的箱子就是一個普通的箱子。**不可以寫成「0 件」、不可以留空格子、
+     * 不可以放問號**——那些都是在說「你少了東西」，而少了東西的解法是
+     * 常常來，那就是出席獎勵換了個樣子（見 TODO 最前面那一關）。
+     */
+    emptyEl.textContent = order.length ? "" : "還沒有東西。";
+    emptyEl.hidden = order.length > 0;
+
     for (let i = 0; i < order.length; i++) {
       const li = document.createElement("li");
       li.className = "gift";
+      // 圖示是 CSS 照這個屬性取的（art/gifts.png 那條帶子的第幾格）。
+      // **不是照索引**，理由寫在 style.css 的 .gift::before
+      li.setAttribute("data-gift", order[i]);
       li.textContent = World.giftLabel(order[i]) + (counts[order[i]] > 1 ? " ×" + counts[order[i]] : "");
       giftsEl.appendChild(li);
     }
@@ -819,7 +837,7 @@
   function hotspot(name, label, fn) {
     const box = RD && RD.objects && RD.objects[name];
     // 房間裡沒這個東西就不要生一顆點得到卻看不見的按鈕
-    if (!box) return;
+    if (!box) return null;
     const b = document.createElement("button");
     b.type = "button";
     b.className = "hotspot";
@@ -831,10 +849,135 @@
     b.style.height = (box[3] / ROWS * 100) + "%";
     b.addEventListener("click", fn);
     room.appendChild(b);
+    // 回傳是給吊燈用的：它的標籤會隨著開關換，所以要拿得到那顆按鈕。
+    // 房間裡沒有那個東西的時候回 null，接的人自己要擋
+    return b;
   }
 
   hotspot("bowl", "餵食", feed);
   hotspot("wand", "拿逗貓棒逗牠", wand);
+
+  /*
+   * 燈。房間裡有兩盞（吊燈、桌燈），**兩盞共用這一個函式**——
+   * 抄成兩份的話下一次改（第三盞燈、加個音效、換提示詞）就會只改到一半。
+   *
+   * 它們不給 bond、不打斷貓在做的事，也沒有冷卻時間。理由是 bond 只增不減，
+   * 而一個可以無限按的開關配上「按一下加一點」就是一台點擊機器——
+   * 那正好是這一頁整個設計在避開的東西。開燈關燈就只是開燈關燈。
+   *
+   * `name` 同時是四樣東西的名字，這不是巧合是刻意的：
+   * room.py 的物件名、`room-<name>.png`、CSS 的 `--<name>-glow`
+   * 與 `data-<name>`。所以加第三盞燈不用在這裡多寫一行邏輯。
+   *
+   * 狀態掛在 .room 的 data-<name> 上，CSS 靠它把那一層的不透明度歸零。
+   * 畫面上會變的只有那一層——room-pano.png 裡的燈本來就是畫成「沒亮」的樣子。
+   */
+  function lampSwitch(name, key, onLabel, offLabel, onNote, offNote) {
+    /*
+     * 標籤講的是**按下去會發生什麼事**，跟碗那顆的「餵食」同一套，
+     * 所以燈亮著的時候寫「關燈」。
+     *
+     * 刻意不加 aria-pressed：那個要配一個不會變的標籤才對
+     * （「吊燈」＋已按下）。兩個一起上，螢幕閱讀器會唸成
+     * 「關燈，切換按鈕，已按下」——到底現在是亮還是暗，聽的人得自己解謎。
+     */
+    const btn = hotspot(name, onLabel, toggle);
+
+    function apply(on) {
+      state.room[key] = on;
+      room.setAttribute("data-" + name, on ? "on" : "off");
+      if (btn) btn.setAttribute("aria-label", on ? onLabel : offLabel);
+    }
+
+    function toggle() {
+      const on = !state.room[key];
+      apply(on);
+      showNote(on ? onNote : offNote);
+      Save.save(state);
+    }
+
+    // 進來的時候先照存檔調成該有的樣子。**不能只在按的時候才設**：
+    // 上次關著燈離開的話，這一次進來 data-<name> 會是空的，燈自己又亮了
+    apply(state.room[key]);
+  }
+
+  lampSwitch("lamp", "lampOn", "關燈", "開燈",
+             "你把燈打開了。", "你把燈關了，房間暗下來。");
+  lampSwitch("desklamp", "deskLampOn", "關掉桌燈", "打開桌燈",
+             "桌燈亮了，桌面上多了一圈光。", "你把桌燈關了。");
+
+  /*
+   * 紙箱（待辦第 17 項）。這一頁第四個可點的東西，也是第二個跟貓無關的。
+   *
+   * **它不給 bond、不打斷貓在做的事、也沒有冷卻時間**，跟吊燈同一套：
+   * bond 只增不減，配上一個可以無限點的東西就是一台點擊機器。
+   * 打開箱子是「看一眼」，不是跟貓互動。
+   *
+   * 面板不是房間的一部分，它是蓋在整頁上的（style.css 的 .gift-panel），
+   * 理由是房間會左右捲。
+   */
+  const giftPanel = document.getElementById("gift-panel");
+  const giftClose = document.getElementById("gift-close");
+
+  function setGiftPanel(open) {
+    if (!giftPanel) return;
+    giftPanel.hidden = !open;
+    if (boxBtn) boxBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    /*
+     * 焦點要跟著走：開的時候進面板、關的時候回到箱子。
+     * 少了這兩句，鍵盤使用者按 Enter 打開面板之後焦點還留在房間裡，
+     * 下一個 Tab 會跑到面板**後面**那些看不到的東西上，
+     * 而畫面上完全看不出焦點在哪。
+     */
+    if (open) {
+      if (giftClose) giftClose.focus();
+    } else if (boxBtn) {
+      boxBtn.focus();
+    }
+  }
+
+  function openGifts() {
+    renderGifts();
+    setGiftPanel(true);
+  }
+
+  const boxBtn = hotspot("box", "打開紙箱", openGifts);
+  if (boxBtn) {
+    boxBtn.setAttribute("aria-expanded", "false");
+    boxBtn.setAttribute("aria-controls", "gift-panel");
+  }
+
+  if (giftClose) {
+    giftClose.addEventListener("click", () => setGiftPanel(false));
+  }
+
+  if (giftPanel) {
+    // 點暗掉的那一圈也關得掉。手機沒有 Esc，而「關起來」那顆在清單的最下面
+    giftPanel.addEventListener("click", (e) => {
+      if (e.target === giftPanel) setGiftPanel(false);
+    });
+    /*
+     * Esc 與 Tab 都掛在 document 上，**不是掛在面板上**。
+     *
+     * 掛在面板上只有焦點還在面板裡的時候才收得到事件——使用者在木牌上
+     * 隨便點一下（那裡不可聚焦），焦點就掉回 body，Esc 從此按不動。
+     * 那種壞法很難重現：用鍵盤走完全程的人不會遇到，用滑鼠的人天天遇到。
+     *
+     * Tab 這條是**焦點的圍欄**：aria-modal="true" 只管螢幕閱讀器，
+     * Tab 照樣走得出去，走出去之後聚焦的是面板後面看不見的東西。
+     * 面板裡只有一顆按鈕，所以「圍起來」就是「一律回到它身上」；
+     * 哪天多了第二顆可以聚焦的東西，這裡要換成真的循環。
+     */
+    document.addEventListener("keydown", (e) => {
+      if (giftPanel.hidden) return;
+      if (e.key === "Escape") {
+        setGiftPanel(false);
+      } else if (e.key === "Tab" && giftClose) {
+        e.preventDefault();
+        giftClose.focus();
+      }
+    });
+  }
 
   /*
    * 貓本人。牠在 HTML 裡已經是 <button> 了——牠會動，熱區沒辦法用
