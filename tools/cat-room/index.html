@@ -183,11 +183,16 @@
             <ul class="menu-list">
               <li><button type="button" class="menu-item" data-open="game-intro">遊戲介紹</button></li>
               <!--
-                待辦第 20 項：先做殼、不接功能。用 disabled 不是靜默的假
-                按鈕——第 16 項自己寫過「按下去沒反應的東西比沒有還糟」，
-                disabled 至少誠實地說「現在點不了」。
+                待辦第 20、21、22 項：三個都先佔位、不接功能。用 disabled
+                不是靜默的假按鈕——第 16 項自己寫過「按下去沒反應的東西比
+                沒有還糟」，disabled 至少誠實地說「現在點不了」。21（禮物
+                圖鑑）、22（留言板）目前只做這一步：選單裡看得到入口、
+                順序卡進該在的位置，內容（鎖住／灰階的禮物列表、真的留言
+                Worker）留到各自的待辦項目再做。
               -->
               <li><button type="button" class="menu-item is-disabled" disabled>音樂控制（敬請期待）</button></li>
+              <li><button type="button" class="menu-item is-disabled" disabled>禮物圖鑑（敬請期待）</button></li>
+              <li><button type="button" class="menu-item is-disabled" disabled>留言板（敬請期待）</button></li>
               <li><button type="button" class="menu-item" data-open="changelog">更新日誌</button></li>
               <!--
                 減少動態從頁尾搬過來的（原本是 #motion-toggle）。
@@ -199,10 +204,8 @@
             <a class="menu-home" href="../../">回首頁</a>
           </div>
           <div class="panel-view" id="game-intro" data-title="遊戲介紹" data-paper="true" hidden>
-            <p>Disi 住在明陽淡水的房間裡。牠自己過生活——吃飯、睡覺、偶爾出門走走，
-            你進來的時候剛好看到牠在做什麼，僅此而已。</p>
-            <p>沒有分數，也沒有任務。摸摸牠、看看牠在忙什麼，就是這個房間全部
-            的內容了。</p>
+            <p>這是Disi，牠住在這裡，過著自己的生活，你可以摸摸牠，跟牠互動。</p>
+            <p>可以偶爾進來看看牠，看看牠現在在做什麼，牠可能會帶給你禮物喔!</p>
           </div>
           <!--
             待辦第 23 項。清單是 world.js 的 World.UPDATES 算出來的（新到舊），
@@ -268,7 +271,7 @@
     改動橫跨兩支的時候兩支都要加。眨眼就是這樣：欄數在 sprites.js、
     往右跳幾欄在 script.js，只到一半的話會拿舊的欄數去除新的圖。
   -->
-  <script src="world.js?v=7"></script>
+  <script src="world.js?v=8"></script>
   <script src="cat.js?v=1"></script>
   <script src="save.js?v=3"></script>
   <script src="sprites.js?v=6"></script>
