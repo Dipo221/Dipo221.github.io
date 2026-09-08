@@ -12,6 +12,72 @@
 
 ---
 
+## 2026-09-09 — 補上一版漏掉的兩個 h2：標題字沒真的變 Cubic 11
+
+明陽回報三個地方字體沒變：選單、遊戲介紹、更新日誌左上角的標題字，
+還有桌機「住了幾天」。前一版（09-08）說「`.panel-sheet`/`.gift-sheet`
+本來就寫著 Cubic 11，字型一可以載就自動變真的木牌字」——這句話對這兩條
+規則本身是對的，但漏算了根目錄 `style.css` 有一條全站規則：
+
+```css
+h2 {
+  font-family: var(--font-display);
+  border-left: 4px solid var(--accent);
+  padding-left: 10px;
+  letter-spacing: -0.01em;
+}
+```
+
+這條直接選到元素（不是繼承），CSS 的規矩是「直接規則贏繼承」，不看誰的
+選擇器分數高、誰後載入。`.panel-title` 和 `.gift-title` 都是 `<h2>`，
+兩個都沒有自己的 `font-family`，指望從父層的 `.panel-sheet`／`.gift-sheet`
+繼承 Cubic 11——但這條路從一開始就贏不了根站的直接規則，字一直是站台的
+`Space Grotesk`。前一版量測只驗過角落牌子（`.hud-sign`/`.hud-days`，
+分別是 `<h1>`/`<p>`，根站沒有全站 `h1`/`p` 規則在搶，繼承暢通無阻），
+沒驗到這兩顆 h2，才把這個病灶留到這一版才被明陽看見。
+
+副作用比字體本身更明顯：這條全站規則是給主站文章式標題用的，還帶了
+`border-left: 4px solid var(--accent)` 跟 `padding-left: 10px`——選單
+標題、紙箱標題因此各自多了一條不屬於木牌/紙面板世界的藍色裝飾線，
+只是先前沒人特別提起。
+
+### 修法
+
+`.panel-title`、`.gift-title` 各自補齊：`font-family: "Cubic 11",
+var(--font-body)` 加 `-webkit-font-smoothing`/`font-smooth`（跟牌子字
+同一套），`border-left`/`padding`/`letter-spacing` 全部歸零，蓋掉根站
+那條規則，不依賴繼承。`.panel-title` 是選單／遊戲介紹／更新日誌三個
+視圖共用的同一顆元素，補一次三個一起好。
+
+### 「住了幾天」不是快取，是 11px 真的看不太出來
+
+明陽修完 h2 之後回報這行看起來還是沒變，第一直覺猜瀏覽器快取，結果
+猜錯了。`.hud-days` 是 `<p>`，沒有 h2 那個病灶，`font-family` computed
+出來 Cubic 11 一直排第一位。用 canvas 把「住了 15 天」分別用 Cubic 11
+跟退回字體畫出來比對畫素，兩者確實不一樣——字型是真的有在切換，不是
+沒切換。問題出在這次（09-08）把這行從不合規的 13px 改成合規的 11px，
+11px 是 Cubic 11 最小的整數倍格子，塊狀的筆畫在這個尺寸肉眼幾乎看不出
+「這是點陣字」，尤其在桌機螢幕上跟退回字體放在一起幾乎分不出來——
+跟牌子上「Disi」用 22px、一眼就看得出來的塊狀感是同一顆字型，純粹是
+尺寸太小把效果吃掉了。
+
+做了一個放大 4 倍的比對 widget 給明陽看兩個選項：維持 11px（跟「Disi」
+維持 1:2 的主副層級，但這行像素感肉眼幾乎看不到）跟改成 22px（像素感
+看得出來，但牌子第二行會變成跟名字一樣高，整塊牌子跟著變胖）。
+**明陽選維持 11px**——這不是 bug，是尺寸與可讀性之間刻意接受的取捨，
+以後不用再回來查這裡「是不是又壞了」。
+
+### 驗收
+
+本機重開 dev server，`preview_eval` 量 `#panel-title`／`#gift-title`
+的 computed style：`font-family` 第一位是 `"Cubic 11"`，`border-left`
+`0px none`，`padding` `0px`，`letter-spacing` `normal`。實際跑一遍
+`showView()`：選單／遊戲介紹／更新日誌三個視圖切換，`#panel-title`
+文字跟著換、字體全程是 Cubic 11。`test.html` 242 個測試全過（這次沒動
+任何 JS 邏輯，純 CSS）。`style.css?v=29 → v=30`。
+
+---
+
 ## 2026-09-08 — 選單先佔兩個位置：禮物圖鑑、留言板（敬請期待）
 
 明陽要「先把側邊選單的禮物一覽和留言板位置先做好，功能先不要加」。

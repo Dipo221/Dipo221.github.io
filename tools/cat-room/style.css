@@ -1157,12 +1157,24 @@ main {
   font-smooth: never;
 }
 
+/*
+ * h2 標籤在根 style.css 有一條全站規則（給文章式標題用的左邊框＋字距），
+ * 直接選到元素，繼承贏不了直接規則——.gift-sheet 掛的 Cubic 11 傳不下來，
+ * 字退回站台字體，還會多一條不屬於紙面板的裝飾線。這裡整份蓋掉。
+ * .panel-title 是同一個病灶，理由寫在那邊。
+ */
 .gift-title {
   margin: 0 0 10px;
   font-size: 22px;
   line-height: 1;
   font-weight: 400;
   color: var(--w-lit);
+  border-left: 0;
+  padding: 0;
+  letter-spacing: normal;
+  font-family: "Cubic 11", var(--font-body);
+  -webkit-font-smoothing: none;
+  font-smooth: never;
 }
 
 .gifts {
@@ -1335,12 +1347,24 @@ main {
   color: var(--w-side);
 }
 
+/*
+ * 同一個病灶：h2 被根 style.css 的全站規則直接選到（文章式標題的左邊框＋
+ * 字距），繼承贏不了直接規則，.panel-sheet 掛的 Cubic 11 傳不下來。
+ * 這顆是三個視圖共用的標題（選單／遊戲介紹／更新日誌都靠它），漏掉
+ * 這裡等於三個一起壞。整份蓋掉：字體重新掛一次，邊框／字距歸零。
+ */
 .panel-title {
   margin: 0 0 10px;
   font-size: 22px;
   line-height: 1;
   font-weight: 400;
   color: var(--w-lit);
+  border-left: 0;
+  padding: 0;
+  letter-spacing: normal;
+  font-family: "Cubic 11", var(--font-body);
+  -webkit-font-smoothing: none;
+  font-smooth: never;
 }
 
 /* tabindex="-1" 只是給程式聚焦用的，不需要看起來像可以點的東西 */
