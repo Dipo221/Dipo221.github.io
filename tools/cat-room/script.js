@@ -14,6 +14,9 @@
   const noteEl = document.getElementById("note");
   const metaEl = document.getElementById("meta");
   const motionBtn = document.getElementById("motion-toggle");
+  // 待辦第 16 項：頁尾那顆是桌機用的，選單裡這顆是手機用的，狀態同步靠
+  // applyMotion()/toggleMotion() 一起管兩顆，不是各自維護一份
+  const motionBtnMenu = document.getElementById("motion-menu-item");
 
   const MOTION_KEY = "cat-room:motion";
 
@@ -68,14 +71,18 @@
 
   function applyMotion() {
     document.body.setAttribute("data-motion", motion);
-    if (!motionBtn) return;
 
     if (motionMedia.matches || motion === "reduced") motionControlLatched = true;
-    motionBtn.hidden = !motionControlLatched;
 
     const goingFull = motion === "reduced";
-    motionBtn.textContent = goingFull ? "開啟動態" : "減少動態";
-    motionBtn.setAttribute("aria-pressed", motion === "reduced" ? "true" : "false");
+    const label = goingFull ? "開啟動態" : "減少動態";
+    const pressed = motion === "reduced" ? "true" : "false";
+    [motionBtn, motionBtnMenu].forEach((btn) => {
+      if (!btn) return;
+      btn.hidden = !motionControlLatched;
+      btn.textContent = label;
+      btn.setAttribute("aria-pressed", pressed);
+    });
   }
 
   function toggleMotion() {
@@ -90,6 +97,7 @@
 
   applyMotion();
   if (motionBtn) motionBtn.addEventListener("click", toggleMotion);
+  if (motionBtnMenu) motionBtnMenu.addEventListener("click", toggleMotion);
   motionMedia.addEventListener("change", function (e) {
     // 沒自己選過就跟著系統跑。選過的話狀態不動，但按鈕該不該出現要重算
     if (!savedMotion()) motion = e.matches ? "reduced" : "full";
@@ -148,6 +156,13 @@
   if (scene.gift) state.gifts.push({ id: scene.gift.id, at: now });
   Save.save(state);
 
+  /*
+   * Disi 自己出門了嗎（待辦第 8 項）。這件事跟關係層無關——
+   * 房間是空的就是空的，主人跟訪客看到的是同一件事。
+   * 所以它擋在 scene.message 前面：迎上來的問候句配一間空房間會很矛盾。
+   */
+  const startedAway = World.isAway(new Date());
+
   function showNote(text) {
     if (!noteEl) return;
     noteEl.textContent = text || "";
@@ -158,7 +173,9 @@
    * 訪客沒有領養誰，不能跟他說「有一隻貓走進來決定住下」。
    * 開場白對他來說是介紹，不是宣告。
    */
-  if (loaded.isNew) {
+  if (startedAway) {
+    showNote(World.awayNote(new Date(), catName));
+  } else if (loaded.isNew) {
     showNote(
       isOwner
         ? "有一隻貓自己走了進來，決定住下。"
@@ -412,7 +429,36 @@
     // 分頁掛整晚的話，這兩個都要跟著在台北的午夜換過去
     renderTagline();
     syncPetsDay();
+    syncAway();
   }
+
+  /*
+   * 出門狀態的轉換（待辦第 8 項）。分頁掛在副螢幕上的時候，
+   * 出門和回來都要能在使用者眼前發生，不能只在重新整理時才更新。
+   *
+   * `wasAway` 起始值就是 `startedAway`，所以第一次呼叫一定是「沒有變化」
+   * 直接返回——這很重要：這支第一次執行是在 `catEl` / `enter` 定義**之前**
+   * （跟著 `syncLight()` 的立即呼叫一起跑），真的變化只會發生在之後
+   * 每分鐘的 setInterval，那時候 `cat` 早就存在了。
+   */
+  let wasAway = startedAway;
+
+  function syncAway() {
+    const away = World.isAway(new Date());
+    if (away === wasAway) return;
+    wasAway = away;
+    catEl.hidden = away;
+
+    if (away) {
+      showNote(World.awayNote(new Date(), catName));
+    } else {
+      // 回來了。順便讓下一次摸摸不要重講一次同一句話（見 pet() 的 toldMoodThisVisit）
+      enter(World.energy(new Date()) < 0.3 ? "sleep" : "sit", performance.now());
+      showNote(World.dailyMood(new Date(), catName));
+      toldMoodThisVisit = true;
+    }
+  }
+
   syncLight();
   setInterval(syncLight, 60 * 1000);
 
@@ -711,6 +757,13 @@
   }
 
   /*
+   * 出門的話房間裡不該有牠——`hidden` 屬性照吊燈面板那套，
+   * 同時把牠從畫面、tab 順序、螢幕閱讀器裡拿掉，不是只是視覺上藏起來。
+   * 底下 enter() 還是會照樣跑，但反正看不到，站在哪裡都無所謂。
+   */
+  catEl.hidden = startedAway;
+
+  /*
    * 開場狀態。一定要走 enter()，直接指定 cat.state 的話
    * data-anim 和 duration 會停在初始值，跟實際狀態對不上。
    */
@@ -741,7 +794,7 @@
    * 補一句牠現在在幹嘛。要等 enter() 決定好開場狀態才知道要寫什麼，
    * 所以放在這裡而不是上面跟其他文案一起。
    */
-  if (!loaded.isNew && !scene.message) {
+  if (!loaded.isNew && !scene.message && !startedAway) {
     showNote(describeDoing());
   }
 
@@ -777,6 +830,14 @@
     }, 600);
   }
 
+  /*
+   * 「今天過得怎樣」只在這次瀏覽的第一次摸摸講一次（待辦第 8 項）。
+   * 平常摸摸的反應句每次都一樣、每次都講也不奇怪；心情句是固定的一句話，
+   * 每摸一次都重講會很快變得像跳針。不進存檔——只是這次瀏覽的旗標，
+   * 跟 bond 那種真的要記住的東西不一樣。
+   */
+  let toldMoodThisVisit = false;
+
   function pet() {
     // 摸摸永遠有效，睡著的貓也可以摸，牠會呼嚕。這是真的
     state.pet.count += 1;
@@ -786,16 +847,26 @@
     slowBlinkUntil = performance.now() + SLOW_BLINK_MS;
     // 訪客也照樣送出去，他只是看不到數字
     countPet();
-    showNote(
-      cat.state === "sleep"
-        ? catName + " 沒睜眼，但呼嚕聲變大了。"
-        : catName + " 瞇起眼睛，往你的手靠過去。"
-    );
+    if (!toldMoodThisVisit) {
+      toldMoodThisVisit = true;
+      showNote(World.dailyMood(new Date(), catName));
+    } else {
+      showNote(
+        cat.state === "sleep"
+          ? catName + " 沒睜眼，但呼嚕聲變大了。"
+          : catName + " 瞇起眼睛，往你的手靠過去。"
+      );
+    }
     Save.save(state);
     renderProgress();
   }
 
   function feed() {
+    // 出門的貓不會聽到碗的聲音——牠根本不在房間裡
+    if (World.isAway(new Date())) {
+      showNote(catName + " 出門去了，晚點再說吧。");
+      return;
+    }
     if (!Cat.accepts(cat.state, "feed")) {
       showNote(catName + " 睡得很熟，等一下再說吧。");
       return;
@@ -811,6 +882,10 @@
   }
 
   function wand() {
+    if (World.isAway(new Date())) {
+      showNote(catName + " 出門去了，晚點再說吧。");
+      return;
+    }
     if (!Cat.accepts(cat.state, "wand")) {
       // 一隻會無視你的貓才像貓
       showNote("牠動了一下耳朵，然後繼續睡。");
@@ -905,6 +980,145 @@
              "你把燈打開了。", "你把燈關了，房間暗下來。");
   lampSwitch("desklamp", "deskLampOn", "關掉桌燈", "打開桌燈",
              "桌燈亮了，桌面上多了一圈光。", "你把桌燈關了。");
+
+  /*
+   * 漢堡選單（待辦第 16 項，2026-09-08 改成側邊抽屜）。內容切換的邏輯
+   * 跟紙箱（下面那段）一樣：預設顯示選單列表，點列表裡的項目換成該項目的
+   * 內容，用「返回選單」換回去。**開關的機制不一樣**：紙箱是 hidden
+   * 屬性直接切 display: none，選單現在用 .is-open 這個 class——CSS 那邊
+   * 用 visibility 延後加上 transform 做滑出動畫，屬性切換沒辦法播完
+   * 動畫才消失，所以兩顆殼從這裡開始分家，見 style.css 那段的說明。
+   *
+   * 焦點圍欄因此不能照抄紙箱那套「只有一顆按鈕，圍起來就是一律回到它
+   * 身上」——選單列表裡隨時有好幾顆可以聚焦的東西，圍欄要是真的循環：
+   * Tab 在最後一個回到第一個，Shift+Tab 在第一個回到最後一個。
+   */
+  const menuBtn = document.getElementById("menu-btn");
+  const menuPanel = document.getElementById("menu-panel");
+  const panelSheet = document.getElementById("panel-sheet");
+  const panelTitle = document.getElementById("panel-title");
+  const panelBack = document.getElementById("panel-back");
+  const panelClose = document.getElementById("panel-close");
+  const panelViews = menuPanel ? Array.from(menuPanel.querySelectorAll(".panel-view")) : [];
+
+  // 換頁：切哪個 view 沒 hidden、標題換成那個 view 的、紙／木牌換皮
+  function showView(id) {
+    let activeView = null;
+    for (let i = 0; i < panelViews.length; i++) {
+      const view = panelViews[i];
+      const active = view.id === id;
+      view.hidden = !active;
+      if (active) activeView = view;
+    }
+    if (!activeView) return;
+    if (panelTitle) panelTitle.textContent = activeView.dataset.title || "";
+    if (panelSheet) panelSheet.classList.toggle("is-paper", activeView.dataset.paper === "true");
+    if (panelBack) panelBack.hidden = id === "menu-list";
+  }
+
+  /*
+   * 更新日誌（待辦第 23 項）。內容是 World.UPDATES（world.js，新到舊排），
+   * 不寫死在 HTML 裡——理由跟禮物那份一樣：資料只留一份，改文案不用碰
+   * 這支檔案。它不像禮物會隨互動改變，進站渲染一次就夠，不用像
+   * renderGifts() 那樣每次打開面板才重畫。
+   */
+  function renderUpdates() {
+    const el = document.getElementById("updates");
+    if (!el) return;
+    const list = World.UPDATES || [];
+    for (let i = 0; i < list.length; i++) {
+      const li = document.createElement("li");
+      li.className = "update";
+      const date = document.createElement("span");
+      date.className = "update-date";
+      date.textContent = list[i].date;
+      const text = document.createElement("span");
+      text.className = "update-text";
+      text.textContent = list[i].text;
+      li.appendChild(date);
+      li.appendChild(text);
+      el.appendChild(li);
+    }
+  }
+  renderUpdates();
+
+  // 圍欄要圈住的範圍：目前顯示的那個 view，加上永遠在下面的返回/關閉列
+  function focusablesInPanel() {
+    if (!menuPanel) return [];
+    const activeView = menuPanel.querySelector(".panel-view:not([hidden])");
+    const actions = menuPanel.querySelector(".panel-actions");
+    const out = [];
+    [activeView, actions].forEach((scope) => {
+      if (!scope) return;
+      scope
+        .querySelectorAll("button:not([hidden]):not([disabled]), a[href]:not([hidden])")
+        .forEach((el) => out.push(el));
+    });
+    return out;
+  }
+
+  function setMenuPanel(open) {
+    if (!menuPanel) return;
+    menuPanel.classList.toggle("is-open", open);
+    if (menuBtn) menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    // 焦點要跟著走，理由跟紙箱那份一樣：少了這兩句鍵盤使用者會迷路
+    if (open) {
+      showView("menu-list");
+      const first = focusablesInPanel()[0];
+      if (first) first.focus();
+    } else if (menuBtn) {
+      menuBtn.focus();
+    }
+  }
+
+  if (menuBtn) {
+    menuBtn.addEventListener("click", () => setMenuPanel(true));
+  }
+  if (panelClose) {
+    panelClose.addEventListener("click", () => setMenuPanel(false));
+  }
+  if (panelBack) {
+    panelBack.addEventListener("click", () => {
+      showView("menu-list");
+      const first = focusablesInPanel()[0];
+      if (first) first.focus();
+    });
+  }
+
+  if (menuPanel) {
+    menuPanel.querySelectorAll("[data-open]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        showView(btn.getAttribute("data-open"));
+        // 焦點丟給標題（tabindex="-1"），讓螢幕閱讀器唸出換頁後的新標題
+        if (panelTitle) panelTitle.focus();
+      });
+    });
+
+    // 點暗掉的那一圈也關得掉，理由跟紙箱那份一樣：手機沒有 Esc
+    menuPanel.addEventListener("click", (e) => {
+      if (e.target === menuPanel) setMenuPanel(false);
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (!menuPanel.classList.contains("is-open")) return;
+      if (e.key === "Escape") {
+        setMenuPanel(false);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const items = focusablesInPanel();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    });
+  }
 
   /*
    * 紙箱（待辦第 17 項）。這一頁第四個可點的東西，也是第二個跟貓無關的。
@@ -1014,8 +1228,15 @@
     if (back.tier !== "none") {
       state.cat.bond += back.bondDelta;
       if (back.gift) state.gifts.push({ id: back.gift.id, at: Date.now() });
-      // 訪客拿不到關係層的話，改講牠現在在幹嘛
-      showNote(back.message || describeDoing());
+      /*
+       * 出門的話這句話不能講——「牠在椅子上睡了三小時」配一間空房間
+       * 會很矛盾。bond 跟禮物照樣照給，只有這一句噤聲；
+       * 空房間該講的那句由底下 syncLight() → syncAway() 顧。
+       */
+      if (!World.isAway(new Date())) {
+        // 訪客拿不到關係層的話，改講牠現在在幹嘛
+        showNote(back.message || describeDoing());
+      }
       renderProgress();
     }
     markSeen();

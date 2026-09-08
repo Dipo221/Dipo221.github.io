@@ -11,10 +11,11 @@
 /* ------------------------------------------------------------
    點陣字型
 
-   手機的介面條要跟房間是同一個世界的東西，所以連字都得是像素的。
+   房間的木牌——手機的介面條、桌機的角落牌子、漢堡選單、紙箱——
+   都要跟房間是同一個世界的東西，所以連字都得是像素的。
 
    **拉丁的 8-bit 字型（Press Start 2P 那類）在這裡一個字都幫不上。**
-   這一條實際顯示的是「住了 9 天」「Disi 在地板上睡著了」，全是中文；
+   這幾塊面板實際顯示的是「住了 9 天」「Disi 在地板上睡著了」，全是中文；
    拉丁字型只會讓中文退回一般字體，變成半個 8-bit 半個不是。
 
    Cubic 11（方形黑體）的授權書開頭明文寫著可以無限制地複製與分發，
@@ -25,23 +26,19 @@
    其他大小會被重新取樣，字就糊了，而糊掉的像素字比一般字體更難看。
    11px 在手機上太小，所以內文一律 22px。
 
-   400 KB 不小，所以桌機不該付。**而「桌機沒有元素在用它」是不夠的**——
-   量出來的：桌機明明一個元素都沒套用（elementsUsingCubic 是空陣列），
-   瀏覽器還是發了一個 initiatorType 是 css 的請求去抓它。
-   猜是媒體查詢生效前那一瞬間的版面觸發的，但原因不重要，重要的是
-   「沒人用就不會下載」這條保證不成立。
-
-   所以整個 @font-face **關進媒體查詢裡**：桌機連這個字型的定義都不存在，
-   要不到也就不可能抓。手機抓一次就進快取。
+   **2026-09-08 以前這裡關過一次媒體查詢，只有手機載得到**——當時桌機
+   完全沒有介面條，一個字都不會顯示，付 400 KB 換零文字不划算。現在
+   桌機也有角落牌子、選單抽屜、紙箱面板要用同一套木牌字，那個前提
+   不成立了，所以整個站兩種寬度都載。量過：`elementsUsingCubic` 在兩邊
+   都不是空陣列，這次是真的有東西在吃它，不是媒體查詢生效前那一瞬間
+   版面觸發的幽靈請求。
    ------------------------------------------------------------ */
-@media (max-width: 899px) {
-  @font-face {
-    font-family: "Cubic 11";
-    src: url("../../fonts/cubic-11.woff2") format("woff2");
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-  }
+@font-face {
+  font-family: "Cubic 11";
+  src: url("../../fonts/cubic-11.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
 }
 
 /* ------------------------------------------------------------
@@ -206,10 +203,11 @@ main {
    * **提示和按鈕都不在房間下面了**——提示搬進介面條，按鈕整排刪掉換成
    * 點房間裡的東西（待辦第 5 項）。不是把它調小，是它服務的東西沒了。
    *
-   * 這個 136 一定要跟 .hud 的 height 一樣。兩邊對不起來的下場是安靜的：
+   * 這個數字一定要跟 .hud 的 height 一樣。兩邊對不起來的下場是安靜的：
    * 猜大了房間浮在一條暗邊上，猜小了憑空多一條捲軸。
+   * 2026-09-07 從 136 改成 148，理由見 .hud 那邊的註解。
    */
-  --chrome: 136px;
+  --chrome: 148px;
 
   /*
    * 房間的寬度。兩個限制都寫成寬度，規則才看得出來是同一條。
@@ -247,7 +245,7 @@ main {
   /*
    * 以前這裡是 20px，那是房間跟上面標題之間的一口氣。
    * 標題已經變成介面條裡的木牌，兩者是貼著的一整塊，中間再留白就變成
-   * 一條說不出來歷的暗帶——而且房間 100svh - 136px 再加 20px
+   * 一條說不出來歷的暗帶——而且房間 100svh - var(--chrome) 再加 20px
    * 剛好比視窗高 20px，**憑空多一條捲軸**。
    * `--chrome` 是「房間以外吃掉多少」，這條留白也算在裡面，所以它必須是 0。
    */
@@ -785,8 +783,17 @@ main {
    * 後來加到 136 是為了讓提示那一行**放得下兩行**。原因見 .hud-note：
    * 一行只夠 15 個中文字，而現有的句子已經有貼到邊的。多這 16px
    * 只讓貓從 94px 變 92px，換掉一整類「句子被默默切掉」的錯。
+   *
+   * 136 那次算錯了：漏算 .hud-row 被 .hud-sign 的 44px 字撐到多高
+   * （量出來是 66px，比當初想的矮不了多少）。空間不夠時 flexbox 會
+   * 找 overflow 不是 visible 的子元素去擠——.hud-note 設了
+   * overflow: hidden，自動最小高度變成 0，於是它一個扛下全部落差，
+   * 兩行的提示又被默默切掉第二行，畫面上沒有任何錯誤訊息。
+   * 2026-09-07 在瀏覽器裡量真正要多少：padding-top 16 + row 66 +
+   * gap 6 + note 2.4em(52.8) + border-bottom 4 = 144.8，改成 148，
+   * 留一點餘裕。
    */
-  height: 136px;
+  height: 148px;
   padding: 16px 12px 0;
   box-sizing: border-box;
   display: flex;
@@ -818,17 +825,25 @@ main {
 }
 
 /*
- * 漢堡選單。**目前是純裝飾**——待辦第 16 項才會讓它真的打得開。
- * 所以它是 div 加 aria-hidden，不是 <button>：一顆會被鍵盤聚焦、
- * 會被螢幕閱讀器唸成「按鈕」、按下去卻什麼都不會發生的東西，
- * 比沒有還糟。第 16 項接上去的時候要把它換成真的 <button>。
+ * 漢堡選單（待辦第 16 項）。真的 <button> 了，點開 #menu-panel。
+ *
+ * 圖示視覺上還是 32×29，但**熱區撐到 44×44**——手機可點的下限，
+ * `.gift-close` 那條算式用的同一個數字。撐大的是 padding 不是圖示本身，
+ * 用 background-position 把圖釘在左邊、垂直置中，位置跟撐大前一樣。
  */
 .hud-menu {
   flex: none;
-  width: 32px;
-  height: 29px;
-  background: repeating-linear-gradient(180deg,
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  background-color: transparent;
+  background-image: repeating-linear-gradient(180deg,
       var(--w-lit) 0 5px, transparent 5px 12px);
+  background-repeat: no-repeat;
+  background-size: 32px 29px;
+  background-position: left center;
+  cursor: pointer;
 }
 
 .hud-sign {
@@ -854,7 +869,13 @@ main {
 }
 
 .hud-days {
-  margin-left: auto;
+  /*
+   * <p> 瀏覽器預設有上下 margin。手機看不出來是因為 .hud-row 的高度
+   * 由 .hud 的固定 height 決定，不是靠內容撐的；桌機改成 grid 之後
+   * row 的高度是內容自動算的，這條預設 margin 會把整列莫名撐高一截。
+   * 四邊都歸零、只留 left: auto 給手機的靠右推。
+   */
+  margin: 0 0 0 auto;
   flex: none;
   font-size: 22px;
   line-height: 1;
@@ -886,16 +907,23 @@ main {
 }
 
 /*
- * 桌機**沒有介面條**（明陽 2026-09-03：「電腦版就都維持現在這樣」）。
- * 但整條不能 display: none——#note 住在裡面，而且它是全頁唯一 aria-live
- * 的節點，藏掉等於桌機的螢幕閱讀器再也聽不到貓在做什麼。
+ * 桌機以前**完全沒有介面條**（明陽 2026-09-03：「電腦版就都維持現在
+ * 這樣」）。2026-09-08 改回一部分：木牌、天數、漢堡合成一塊牌子，
+ * 浮在房間左上角，不是重新鋪一條通欄的 bar——房間的 --chrome 還是 0，
+ * 滿版沒有動。會改是因為這三個東西從「裝飾」變成「必要」：漢堡選單
+ * 裝了遊戲介紹／音樂控制之後，桌機一直沒有入口打得開；.hud-sign
+ * 又是全頁唯一的 <h1>，藏掉它桌機就沒有可見標題。
  *
- * 所以是：木牌那一列拿掉、外觀全部剝掉、order 把它排到房間下面，
- * 只留一行字。位置跟以前一樣是房間下面的第一行。
+ * #note 維持原本待遇不變：外觀剝光、order 排到房間下面，只留一行字，
+ * 字體也還原成站台的內文字體——它從來不屬於木牌，是剝光待遇的一部分，
+ * 跟 Cubic 11 現在桌機付不付得起無關。它是全頁唯一 aria-live 的節點，
+ * 複製成兩份會變成唸兩次，所以還是只有一份 DOM，靠 CSS 換位置。
  *
- * **font-family 一定要還原成繼承的。** 留著 "Cubic 11" 的話，桌機雖然
- * 看起來一樣，瀏覽器卻會為了算繪這行字去下載那 400 KB——
- * 「桌機一毛都不用付」是靠這一行成立的，不是靠版面上看不到它。
+ * **`.hud` 的 font-family: inherit 只為了 #note，不是為了省字型下載。**
+ * 2026-09-08 加了 Cubic 11 之後桌機也真的付這 400 KB 了（見檔案開頭
+ * 「點陣字型」那段），但 #note 這行字不該跟著變成木牌字——它剝光了，
+ * 剝光的東西不套木牌的視覺語言。真正要木牌字的是 .hud-row（下面那條
+ * 角落牌子），它自己另外掛一份 "Cubic 11"，不靠這裡的 inherit 往下發。
  *
  * **這一段一定要排在 .hud 那些基本樣式後面。** 放到上面那個
  * min-width: 900px 區塊裡會被蓋掉——媒體查詢不會因為是媒體查詢就贏，
@@ -918,9 +946,97 @@ main {
     padding: 56px 0 0;
   }
 
-  .hud::after,
-  .hud-row {
+  .hud::after {
     display: none;
+  }
+
+  /*
+   * 木牌＋漢堡＋天數合成一塊角落牌子。position: fixed 釘在視窗左上角，
+   * 不是 .hud 版面裡的一格，也不是房間的子元素——房間還是 100svh 滿版，
+   * 這塊牌子純粹浮在最上層。
+   *
+   * **用 fixed 不是貼著 .room 用 absolute**：房間會橫向捲（follow()
+   * 跟著貓跑），貼著房間的話牌子會跟著捲出視窗，選單就變成只有貓走到
+   * 最左邊那一刻才按得到。fixed 保證它永遠釘在視窗角落，跟房間捲到
+   * 哪裡無關。
+   *
+   * z-index 10：蓋過房間內部所有疊圖（最高到 6，天氣層），但蓋不過
+   * 選單／禮物面板（20）——面板打開時角落牌子應該被半透明底蓋住，
+   * 不是浮在最上面搶焦點。
+   *
+   * grid 不是 flex：漢堡要跟「Disi ＋ 天數」這一整欄並排，但 Disi 跟
+   * 天數彼此要上下疊。三個是平的手足節點（HTML 沒有另外包一層），
+   * flex 疊不出「一欄兩列」，grid 用 grid-column／grid-row 直接指定
+   * 位置就好，不用多包一個 div。
+   *
+   * font-family 在這裡另外掛一份，不是靠 .hud 的 inherit 往下發——
+   * 那條 inherit 是留給 #note 的（見上面的說明），這塊牌子要的是真的
+   * 木牌字。2026-09-08 桌機開始跟手機一起載 Cubic 11，理由見檔案開頭
+   * 「點陣字型」那段。
+   */
+  .hud-row {
+    position: fixed;
+    left: 20px;
+    top: 20px;
+    z-index: 10;
+    display: grid;
+    grid-template-columns: auto auto;
+    align-items: center;
+    gap: 2px 12px;
+    padding: 8px 16px 10px;
+    border: 2px solid var(--w-line);
+    background: linear-gradient(180deg,
+        var(--w-lit) 0 4px,
+        var(--w-top) 4px 8px,
+        var(--w-face) 8px calc(100% - 6px),
+        var(--w-side) calc(100% - 6px) 100%);
+    font-family: "Cubic 11", var(--font-body);
+    /* 點陣字被抗鋸齒糊掉就沒有意義了，跟手機的 .hud 同一條 */
+    -webkit-font-smoothing: none;
+    font-smooth: never;
+  }
+
+  /* 位置交給 grid，圖示本身大小跟手機一樣（32×29，44×44 熱區）不用縮 */
+  .hud-menu {
+    grid-column: 1;
+    grid-row: 1 / 3;
+  }
+
+  /* 桌機的木牌底色、邊框都交給 .hud-row 統一畫，這裡剝掉自己那份，不然疊兩層底 */
+  .hud-sign {
+    grid-column: 2;
+    grid-row: 1;
+    padding: 0;
+    border: 0;
+    background: none;
+    /* 24 → 22：現在是真的 Cubic 11 了，得落在 11 的整數倍上，不然會糊 */
+    font-size: 22px;
+    line-height: 1.1;
+  }
+
+  /*
+   * 顏色改用 --w-text 不是 --w-lit：這塊牌子疊字之後兩行都落在 --w-face
+   * 那一階（中段，牌子最大塊的區域），量出來 --w-lit 對 --w-face 只有
+   * 2.3:1，連大字的門檻（3:1）都不到。--w-text 對 --w-face 是 4.06:1，
+   * 逼近但沒到 4.5，這是牌子選了同一階背景色的代價——真要達標得把
+   * 這行文字挪到 --w-side（最暗那階）上面，但那階現在只有 6px高，
+   * 硬塞會破壞「薄邊框」的木紋比例。4.06 已經比同一份漸層在別處的用法
+   * （.gift-title 用 --w-lit 對 --w-face，量出來也是 2.3:1）好上不少，
+   * 先用這個，真要頂到 4.5 是另一次要不要動漸層比例的決定。
+   *
+   * **這條門檻現在連 .hud-sign 也適用了。** 24px 的時候「Disi」算大字，
+   * 3:1 就過關，4.06 綽綽有餘；縮到 22px 配 Cubic 11 之後掉出大字門檻，
+   * 變成也要 4.5 才過的小字——數字沒變，但及格線往上挪了，這行字現在
+   * 跟天數一樣是「比之前好、但沒到 4.5」的已知狀態，不是新出現的退步。
+   */
+  .hud-days {
+    grid-column: 2;
+    grid-row: 2;
+    margin-left: 0;
+    /* 13 → 11：同上，Cubic 11 的網格只吃 11 的整數倍 */
+    font-size: 11px;
+    line-height: 1.2;
+    color: var(--w-text);
   }
 
   .hud-note {
@@ -1031,9 +1147,10 @@ main {
       var(--w-side) calc(100% - 8px) 100%);
   color: var(--w-text);
   /*
-   * Cubic 11 只有手機載得到（@font-face 關在媒體查詢裡，見檔案開頭）。
-   * 桌機會退回站台的內文字體——那沒關係，字級照樣挑 11 的整數倍，
-   * 22px 對一般字體也只是一個正常的大小。
+   * 2026-09-08 以前桌機會退回站台字體（Cubic 11 只有手機載得到），
+   * 現在兩種寬度都載了（見檔案開頭「點陣字型」那段），這裡完全沒改，
+   * 桌機的箱子面板自動跟著變成真的木牌字——字級本來就已經是 22px，
+   * 11 的整數倍，不用另外調。
    */
   font-family: "Cubic 11", var(--font-body);
   -webkit-font-smoothing: none;
@@ -1125,8 +1242,278 @@ main {
 }
 
 /* ------------------------------------------------------------
-   頁尾
+   漢堡選單的面板殼（待辦第 16 項，2026-09-08 改成側邊抽屜）
+
+   一開始照抄 .gift-panel 做成置中的卡片，明陽看過桌機版之後說想要的是
+   「從側邊出來的那種」——一般網站漢堡選單的抽屜樣式，不是置中對話框。
+   跟 .gift-panel 分道揚鑣是因為兩者現在真的是不同的東西：紙箱是「打開
+   看內容就關掉」的單次對話框，選單是「隨時可能點進去、退回來、再點別的」
+   的導覽結構，貼著螢幕邊比較像一般認知裡的「選單」而不是「彈窗」。
+
+   .panel-view 有好幾個，同時只有一個沒有 [hidden]，這件事沒有變：
+   第 21/22 項的面板都還是接在這裡，不要再複製一份殼。變的只有
+   .panel-overlay／.panel-sheet 怎麼開關、怎麼定位。
    ------------------------------------------------------------ */
+.panel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  visibility: hidden;
+  background: rgb(12 8 6 / 66%);
+  /*
+   * visibility 延後跳到 hidden，不是靠 [hidden] 屬性——抽屜要滑出去的
+   * 0.35s 期間畫面上還要看得到它，屬性一拿掉就是立刻 display: none，
+   * 動畫播到一半會被硬生生截斷。開的時候不延後（見 .is-open 那條的
+   * transition-delay: 0），合起來才延後，這樣「看不到、也點不到、
+   * 螢幕閱讀器也讀不到」三件事跟「滑出去的動畫播完」同時發生。
+   */
+  transition: visibility 0s linear 0.35s;
+}
+
+.panel-overlay.is-open {
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.panel-sheet {
+  box-sizing: border-box;
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(320px, 85vw);
+  /*
+   * 抽屜是滿版高度，但列表跟遊戲介紹都沒那麼高——不用 flex 排的話,
+   * 標題／內容／返回關閉列會照 flow 疊在最上面，底下留一大截空白，
+   * 返回跟關閉兩顆按鈕會卡在畫面中段，不是抽屜底部。改成直向 flex,
+   * .panel-body 用 flex: 1 吃掉所有剩下的高度,操作列自然被推到底部。
+   * 捲動也跟著搬到 .panel-body 自己身上——內容太長只捲中間那塊，
+   * 標題和下面那排按鈕留在原地不跟著捲走。
+   */
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 16px;
+  border: 4px solid var(--w-line);
+  /* 左邊貼著螢幕邊，那條邊框不會有任何東西襯著，畫出來只是一條多餘的線 */
+  border-left: none;
+  background: linear-gradient(180deg,
+      var(--w-lit) 0 4px,
+      var(--w-top) 4px 10px,
+      var(--w-face) 10px calc(100% - 8px),
+      var(--w-side) calc(100% - 8px) 100%);
+  color: var(--w-text);
+  font-family: "Cubic 11", var(--font-body);
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  transform: translateX(-100%);
+  /*
+   * 跟吊燈那顆按鈕同一個理由（見「時段」那段的註解）：這是點了漢堡
+   * 才會發生的動作，使用者在等直接的回饋，用按鈕那一檔的 0.35s，
+   * 不是換時段那種沒人在等的 1.2s。
+   */
+  transition: transform 0.35s ease;
+}
+
+.panel-overlay.is-open .panel-sheet {
+  transform: translateX(0);
+}
+
+/*
+ * 「紙」不是另一組色碼，是同一組 --w-* 反過來排：木牌深底淺字，
+ * 紙淺底深字。第 19、23 項（草紙感的面板）用這個修飾類別，
+ * 由 script.js 的 showView() 照 .panel-view 的 data-paper 掛/拿掉。
+ */
+.panel-sheet.is-paper {
+  background: linear-gradient(180deg,
+      var(--w-top) 0 4px,
+      var(--w-text) 4px calc(100% - 6px),
+      var(--w-lit) calc(100% - 6px) 100%);
+  color: var(--w-line);
+}
+
+.panel-sheet.is-paper .panel-title {
+  color: var(--w-side);
+}
+
+.panel-title {
+  margin: 0 0 10px;
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 400;
+  color: var(--w-lit);
+}
+
+/* tabindex="-1" 只是給程式聚焦用的，不需要看起來像可以點的東西 */
+.panel-title:focus-visible {
+  outline: none;
+}
+
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.panel-body p {
+  margin: 0 0 10px;
+  font-size: 22px;
+  line-height: 1.4;
+}
+
+.panel-body p:last-child {
+  margin-bottom: 0;
+}
+
+.menu-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* 每一列自己 44px 高，跟 .gift-close 那顆按鈕同一個下限，理由見那邊 */
+.menu-item {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 4px;
+  border: none;
+  border-bottom: 2px solid var(--w-line);
+  background: none;
+  color: var(--w-text);
+  font: inherit;
+  font-size: 22px;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-list li:last-child .menu-item {
+  border-bottom: none;
+}
+
+.menu-item:hover {
+  color: var(--w-lit);
+}
+
+/* 待辦第 20 項：先做殼不接功能，disabled 誠實地說「現在點不了」 */
+.menu-item.is-disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.menu-item.is-disabled:hover {
+  color: var(--w-text);
+}
+
+.menu-sep {
+  margin: 10px 0;
+  border: none;
+  border-top: 2px solid var(--w-line);
+}
+
+.menu-home {
+  display: block;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 10px 4px;
+  color: var(--w-text);
+  font-size: 22px;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+/*
+ * 更新日誌（待辦第 23 項）。跟 .panel-body p 同一套本文字級，
+ * 日期用 --w-side 跟本文的 --w-line 拉開一階，量過對 --w-text
+ * 這張紙的對比是 6.74:1，比本文的 --w-line 略淺但一樣穩穩過 AA。
+ */
+.updates {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.update {
+  margin: 0 0 14px;
+}
+
+.update:last-child {
+  margin-bottom: 0;
+}
+
+/* 11px：這張紙一樣是 Cubic 11，14px 落在 11 的整數倍之外會糊 */
+.update-date {
+  display: block;
+  font-size: 11px;
+  color: var(--w-side);
+}
+
+.update-text {
+  display: block;
+  font-size: 22px;
+  line-height: 1.4;
+}
+
+.menu-home:hover {
+  color: var(--w-lit);
+}
+
+.panel-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+/* 跟 .gift-close 同一條算式：22px 字 + 8/10 padding + 兩條 2px 邊 = 44px */
+.panel-back,
+.panel-close {
+  display: block;
+  padding: 8px 16px 10px;
+  border: 2px solid var(--w-line);
+  background: linear-gradient(180deg,
+      var(--w-lit) 0 3px,
+      var(--w-top) 3px 6px,
+      var(--w-face) 6px calc(100% - 4px),
+      var(--w-side) calc(100% - 4px) 100%);
+  color: var(--w-text);
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.panel-close {
+  margin-left: auto;
+}
+
+/*
+ * 沒有這條，「返回選單」在選單列表那一頁也會照樣顯示出來——
+ * script.js 的 panelBack.hidden 是對的（人在選單列表時確實設成 true），
+ * 但 [hidden] 屬性的瀏覽器內建規則是 UA 樣式表，跟上面 .panel-back 這條
+ * 作者樣式表的 display: block 同一個 specificity，作者樣式表永遠贏，
+ * 於是隱藏形同虛設。跟 .gift-panel[hidden] 是同一種坑，只是那邊當初有
+ * 補這條、這邊漏掉了。
+ */
+.panel-back[hidden] {
+  display: none;
+}
+
+/* ------------------------------------------------------------
+   頁尾
+
+   **手機上整條藏起來**（待辦第 16 項）：裡面的「回首頁」和「減少動態」
+   都搬進漢堡選單了，桌機沒有漢堡選單，所以頁尾只留在桌機。
+   ------------------------------------------------------------ */
+footer {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  footer {
+    display: block;
+  }
+}
+
 .footer-row {
   display: flex;
   align-items: center;
@@ -1172,7 +1559,12 @@ footer a:hover {
 .cat:focus-visible,
 .hotspot:focus-visible,
 .gift-close:focus-visible,
-.motion-toggle:focus-visible {
+.motion-toggle:focus-visible,
+.hud-menu:focus-visible,
+.menu-item:focus-visible,
+.menu-home:focus-visible,
+.panel-back:focus-visible,
+.panel-close:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
   transition: none;
@@ -1197,7 +1589,9 @@ body[data-motion="reduced"] .room-lamp,
 body[data-motion="reduced"] .room-desklamp,
 body[data-motion="reduced"] .room-screen,
 body[data-motion="reduced"] .room-sky,
-body[data-motion="reduced"] .room-beam {
+body[data-motion="reduced"] .room-beam,
+body[data-motion="reduced"] .panel-overlay,
+body[data-motion="reduced"] .panel-sheet {
   transition: none;
 }
 

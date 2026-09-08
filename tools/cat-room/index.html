@@ -13,23 +13,22 @@
   -->
   <link rel="preload" as="font" type="font/woff2" href="../../fonts/space-grotesk-latin.woff2" crossorigin />
   <!--
-    手機介面條用的點陣字（Cubic 11，方形黑體）。400 KB。
+    木牌用的點陣字（Cubic 11，方形黑體）。400 KB。
 
-    **那個 media 是必要的不是保險**：preload 是無條件下載的，不加的話
-    桌機也會抓一次，而桌機根本沒有介面條。
-
-    擋桌機的其實有兩層，而且**兩層都需要**：這裡擋 preload，style.css 那邊
-    把整個 @font-face 關進同一個媒體查詢擋 CSS 自己發的請求。
-    只做 style.css 的 font-family 覆寫是不夠的——量過，桌機一個元素都沒
-    套用到它，瀏覽器照樣發了一個請求出去。
+    2026-09-08 以前這條 preload 只在手機生效（媒體查詢配 style.css 的
+    @font-face 兩層一起擋桌機），因為桌機當時完全沒有介面條、一個字
+    都不會顯示。現在桌機的角落牌子、選單抽屜、紙箱面板也都要用它，
+    兩種寬度都真的會畫出這個字型，所以兩層擋桌機的媒體查詢一起拿掉——
+    不預載的話桌機還是會抓，只是會晚一步，字先用 fallback 顯示再跳成
+    Cubic 11（`font-display: swap`），跟本來就會 FOUT 的手機沒有兩樣。
 
     授權在 ../../fonts/cubic-11-OFL.txt，明文允許再散布（repo 是公開的，
     等於在再散布它）。理由與尺寸的規矩寫在 style.css 的「點陣字型」那一段。
   -->
-  <link rel="preload" as="font" type="font/woff2" href="../../fonts/cubic-11.woff2" media="(max-width: 899px)" crossorigin />
+  <link rel="preload" as="font" type="font/woff2" href="../../fonts/cubic-11.woff2" crossorigin />
   <script src="../../theme.js?v=1"></script>
   <link rel="stylesheet" href="../../style.css?v=10" />
-  <link rel="stylesheet" href="style.css?v=21" />
+  <link rel="stylesheet" href="style.css?v=29" />
 </head>
 <body>
   <!--
@@ -41,22 +40,30 @@
     <!--
       手機的介面條。滿版之後房間上面只剩這一條，下面什麼都沒有。
 
-      **它在桌機不是消失，是被 order 排到房間下面、外觀剝光只剩一行字。**
-      理由是 #note 住在這裡，而它是全頁唯一 aria-live 的節點——
-      整條藏掉的話桌機的螢幕閱讀器就再也聽不到貓在做什麼了。
-      複製成兩份也不行，那會變成唸兩次。所以只有一份 DOM，靠 CSS 換位置。
+      **桌機不是整條藏起來，是分成兩半各自換位置。** 2026-09-08 以前
+      桌機把木牌、天數、漢堡全部剝掉、只留一行字排到房間下面；那樣
+      留下兩個問題：桌機的漢堡選單裝了內容也沒有入口打得開，而且
+      .hud-sign 是全頁唯一的 <h1>，藏掉它等於桌機沒有可見標題。現在
+      桌機把漢堡＋木牌＋天數合成一塊牌子，浮在房間左上角（.hud-row
+      的桌機樣式，見 style.css）。#note 維持原樣，外觀剝光排到房間
+      下面——它是全頁唯一 aria-live 的節點，複製成兩份會變成唸兩次，
+      所以永遠只有一份 DOM，靠 CSS 換位置與長相。
 
       裡面的東西照 art/room.py 的木頭規則畫（頂面最亮、正面、側面），
-      字是 Cubic 11 點陣字。詳細寫在 style.css 的「手機的介面條」那一段。
+      字是 Cubic 11 點陣字——手機和桌機的木牌現在都用（2026-09-08 起
+      兩邊都載這個字型，理由見 style.css 的「點陣字型」那段）。
+      #note 是例外，它剝光了，字體還原成站台的內文字體。詳細寫在
+      style.css 的「手機的介面條」那一段。
     -->
     <div class="hud">
       <div class="hud-row">
         <!--
-          漢堡選單目前是**純裝飾**，待辦第 16 項才會讓它真的打得開。
-          所以是 div + aria-hidden 不是 <button>：一顆聚焦得到、
-          會被唸成「按鈕」、按下去卻沒反應的東西比沒有還糟。
+          待辦第 16 項：真的按鈕了，點開下面的 #menu-panel。
+          圖示是純 CSS 畫的三條線（style.css 的 .hud-menu），沒有文字，
+          所以要有 aria-label；面板長什麼樣、怎麼運作見 #menu-panel 那段。
         -->
-        <div class="hud-menu" aria-hidden="true"></div>
+        <button class="hud-menu" id="menu-btn" type="button"
+                aria-expanded="false" aria-controls="menu-panel" aria-label="選單"></button>
         <h1 class="hud-sign">Disi</h1>
         <!-- 天數每天會變，由 script.js 填 -->
         <p class="hud-days" id="tagline"></p>
@@ -147,6 +154,74 @@
     </div>
 
     <!--
+      漢堡選單的內容面板（待辦第 16 項，2026-09-08 改成側邊抽屜）。
+      一開始跟下面的 .gift-panel 共用同一套「fixed 蓋住整頁、木牌、
+      Cubic 11、焦點管理、Esc、點外面關閉」的做法，明陽看過桌機版之後
+      要的是側邊滑出的抽屜，不是置中的對話框，所以現在開關機制跟紙箱
+      不一樣了：這裡用 .is-open 這個 class，不是 hidden 屬性——原因是
+      滑出去的動畫要有時間播完，屬性一拿掉就是立刻消失，見 style.css
+      那段的說明。焦點管理、Esc、點遮罩關閉這些行為都還在，只是不再
+      靠 hidden 屬性驅動。
+
+      內容怎麼換沒有變：預設顯示選單列表，點列表裡的項目換成該項目的
+      內容，用「返回選單」換回去。以後第 21/22 項的面板都接在這裡，
+      不要再複製一份殼。
+
+      .panel-view 用 hidden 切換，不是 JS 組字串塞進去——內容都是固定的，
+      犯不著動態產生。哪天要塞會變的內容（禮物圖鑑、留言板），
+      就在那個 view 自己的 div 裡讓 script.js 去填，殼本身不用再動。
+
+      #panel-title 有 tabindex="-1"：切換到有內容的頁面時 script.js 會把
+      焦點丟到它身上，讓螢幕閱讀器唸出新的標題，但它不該出現在一般的
+      Tab 順序裡，所以不能用真的 tabindex="0"。
+    -->
+    <div class="panel-overlay" id="menu-panel">
+      <div class="panel-sheet" id="panel-sheet" role="dialog" aria-modal="true" aria-labelledby="panel-title">
+        <h2 class="panel-title" id="panel-title" tabindex="-1">選單</h2>
+        <div class="panel-body" id="panel-body">
+          <div class="panel-view" id="menu-list" data-title="選單">
+            <ul class="menu-list">
+              <li><button type="button" class="menu-item" data-open="game-intro">遊戲介紹</button></li>
+              <!--
+                待辦第 20 項：先做殼、不接功能。用 disabled 不是靜默的假
+                按鈕——第 16 項自己寫過「按下去沒反應的東西比沒有還糟」，
+                disabled 至少誠實地說「現在點不了」。
+              -->
+              <li><button type="button" class="menu-item is-disabled" disabled>音樂控制（敬請期待）</button></li>
+              <li><button type="button" class="menu-item" data-open="changelog">更新日誌</button></li>
+              <!--
+                減少動態從頁尾搬過來的（原本是 #motion-toggle）。
+                預設 hidden，顯示邏輯跟以前一樣由 script.js 的 applyMotion() 控制。
+              -->
+              <li><button type="button" class="menu-item" id="motion-menu-item" hidden aria-pressed="false">減少動態</button></li>
+            </ul>
+            <hr class="menu-sep" aria-hidden="true">
+            <a class="menu-home" href="../../">回首頁</a>
+          </div>
+          <div class="panel-view" id="game-intro" data-title="遊戲介紹" data-paper="true" hidden>
+            <p>Disi 住在明陽淡水的房間裡。牠自己過生活——吃飯、睡覺、偶爾出門走走，
+            你進來的時候剛好看到牠在做什麼，僅此而已。</p>
+            <p>沒有分數，也沒有任務。摸摸牠、看看牠在忙什麼，就是這個房間全部
+            的內容了。</p>
+          </div>
+          <!--
+            待辦第 23 項。清單是 world.js 的 World.UPDATES 算出來的（新到舊），
+            不是寫死在這裡——原因跟 .gift-panel 一樣：內容會變的東西讓
+            script.js 去填，殼不用跟著動。給開發者看的完整版在 CHANGELOG.md，
+            這裡是給訪客看的白話版，不逐字搬。
+          -->
+          <div class="panel-view" id="changelog" data-title="更新日誌" data-paper="true" hidden>
+            <ul class="updates" id="updates"></ul>
+          </div>
+        </div>
+        <div class="panel-actions">
+          <button type="button" class="panel-back" id="panel-back" hidden>‹ 返回選單</button>
+          <button type="button" class="panel-close" id="panel-close">關閉</button>
+        </div>
+      </div>
+    </div>
+
+    <!--
       貓叼回來的東西，收在房間裡那個紙箱裡（待辦第 17 項）。
       沒有分數也沒有進度條，這張清單就是唯一看得見的累積——
       **空的時候也不會變成「你還沒拿到任何東西」**，理由在 style.css 的 .gift-empty。
@@ -193,7 +268,7 @@
     改動橫跨兩支的時候兩支都要加。眨眼就是這樣：欄數在 sprites.js、
     往右跳幾欄在 script.js，只到一半的話會拿舊的欄數去除新的圖。
   -->
-  <script src="world.js?v=4"></script>
+  <script src="world.js?v=7"></script>
   <script src="cat.js?v=1"></script>
   <script src="save.js?v=3"></script>
   <script src="sprites.js?v=6"></script>
@@ -208,6 +283,6 @@
     真的變了的時候印一行提醒（見 write_room_data()）。
   -->
   <script src="room-data.js?v=11"></script>
-  <script src="script.js?v=16"></script>
+  <script src="script.js?v=20"></script>
 </body>
 </html>

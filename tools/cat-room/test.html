@@ -32,7 +32,7 @@
   <main class="container" id="out"></main>
   <footer class="container"><p><a href="./">← 回工具</a></p></footer>
 
-  <script src="world.js?v=4"></script>
+  <script src="world.js?v=7"></script>
   <script src="cat.js?v=1"></script>
   <script src="save.js?v=3"></script>
   <script src="sprites.js?v=6"></script>
@@ -383,6 +383,128 @@
        */
       check("六樣禮物，加一樣就要畫一格圖示", World.GIFTS.map((g) => g.id).join(","),
             "leaf,cap,tie,pebble,paper,sock");
+    }
+
+    group("更新日誌：給訪客看的白話版（待辦第 23 項）");
+    {
+      check("每一條都有日期跟一句話", World.UPDATES.every((u) => u.date && u.text), true);
+      check("日期格式都是 YYYY-MM-DD", World.UPDATES.every((u) => /^\d{4}-\d{2}-\d{2}$/.test(u.date)), true);
+
+      /*
+       * 新到舊排，跟 CHANGELOG.md 的順序一樣——選單打開先看到最新的。
+       * 同一天可以有好幾條（順序不拘），但不能一天比前一天舊。
+       * 這條故意押著：以後加新條加反邊，這裡會紅。
+       */
+      const dates = World.UPDATES.map((u) => u.date);
+      let sorted = true;
+      for (let i = 1; i < dates.length; i++) {
+        if (dates[i] > dates[i - 1]) sorted = false;
+      }
+      check("新到舊排，不是舊到新", sorted, true);
+    }
+
+    group("台北的分鐘（出門要用到分鐘級的解析度）");
+    {
+      const minOf = (h, m) => World.taipeiMinuteOfDay(new Date("2026-08-25T" + pad(h) + ":" + pad(m) + ":00+08:00"));
+      check("00:00 是第 0 分鐘", minOf(0, 0), 0);
+      check("17:35 是第 1055 分鐘", minOf(17, 35), 17 * 60 + 35);
+      check("23:59 是第 1439 分鐘", minOf(23, 59), 23 * 60 + 59);
+
+      // 跨時區換算跟 taipeiHour 要對得起來，不能各走各的算法
+      const instant = new Date("2026-08-25T09:15:00Z"); // 台北 17:15
+      check("跟 taipeiHour 用同一個時間源", World.taipeiMinuteOfDay(instant), 17 * 60 + 15);
+    }
+
+    group("Disi 自己的一天：今天的排程（待辦第 8 項）");
+    {
+      /*
+       * 心情跟出門合成一個函式來想，因為常常是同一件事——
+       * 「今天出去帶了東西回來」這句心情，講的就是牠出去那件事。
+       * 這組守的是 TODO 第 8 項那四條限制：同一天所有人看到同一份、
+       * 出門要少要短要挑對時段。
+       */
+      check("同一個日期字串一定給同一份排程",
+        World.dailyStory("2026-09-07"), World.dailyStory("2026-09-07"));
+      check("不同日期通常會分岔",
+        JSON.stringify(World.dailyStory("2026-09-07")) === JSON.stringify(World.dailyStory("2026-09-08")),
+        false);
+
+      // 掃三千個真的日曆日，驗機率、時段、長度三件事
+      let awayDays = 0;
+      let outOfDusk = 0;
+      let badDuration = 0;
+      const TOTAL_DAYS = 3000;
+      for (let i = 0; i < TOTAL_DAYS; i++) {
+        const ds = World.taipeiDate(new Date(Date.UTC(2020, 0, 1) + i * DAY));
+        const s = World.dailyStory(ds);
+        if (s.away) {
+          awayDays++;
+          if (s.away.startMin < 17 * 60 || s.away.endMin > 20 * 60) outOfDusk++;
+          if (s.away.duration < 20 || s.away.duration > 45) badDuration++;
+        }
+      }
+      const rate = awayDays / TOTAL_DAYS;
+      // 1/7 ≈ 0.143，三千天取樣的標準差約 0.006，留了遠超三個標準差的空間
+      check("出門的機率大概是七分之一", rate > 0.10 && rate < 0.20, true);
+      check("出門一定在黃昏窗口內結束，不會拖到入夜", outOfDusk, 0);
+      check("出門長度一定在 20~45 分鐘之間", badDuration, 0);
+      check("三千天裡真的抽得到會出門的日子", awayDays > 0, true);
+
+      // 沒出門的日子，出門前後心情要是同一句——沒有「出門」這件事可講
+      let stayDate = null;
+      for (let i = 0; i < TOTAL_DAYS && !stayDate; i++) {
+        const ds = World.taipeiDate(new Date(Date.UTC(2020, 0, 1) + i * DAY));
+        if (!World.dailyStory(ds).away) stayDate = ds;
+      }
+      check("找得到至少一個沒出門的日子", !!stayDate, true);
+      const stayStory = World.dailyStory(stayDate);
+      check("沒出門的日子沒有 away", stayStory.away, null);
+      check("沒出門的日子前後心情一樣", stayStory.moodBefore, stayStory.moodAfter);
+    }
+
+    group("Disi 自己的一天：出門與心情的時間切換");
+    {
+      // 從真的日曆裡找一天會出門的，下面才有東西可以測分支
+      let awayDate = null;
+      let awayStory = null;
+      for (let i = 0; i < 3000 && !awayDate; i++) {
+        const ds = World.taipeiDate(new Date(Date.UTC(2020, 0, 1) + i * DAY));
+        const s = World.dailyStory(ds);
+        if (s.away) { awayDate = ds; awayStory = s; }
+      }
+      check("測資裡找得到至少一個會出門的日子", !!awayDate, true);
+
+      const minToDate = (ds, min) =>
+        new Date(ds + "T" + pad(Math.floor(min / 60)) + ":" + pad(min % 60) + ":00+08:00");
+      const before = minToDate(awayDate, 0);
+      const during = minToDate(awayDate, awayStory.away.startMin + 1);
+      const after = minToDate(awayDate, awayStory.away.endMin + 1);
+
+      check("出門前不算在外面", World.isAway(before), false);
+      check("出門的時段內算出門", World.isAway(during), true);
+      check("出門結束後不再算出門", World.isAway(after), false);
+
+      check("沒到出門時間拿不到空房間的提示", World.awayNote(before, "Disi"), null);
+      check("回來之後也拿不到空房間的提示", World.awayNote(after, "Disi"), null);
+      check("出門的時候有提示，而且帶名字", World.awayNote(during, "Disi").indexOf("Disi") >= 0, true);
+      check("提示裡有講大概多久", /一下下|大概半小時/.test(World.awayNote(during, "Disi")), true);
+
+      check("出門前的心情還沒劇透", World.dailyMood(before, "Disi").indexOf("出去帶了東西回來") >= 0, false);
+      check("回來之後心情才變成帶東西回來", World.dailyMood(after, "Disi").indexOf("出去帶了東西回來") >= 0, true);
+      check("出門前的心情文字跟 dailyStory 給的一致", World.dailyMood(before, "Disi"), awayStory.moodBefore);
+      check("回來後的心情文字也跟 dailyStory 給的一致", World.dailyMood(after, "Disi"), awayStory.moodAfter);
+
+      // 名字要真的代進去，不是寫死 Disi
+      check("換個名字，提示跟著換", World.awayNote(during, "小黑").indexOf("小黑") >= 0, true);
+      check("換個名字，心情跟著換", World.dailyMood(after, "小黑").indexOf("小黑") >= 0, true);
+
+      /*
+       * 心情是敘事不是狀態：這條測的是 API 形狀本身——
+       * 兩支函式都只吃時間跟名字，沒有第三個參數可以傳存檔或 bond 進去。
+       * 少了這條，哪天有人「順手」加一個 state 參數，這裡不會有任何測試變紅。
+       */
+      check("dailyMood 只吃兩個參數（時間、名字），不吃存檔", World.dailyMood.length, 2);
+      check("awayNote 也是", World.awayNote.length, 2);
     }
 
     group("行為：下午該睡，黃昏該動");

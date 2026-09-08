@@ -133,6 +133,132 @@ const World = (function () {
     return ENERGY_BY_HOUR[taipeiHour(date)];
   }
 
+  /*
+   * 現在是台北一天中的第幾分鐘（0-1439）。
+   *
+   * dailyStory() 要判斷「出門的時間到了沒」，taipeiHour() 只到整點，
+   * 撐不起「17:35 出門、18:20 回來」這種比對，所以另外開一支到分鐘的。
+   */
+  function taipeiMinuteOfDay(date) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Taipei",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    }).formatToParts(date || new Date());
+
+    let h = 0;
+    let m = 0;
+    for (let i = 0; i < parts.length; i++) {
+      if (parts[i].type === "hour") h = parseInt(parts[i].value, 10);
+      if (parts[i].type === "minute") m = parseInt(parts[i].value, 10);
+    }
+    return h * 60 + m;
+  }
+
+  /* ---------------------------------------------------------------- */
+
+  /*
+   * Disi 自己的一天（待辦第 8 項）。「今天心情怎樣」跟「現在在不在家」
+   * 合成一個函式來想，因為它們常常是同一件事——「今天出去帶了東西回來」
+   * 這句心情，講的就是牠出去那件事。分開做的話心情跟出門會各自隨機，
+   * 講出兩件互相矛盾的事：牠明明在家，卻說自己今天出去玩過。
+   *
+   * 種子只吃台北的日期字串，不吃任何存檔或使用者狀態——所以同一個台北日，
+   * 所有人看到同一份心情，重整頁面不會重骰，跟禮物同一招（seedFrom + rng，
+   * 只是這裡種的是「今天是哪一天」不是「上次離開的那個小時」）。
+   *
+   * rand() 不管今天出不出門都照同一個順序抽三次（要不要出門、出門的時間、
+   * 平常的心情）。這樣兩條分支耗掉的亂數量一樣——不這樣做的話，
+   * 哪天在其中一支中間插一行新的 rand()，只有走另一條分支的日期會悄悄換掉
+   * 種子往後的整串結果，變成一個只在特定日期出現的詭異回歸。
+   */
+  function seedFromDate(dateStr) {
+    return parseInt(dateStr.replace(/-/g, ""), 10);
+  }
+
+  const AWAY_CHANCE = 1 / 7;      // 大概一週一次：訪客必須幾乎不可能連續撲空
+  const AWAY_START_AT = 17 * 60;  // 出門只發生在黃昏高峰（17-19，見上面的 ENERGY_BY_HOUR）
+  const AWAY_START_RANGE = 90;    // 出門時間落在 17:00-18:30
+  const AWAY_MIN_DURATION = 20;   // 20-45 分鐘：短到空房間只是暫時的
+  const AWAY_DURATION_RANGE = 25;
+
+  const DAILY_MOODS = [
+    (n) => n + " 今天曬了太陽，覺得很舒服。",
+    (n) => n + " 今天沒抓到那隻小動物，有點懊惱。",
+    (n) => n + " 今天大部分時間都在睡。",
+    (n) => n + " 今天一直趴在窗邊看外面。"
+  ];
+
+  /*
+   * 今天的排程：今天有沒有出門、幾點出門、出多久、平常的心情是哪一句。
+   * 純函式，只吃「台北日期字串」，所以 test.html 可以直接塞
+   * "2026-09-07" 之類的字串驗，不用真的等到那一天才知道結果。
+   */
+  function dailyStory(dateStr, name) {
+    const n = name || CAT_NAME;
+    const rand = rng(seedFromDate(dateStr));
+
+    const goesOut = rand() < AWAY_CHANCE;
+    const startMin = AWAY_START_AT + Math.floor(rand() * AWAY_START_RANGE);
+    const duration = AWAY_MIN_DURATION + Math.floor(rand() * AWAY_DURATION_RANGE);
+    const mood = pick(DAILY_MOODS, rand)(n);
+
+    if (!goesOut) {
+      return { away: null, moodBefore: mood, moodAfter: mood };
+    }
+
+    return {
+      away: { startMin: startMin, endMin: startMin + duration, duration: duration },
+      // 出門前不能先講「牠帶東西回來了」——那件事在敘事的時間軸上還沒發生
+      moodBefore: mood,
+      moodAfter: n + " 今天出去帶了東西回來，很得意。"
+    };
+  }
+
+  /*
+   * 現在算不算「牠出門了」。每次呼叫都是拿當下時間重新跟今天的排程比對一次，
+   * 不是一個觸發之後會一直維持的旗標——出門時段一過，它自己就變回 false。
+   */
+  function isAway(date) {
+    const d = date || new Date();
+    const story = dailyStory(taipeiDate(d));
+    if (!story.away) return false;
+    const min = taipeiMinuteOfDay(d);
+    return min >= story.away.startMin && min < story.away.endMin;
+  }
+
+  /*
+   * 空房間那句提示。**自己判斷現在算不算出門**，不是只看今天有沒有排出門——
+   * 今天有出門排程，但還沒到出門時間（或已經回來了）的話一樣回 null。
+   * 呼叫端不用先想著要呼叫 isAway() 才安全，這支自己就是安全的。
+   *
+   * 回來的時間只分兩檔，不報精確分鐘數：「大概半小時」是敘事，
+   * 「大概 23 分鐘」是報表，這頁不該有報表的語氣。
+   */
+  function awayNote(date, name) {
+    const d = date || new Date();
+    if (!isAway(d)) return null;
+    const story = dailyStory(taipeiDate(d), name);
+    const eta = story.away.duration < 30 ? "一下下" : "大概半小時";
+    return (name || CAT_NAME) + " 跑出去玩了，" + eta + "後回來看看。";
+  }
+
+  /*
+   * 摸摸的時候講的「今天過得怎樣」。
+   *
+   * 心情是敘事不是狀態：**不進存檔、不被任何邏輯讀取、不影響 bond
+   * 也不影響行為**，純粹是「台北日期＋現在幾點 → 一句話」。
+   * 出門那天，出門前後講的是 dailyStory 給的兩句不同的話——
+   * 出門前講的是平常那句，回來之後才換成「牠帶東西回來了」。
+   */
+  function dailyMood(date, name) {
+    const d = date || new Date();
+    const story = dailyStory(taipeiDate(d), name);
+    if (!story.away) return story.moodBefore;
+    return taipeiMinuteOfDay(d) < story.away.endMin ? story.moodBefore : story.moodAfter;
+  }
+
   /* ---------------------------------------------------------------- */
 
   /*
@@ -186,6 +312,28 @@ const World = (function () {
     { id: "pebble", label: "一顆小石頭" },
     { id: "paper", label: "一顆皺掉的紙團" },
     { id: "sock", label: "一隻襪子(另一隻不知道去哪了)" }
+  ];
+
+  /*
+   * 選單裡「更新日誌」給訪客看的白話版，不是 CHANGELOG.md 那份給開發者看的
+   * 開發日誌——那份滿是函式名稱、pixel 座標，訪客看了不知道在講什麼。
+   *
+   * 新到舊排，跟 CHANGELOG.md 的順序一樣。以後每次 CHANGELOG.md 加一條，
+   * 順手在這裡最上面補一句（test.html 押著日期要新到舊，加反了會紅）。
+   */
+  const UPDATES = [
+    { date: "2026-09-08", text: "選單裡加了「更新日誌」，你現在看到的就是它。" },
+    { date: "2026-09-08", text: "電腦版也看得到選單了：房間左上角多了一塊牌子，漢堡選單跟 Disi 的名牌都在上面。" },
+    { date: "2026-09-07", text: "選單真的打得開了，裡面看得到遊戲介紹；音樂控制的位置也留好了，還沒正式啟用。" },
+    { date: "2026-09-07", text: "Disi 開始自己過日子：摸摸牠會聊今天過得怎樣，偶爾傍晚會出門晃一下，回來會講去了多久。" },
+    { date: "2026-09-05", text: "房間的十件家具擺齊了：床、書櫃、吊燈、書桌、盆栽、地毯、吉他都到位。" },
+    { date: "2026-09-05", text: "Disi 開始會把撿到的東西放進房間裡的紙箱，點開看得到牠收藏了什麼。" },
+    { date: "2026-09-03", text: "房間不管在手機還是電腦上，一打開都是滿版的。" },
+    { date: "2026-09-01", text: "Disi 重新畫大了一圈，而且學會眨眼睛了。" },
+    { date: "2026-08-28", text: "窗戶加大了，黃昏時窗外會有夕陽。" },
+    { date: "2026-08-27", text: "房間整個重新畫成一張像素圖，暖色系閣樓：紅磚牆、木地板、斜屋頂。" },
+    { date: "2026-08-26", text: "貓有名字了，叫 Disi，牠的樣子也重新手繪過。" },
+    { date: "2026-08-25", text: "這個房間開張，Disi 住了進來。" }
   ];
 
   /*
@@ -295,9 +443,15 @@ const World = (function () {
     returnScene: returnScene,
     humanize: humanize,
     giftLabel: giftLabel,
+    taipeiMinuteOfDay: taipeiMinuteOfDay,
+    dailyStory: dailyStory,
+    isAway: isAway,
+    awayNote: awayNote,
+    dailyMood: dailyMood,
     CAT_NAME: CAT_NAME,
     ARRIVED: ARRIVED,
     GIFTS: GIFTS,
+    UPDATES: UPDATES,
     MINUTE: MINUTE,
     HOUR: HOUR,
     DAY: DAY
