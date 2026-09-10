@@ -28,7 +28,7 @@
   <link rel="preload" as="font" type="font/woff2" href="../../fonts/cubic-11.woff2" crossorigin />
   <script src="../../theme.js?v=1"></script>
   <link rel="stylesheet" href="../../style.css?v=10" />
-  <link rel="stylesheet" href="style.css?v=30" />
+  <link rel="stylesheet" href="style.css?v=33" />
 </head>
 <body>
   <!--
@@ -149,10 +149,6 @@
       </div>
     </div>
 
-    <div class="container room-column">
-      <p class="meta" id="meta"></p>
-    </div>
-
     <!--
       漢堡選單的內容面板（待辦第 16 項，2026-09-08 改成側邊抽屜）。
       一開始跟下面的 .gift-panel 共用同一套「fixed 蓋住整頁、木牌、
@@ -195,13 +191,32 @@
               <li><button type="button" class="menu-item is-disabled" disabled>留言板（敬請期待）</button></li>
               <li><button type="button" class="menu-item" data-open="changelog">更新日誌</button></li>
               <!--
-                減少動態從頁尾搬過來的（原本是 #motion-toggle）。
+                減少動態。曾經在頁尾也有一顆（#motion-toggle）給桌機用，
+                2026-09-10 頁尾整塊刪掉之後**這顆是唯一的一顆**了。
                 預設 hidden，顯示邏輯跟以前一樣由 script.js 的 applyMotion() 控制。
               -->
               <li><button type="button" class="menu-item" id="motion-menu-item" hidden aria-pressed="false">減少動態</button></li>
             </ul>
             <hr class="menu-sep" aria-hidden="true">
             <a class="menu-home" href="../../">回首頁</a>
+            <!--
+              待辦第 11 項：今天／累計被摸幾次。
+
+              **只有主人看得到**（script.js 的 isOwner），訪客這塊永遠是
+              hidden——它是從房間下面那行 .meta 搬進來的，那一行連同整個
+              下方區域一起刪掉了（頁尾的「回首頁」「減少動態」在這個選單裡
+              各自已經有一份，所以刪掉不是把功能拿走）。
+
+              為什麼是選單而不是那塊角落牌子：牌子在手機上住在 .hud 裡，
+              而 .hud 的高度跟 .room-bleed 的 --chrome 是必須相等的一對，
+              牌子多一行就要兩個數字一起動，而且因為只有主人看得到，
+              等於要再多維護一組 owner 專用的高度。抽屜沒有這個牽連。
+
+              分隔線畫在自己的 border-top 上，不是另外插一條 <hr>——
+              訪客這塊 hidden 的時候，那條線要跟著一起消失。
+              內容由 script.js 的 renderStats() 填。
+            -->
+            <p class="menu-stats" id="menu-stats" hidden></p>
           </div>
           <div class="panel-view" id="game-intro" data-title="遊戲介紹" data-paper="true" hidden>
             <p>這是Disi，牠住在這裡，過著自己的生活，你可以摸摸牠，跟牠互動。</p>
@@ -251,16 +266,17 @@
     </div>
   </main>
 
-  <footer class="container">
-    <p class="footer-row">
-      <a href="../../">← 回首頁</a>
-      <!--
-        預設 hidden，由 script.js 決定要不要顯示：只有系統開了減少動畫、
-        或目前正處於減少動態時才會出現。先藏著是為了不要在 JS 跑到之前閃一下。
-      -->
-      <button class="motion-toggle" id="motion-toggle" type="button" aria-pressed="false" hidden>減少動態</button>
-    </p>
-  </footer>
+  <!--
+    **頁尾整塊刪掉了**（2026-09-10，配合下方區域清空）。
+
+    它以前只在桌機顯示，裡面是「回首頁」和「減少動態」兩顆——而這兩個
+    在漢堡選單裡各自早就有一份（.menu-home、#motion-menu-item），
+    桌機 2026-09-08 補上角落牌子之後也打得開那個選單了，於是頁尾從
+    「桌機唯一的入口」變成純粹的第二份。刪的是重複，不是功能。
+
+    script.js 那邊也把 #motion-toggle 的常數與監聽拿掉了；它本來就是
+    null-guard 的，留著只會讓下一個人以為頁面上還有那顆按鈕。
+  -->
 
   <!--
     JS 也有自己的 ?v=，跟圖那一套是**兩回事**，改了程式要在這裡加一。
@@ -286,6 +302,6 @@
     真的變了的時候印一行提醒（見 write_room_data()）。
   -->
   <script src="room-data.js?v=11"></script>
-  <script src="script.js?v=20"></script>
+  <script src="script.js?v=22"></script>
 </body>
 </html>

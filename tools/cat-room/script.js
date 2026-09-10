@@ -12,10 +12,15 @@
   const spriteEl = document.getElementById("cat-sprite");
   const bowlEl = document.getElementById("bowl");
   const noteEl = document.getElementById("note");
-  const metaEl = document.getElementById("meta");
-  const motionBtn = document.getElementById("motion-toggle");
-  // 待辦第 16 項：頁尾那顆是桌機用的，選單裡這顆是手機用的，狀態同步靠
-  // applyMotion()/toggleMotion() 一起管兩顆，不是各自維護一份
+  // 主人才看得到的計數，住在漢堡選單抽屜的底部（待辦第 11 項）。
+  // 2026-09-10 以前它是房間下面那行 #meta，那一區連同頁尾一起刪掉了。
+  const statsEl = document.getElementById("menu-stats");
+  /*
+   * 減少動態現在**只有一顆**，在選單抽屜裡。
+   * 以前有兩顆（頁尾那顆給桌機、選單這顆給手機），因為當時桌機沒有漢堡
+   * 選單、打不開抽屜。2026-09-08 桌機補上角落牌子之後那個前提沒了，
+   * 2026-09-10 頁尾整塊刪掉，這裡跟著收成一顆。
+   */
   const motionBtnMenu = document.getElementById("motion-menu-item");
 
   const MOTION_KEY = "cat-room:motion";
@@ -77,12 +82,11 @@
     const goingFull = motion === "reduced";
     const label = goingFull ? "開啟動態" : "減少動態";
     const pressed = motion === "reduced" ? "true" : "false";
-    [motionBtn, motionBtnMenu].forEach((btn) => {
-      if (!btn) return;
-      btn.hidden = !motionControlLatched;
-      btn.textContent = label;
-      btn.setAttribute("aria-pressed", pressed);
-    });
+    if (motionBtnMenu) {
+      motionBtnMenu.hidden = !motionControlLatched;
+      motionBtnMenu.textContent = label;
+      motionBtnMenu.setAttribute("aria-pressed", pressed);
+    }
   }
 
   function toggleMotion() {
@@ -96,7 +100,6 @@
   }
 
   applyMotion();
-  if (motionBtn) motionBtn.addEventListener("click", toggleMotion);
   if (motionBtnMenu) motionBtnMenu.addEventListener("click", toggleMotion);
   motionMedia.addEventListener("change", function (e) {
     // 沒自己選過就跟著系統跑。選過的話狀態不動，但按鈕該不該出現要重算
@@ -163,10 +166,49 @@
    */
   const startedAway = World.isAway(new Date());
 
+  /*
+   * 待辦第 7 項：桌機的提示浮在畫面下方，顯示幾秒就淡掉。
+   *
+   * **只有桌機會淡掉，但這裡不判斷寬度。** 手機的提示住在上面那條介面條
+   * 裡，有自己保留好的兩行高度，不遮任何東西，常駐就常駐（明陽
+   * 2026-09-10 明講只要處理電腦版）。桌機不一樣：它現在浮在房間**上面**，
+   * 不淡掉就變成一塊永遠釘在那裡的牌子。
+   *
+   * 兩邊的差別**整個交給 CSS**：計時器兩邊都跑、`.is-faded` 兩邊都加，
+   * 但 `.hud-note.is-faded { opacity: 0 }` 只寫在 `@media (min-width: 900px)`
+   * 裡面，所以手機加了也沒有任何效果。
+   *
+   * 這裡本來是用 matchMedia 判斷「現在是不是桌機」，再配一個 change 監聽
+   * 去處理「桌機淡掉之後把視窗縮回手機」——不然介面條裡那格會保留著兩行
+   * 高度卻永遠是空的。**那個寫法整個拿掉了**：斷點寫在 CSS 裡的話，
+   * 拉視窗這件事本來就會自己重算，不需要 JS 知道寬度、也不需要監聽器。
+   * 少一條路徑，也少一件只有真的去拉視窗才驗得到的事。
+   *
+   * 淡掉的時候**只加 class、不清 textContent**。#note 是全頁唯一
+   * aria-live="polite" 的節點，把字清掉會讓螢幕閱讀器再播報一次；
+   * 留著字只改 opacity，視覺上消失、輔助技術那邊沒有任何新事件。
+   *
+   * `.is-faded`（時間到了）跟 `.is-empty`（根本沒有字）是兩個 class，
+   * 不能共用一個：`.is-empty` 在手機上也要真的把那格藏起來，
+   * 共用的話手機的提示會在 6 秒後跟著消失。
+   *
+   * 6 秒是照最長的句子挑的：22px 的中文一行約 15 個字、留了兩行，
+   * 30 個字用一般的中文閱讀速度大約 5 秒，加一點反應時間。
+   */
+  const NOTE_HOLD_MS = 6000;
+  let noteTimer = 0;
+
   function showNote(text) {
     if (!noteEl) return;
+    // 上一句還在倒數就被下一句蓋掉時，舊的計時器會把新的這句一起淡掉
+    clearTimeout(noteTimer);
     noteEl.textContent = text || "";
     noteEl.classList.toggle("is-empty", !text);
+    noteEl.classList.remove("is-faded");
+    if (!text) return;
+    noteTimer = setTimeout(function () {
+      noteEl.classList.add("is-faded");
+    }, NOTE_HOLD_MS);
   }
 
   /*
@@ -222,6 +264,33 @@
   const COUNTER_NS = "dipo221-github-io";
 
   /*
+   * 打計數器的兩個動作抽成共用的小函式，因為 2026-09-10 起有**兩把 key**
+   * 在用（今天那把、累計那把），而它們對「服務掛掉」的處理必須一模一樣。
+   * 抄成兩份的話下一次改（換服務、加逾時、改錯誤處理）就會只改到一半——
+   * 跟 lampSwitch() 收成一顆是同一個理由。
+   *
+   * 兩支都不會 reject：連不上就回 null，由呼叫端決定不顯示。
+   * 上面那條硬規則（它掛掉不能影響遊戲）就是靠這兩個 catch 撐住的。
+   */
+  function hitCounter(key) {
+    return fetch(COUNTER_URL + "/hit/" + COUNTER_NS + "/" + key)
+      .then((res) => (res.ok ? res.json() : null))
+      .catch(() => null);
+  }
+
+  function getCounter(key) {
+    return fetch(COUNTER_URL + "/get/" + COUNTER_NS + "/" + key)
+      /*
+       * 還沒有人摸過的那把 key 是不存在的，/get 會回 404。
+       * 非 2xx 一律當成 0——那不是錯誤，就是「還沒被摸過」。
+       * 真的連不上才會落到 catch，那時候回 null 跟 0 是兩件事：
+       * 0 要顯示「今天還沒被摸過」，null 是整段都不顯示。
+       */
+      .then((res) => (res.ok ? res.json() : { value: 0 }))
+      .catch(() => null);
+  }
+
+  /*
    * 每天一把 key。
    *
    * Abacus 的計數器只能加、不能歸零，所以「今天被摸過幾次」不是靠重置做的——
@@ -241,30 +310,61 @@
 
   const pets = { confirmed: null, pending: 0, day: null };
 
-  function acceptCount(value) {
+  /*
+   * 累計那把 key（待辦第 11 項）。**不換日、不重置**，
+   * 跟今天那把是兩把各自獨立的計數器，摸一下兩把都加。
+   *
+   * 為什麼不是把每天那幾把加起來：Abacus 沒有「列出所有 key」的介面，
+   * 要加就得從 Disi 搬進來那天開始、一天打一次 /get，住越久打越多次。
+   * 一個顯示用的數字不值得那樣用人家的免費服務。
+   *
+   * **代價先講：這把 key 從今天才存在，所以它一開始是 0，
+   * 追不回前面那些天真的被摸過幾次。** 待辦第 11 項權衡過——舊的
+   * cat-room-pets-* 裡混了開發時驗證點出來的 7 次，而 Abacus 不能減
+   * 也不能刪，沿用等於把測試點擊算進「有人來看過牠」。那個數字的意義
+   * 比它的長度重要，所以寧可從 0 開始。看到數字很小不是壞了。
+   */
+  const TOTAL_KEY = "cat-room-total";
+  const total = { confirmed: null, pending: 0 };
+
+  /*
+   * 收下一個回來的數字。**兩把 key 共用**，所以要把計數器傳進來，
+   * 不能像以前那樣直接寫死 pets——寫死的話累計那把會安靜地更新到
+   * 今天那把身上，畫面看起來只是數字怪怪的，不會有任何錯誤。
+   */
+  function acceptCount(counter, value) {
     if (typeof value !== "number") return;
     /*
      * 只增不減，才不會被亂序回來的回應往回拉。
      * 換日時一定要先把 confirmed 清成 null（見 syncPetsDay）——
      * 否則數字從昨天的 7 掉到今天的 0，會被這個 Math.max 擋住，
-     * 畫面就一直停在 7。
+     * 畫面就一直停在 7。累計那把不會遇到這件事，它從來不歸零。
      */
-    pets.confirmed = pets.confirmed === null ? value : Math.max(pets.confirmed, value);
+    counter.confirmed = counter.confirmed === null ? value : Math.max(counter.confirmed, value);
   }
 
   function loadCount() {
     if (!isOwner) return;
     const key = pets.day;
-    fetch(COUNTER_URL + "/get/" + COUNTER_NS + "/" + key)
-      .then((res) => (res.ok ? res.json() : { value: 0 }))
-      .then((data) => {
-        if (pets.day !== key) return; // 等回應的期間換日了，這筆是昨天的
-        acceptCount(data.value);
-        renderMeta();
-      })
-      .catch(() => {
-        // 服務掛了就是不顯示那一段，其他照舊
-      });
+    getCounter(key).then((data) => {
+      if (!data) return; // 服務掛了就是不顯示那一段，其他照舊
+      if (pets.day !== key) return; // 等回應的期間換日了，這筆是昨天的
+      acceptCount(pets, data.value);
+      renderStats();
+    });
+  }
+
+  /*
+   * 累計只在開頁時抓一次。它不換日，也沒有別的東西會讓它需要重抓——
+   * 自己摸出來的增量在 countPet() 裡就地加上去了。
+   */
+  function loadTotal() {
+    if (!isOwner) return;
+    getCounter(TOTAL_KEY).then((data) => {
+      if (!data) return;
+      acceptCount(total, data.value);
+      renderStats();
+    });
   }
 
   /*
@@ -279,7 +379,7 @@
     pets.confirmed = null;
     pets.pending = 0;
     loadCount();
-    renderMeta();
+    renderStats();
   }
 
   // 摸摸會被連點，一秒內只算一次，免得誤觸把數字灌上去
@@ -293,21 +393,34 @@
     syncPetsDay(); // 剛好在午夜按下去的話，先換到今天那把
     const key = pets.day;
 
+    /*
+     * 兩把 key 各送一次 /hit。**分開兩條 promise 不是合成一條**：
+     * 累計那把不吃換日的判斷（它永遠不換），今天那把要。綁在一起的話
+     * 剛好在午夜摸的那一下，累計會被今天那把的 early return 一起跳掉，
+     * 少記一次而且完全看不出來。
+     */
     pets.pending += 1;
-    renderMeta();
+    total.pending += 1;
+    renderStats();
 
-    fetch(COUNTER_URL + "/hit/" + COUNTER_NS + "/" + key)
-      .then((res) => (res.ok ? res.json() : null))
+    hitCounter(key)
+      // 這一下沒記到就算了（hitCounter 已經吞掉錯誤），不要打斷使用者
       .then((data) => {
-        if (data && pets.day === key) acceptCount(data.value);
-      })
-      .catch(() => {
-        // 這一下沒記到就算了，不要跳錯誤打斷使用者
+        if (data && pets.day === key) acceptCount(pets, data.value);
       })
       .finally(() => {
         if (pets.day !== key) return; // 換日了，pending 已經被歸零，不要再減
         pets.pending = Math.max(0, pets.pending - 1);
-        renderMeta();
+        renderStats();
+      });
+
+    hitCounter(TOTAL_KEY)
+      .then((data) => {
+        if (data) acceptCount(total, data.value);
+      })
+      .finally(() => {
+        total.pending = Math.max(0, total.pending - 1);
+        renderStats();
       });
   }
 
@@ -334,23 +447,40 @@
     el.textContent = days < 1 ? "剛搬來" : "住了 " + days + " 天";
   }
 
-  function renderMeta() {
-    if (!metaEl) return;
+  /*
+   * 抽屜底部那兩行（待辦第 11 項）。以前是房間下面那行 #meta。
+   *
+   * **「收到 N 件禮物」那半刪掉了**，不是搬走。紙箱面板本來就把禮物
+   * 一件一件列出來，數量在那裡看得到，再寫一個總數是同一件事講兩次。
+   *
+   * 今天跟累計講的不是同一件事，所以並排而不是二選一：今天的數字是
+   * 「牠今天過得怎樣」，累計是「牠住了這麼久，有這麼多人來看過牠」。
+   */
+  function renderStats() {
+    if (!statsEl) return;
 
-    // 剩下的都是關係層與共用計數，只有主人看得到
-    const parts = [];
+    /*
+     * 主人限定。訪客照樣送 /hit（所以記得到），但畫面上不顯示任何數字——
+     * 這是匿名的總量計數，不是給訪客看的成績單。
+     */
+    const lines = [];
     if (isOwner) {
       if (pets.confirmed !== null) {
         const n = pets.confirmed + pets.pending;
-        // 0 次講「還沒被摸過」，不要寫成「今天被摸過 0 次」那麼像報表
-        parts.push(n === 0 ? "今天還沒被摸過" : "今天被摸過 " + n.toLocaleString() + " 次");
+        // 0 次講「今天還沒被摸過」，不要寫成「今天被摸過 0 次」那麼像報表
+        lines.push(n === 0 ? "今天還沒被摸過" : "今天被摸過 " + n.toLocaleString() + " 次");
       }
-      if (state.gifts.length) parts.push("收到 " + state.gifts.length + " 件禮物");
+      if (total.confirmed !== null) {
+        const n = total.confirmed + total.pending;
+        // 累計是 0 就整行不出現。「總共 0 次」只是把「還沒被摸過」再講一次
+        if (n > 0) lines.push("總共 " + n.toLocaleString() + " 次");
+      }
     }
 
-    metaEl.textContent = parts.join("　·　");
-    // 訪客這一行是空的。留著會空出 min-height 那段高度，直接收掉
-    metaEl.hidden = parts.length === 0;
+    // \n 交給 CSS 的 white-space: pre-line 斷行，見 .panel-body .menu-stats
+    statsEl.textContent = lines.join("\n");
+    // 訪客這塊是空的。留著會多出一條上緣的分隔線，直接收掉
+    statsEl.hidden = lines.length === 0;
   }
 
   /*
@@ -407,12 +537,13 @@
 
   function renderProgress() {
     renderTagline();
-    renderMeta();
+    renderStats();
     renderGifts();
   }
 
   renderProgress();
   syncPetsDay(); // 決定今天那把 key，順便把數字抓回來
+  loadTotal(); // 累計那把不換日，開頁抓一次就夠
 
   /* ---------------------------------------------------------------- */
   /* 房間光線                                                          */
