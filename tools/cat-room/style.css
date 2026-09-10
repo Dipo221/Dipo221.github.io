@@ -541,6 +541,45 @@ main {
 .room[data-tod="night"] .room-sky[data-when="night"] { opacity: 1; }
 
 /*
+ * 擋得住貓的家具（待辦第 4 項）。
+ *
+ * 貓以前永遠畫在所有東西前面，走到桌子後面會**穿過**桌子。
+ * 這幾層是同一件家具再畫一次、疊在貓上面，需要的時候才打開。
+ *
+ * **z-index 跟 .cat 一樣是 2，靠 DOM 順序壓過去**（index.html 裡它們排在
+ * <button class="cat"> 後面）。給 3 也可以，但 3 是色片那一層，
+ * 插進去等於在兩層之間再開一階，之後每加一層都要重新數。同層同號、
+ * 順序決定前後，是這裡最少負債的寫法。
+ *
+ * 圖是 art/pixel.py 從同一份磚號表算的，**跟背景圖底下位元相同**——
+ * 所以「不小心開著」是完全看不出來的。也因此每件家具就只是一個各自獨立的
+ * 布林，script.js 那邊一個 x 座標都不用算，也不用把家具從背景圖裡挖掉。
+ *
+ * **不要加 transition。** 這一層開關的是「貓在前面還是後面」，
+ * 那是一個瞬間的事實；讓它溶進來的話，貓會有半秒鐘半透明地泡在桌子裡。
+ */
+.room-front {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.room-front[data-of="box"] { background-image: url("art/room-front-box.png?v=1"); }
+.room-front[data-of="desk"] { background-image: url("art/room-front-desk.png?v=1"); }
+
+/*
+ * `~=` 是因為 data-behind 是一串空白分隔的名字：貓可以同時在好幾件後面。
+ * 名單與門檻在 room-data.js 的 occluders，寫在這裡的只有「長什麼樣」。
+ */
+.room[data-behind~="box"] .room-front[data-of="box"] { opacity: 1; }
+.room[data-behind~="desk"] .room-front[data-of="desk"] { opacity: 1; }
+
+/*
  * 從窗戶斜下來的光。
  *
  * 上緣的 45% / 55% 不是調出來的，就是窗戶那兩格：9/20 和 11/20。

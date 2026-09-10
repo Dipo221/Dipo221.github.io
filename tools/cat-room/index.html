@@ -28,7 +28,7 @@
   <link rel="preload" as="font" type="font/woff2" href="../../fonts/cubic-11.woff2" crossorigin />
   <script src="../../theme.js?v=1"></script>
   <link rel="stylesheet" href="../../style.css?v=10" />
-  <link rel="stylesheet" href="style.css?v=33" />
+  <link rel="stylesheet" href="style.css?v=34" />
 </head>
 <body>
   <!--
@@ -90,6 +90,8 @@
           留在這裡的只有「會變的東西」：光束、碗裡的飼料、貓。
           疊圖順序改用 z-index 明寫（光束 1、貓 2、時段色片 3、四層發光層 4、天空 5），
           因為時段那層要蓋在貓上面，靠 DOM 順序排不出來。
+          唯一一組靠 DOM 順序的是最下面那兩層 .room-front：它們跟貓同號（2），
+          就是要「同一層、排在後面所以壓過去」——理由寫在那裡。
 
           時段色片與發光層都是 .room 的虛擬元素（::before / ::after），
           所以這裡看不到它們。那是刻意的：它們沒有任何內容也不能被點，
@@ -146,6 +148,19 @@
         <button class="cat" id="cat" type="button" data-anim="sit" aria-label="摸摸 Disi">
           <span class="cat-sprite" id="cat-sprite" aria-hidden="true"></span>
         </button>
+        <!--
+          擋得住貓的家具，一件一張（待辦第 4 項）。書桌與紙箱各再畫一次，
+          貓走到它們後面時打開，貓就真的被蓋住了。
+
+          **一定要排在 .cat 後面。** 它們跟貓同樣是 z-index 2，
+          誰在前面完全由這幾行的順序決定——搬到上面去的話這個功能會
+          安靜地不作用（圖照樣載、屬性照樣切，只是永遠蓋不到貓）。
+
+          它們跟天空那四層一樣沒有座標：圖是整張房間大小、只有那件家具
+          不透明，靠 inset: 0 對位。名單在 art/room.py 的 OCCLUDERS。
+        -->
+        <div class="room-front" data-of="desk" aria-hidden="true"></div>
+        <div class="room-front" data-of="box" aria-hidden="true"></div>
       </div>
     </div>
 
@@ -287,8 +302,8 @@
     改動橫跨兩支的時候兩支都要加。眨眼就是這樣：欄數在 sprites.js、
     往右跳幾欄在 script.js，只到一半的話會拿舊的欄數去除新的圖。
   -->
-  <script src="world.js?v=8"></script>
-  <script src="cat.js?v=1"></script>
+  <script src="world.js?v=9"></script>
+  <script src="cat.js?v=2"></script>
   <script src="save.js?v=3"></script>
   <script src="sprites.js?v=6"></script>
   <!--
@@ -301,7 +316,7 @@
     畫面看起來是對的，只有座標默默錯掉。`python pixel.py` 會在這支
     真的變了的時候印一行提醒（見 write_room_data()）。
   -->
-  <script src="room-data.js?v=11"></script>
-  <script src="script.js?v=22"></script>
+  <script src="room-data.js?v=12"></script>
+  <script src="script.js?v=23"></script>
 </body>
 </html>

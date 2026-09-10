@@ -99,6 +99,50 @@ const Cat = (function () {
   }
 
   /*
+   * 別停在看不見的地方（待辦第 4 項）。
+   *
+   * 紙箱會擋住貓，那是刻意的——走過去的時候整隻不見才叫縱深。
+   * 但**挑一個看不見的地方停下來**是另一回事：sleep 一睡 20~90 秒，
+   * 那段時間畫面上不是「貓躲在箱子後面」，是「貓不見了」。
+   * 所以走隨機的路可以穿過禁區，選目的地的時候要被推出來。
+   *
+   * rects 是 room-data.js 的 noStop（[x0, y0, x1, y1]，x 是中心、y 是腳），
+   * back / front 是地板的前後界。**優先往房間裡面推**：貓退到箱子後面
+   * 但比箱口高的地方，頭會從箱口上面露出來——那是這一版最好看的位置。
+   * 裡面推不動（頂到牆）才往前面推，兩邊都不行就原地不動。
+   *
+   * 純函式，不碰 DOM，所以 test.html 塞幾個假的矩形就能驗。
+   */
+  /*
+   * 推出禁區之後要離邊界多遠。
+   *
+   * **不是為了浮點數，是為了 script.js 的死區。** 那邊每一幀只有在
+   * 「還差 0.005 以上」的時候才移動貓（差一點點就別抖了）。這個數字如果比
+   * 0.005 小，貓卡在禁區最上緣的時候會算出一個近到不用動的目標——
+   * 於是牠留在看不見的地方，而且是靜止的。0.012 大約是 2 個來源像素。
+   */
+  const EDGE = 0.012;
+
+  function avoidHidden(rects, x, y, back, front) {
+    if (!rects || !rects.length) return y;
+    // 推出一個矩形可能掉進另一個裡面。矩形只有兩三個，掃到不動為止就好
+    for (let pass = 0; pass < rects.length + 1; pass++) {
+      let hit = null;
+      for (let i = 0; i < rects.length; i++) {
+        const r = rects[i];
+        if (x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3]) { hit = r; break; }
+      }
+      if (!hit) return y;
+      const up = hit[1] - EDGE;
+      const down = hit[3] + EDGE;
+      if (up >= back) y = up;
+      else if (down <= front) y = down;
+      else return y;
+    }
+    return y;
+  }
+
+  /*
    * 使用者動作能不能打斷現在的狀態。
    *
    * 睡著的貓不會理逗貓棒——這條是刻意留的挫折感，
@@ -119,6 +163,7 @@ const Cat = (function () {
     pickNext: pickNext,
     durationFor: durationFor,
     moves: moves,
+    avoidHidden: avoidHidden,
     accepts: accepts
   };
 })();

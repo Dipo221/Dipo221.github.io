@@ -638,6 +638,17 @@
   };
 
   /*
+   * 擋得住貓的家具，跟不准停下來的地方（待辦第 4 項）。
+   *
+   * 兩份都是 art/pixel.py 拿真的貓逐格量出來的，這裡一個數字都不抄。
+   * room-data.js 沒載到就是兩個空的——貓照樣走，只是回到「永遠畫在最前面」，
+   * 也就是這一版之前的樣子。**沒有這一層的房間是可以玩的**，
+   * 所以壞掉的時候要退回那裡，不是退回一個貓走不動的房間。
+   */
+  const OCCLUDERS = (RD && RD.occluders) ? Object.keys(RD.occluders) : [];
+  const NO_STOP = (RD && RD.noStop) || [];
+
+  /*
    * 房間與貓的**來源像素**。畫面上的位置全部是「來源像素的比例 x 現在多大」，
    * 所以視窗怎麼縮都不用重算，也不用去量 DOM。
    *
@@ -682,6 +693,9 @@
     faceAt: null   // 抵達之後要轉向哪裡（goThenDo 用）
   };
 
+  // 上一幀寫進 data-behind 的值。見 render()，這是為了不要每一幀都寫屬性
+  let lastBehind = null;
+
   const bleed = document.getElementById("room-bleed");
   let roomW = room.clientWidth;
   let roomH = room.clientHeight;
@@ -699,6 +713,7 @@
     cat.duration = Cat.durationFor(next, rand);
     cat.pending = null;
     cat.faceAt = null;
+    cat.nudges = 0;   // 見 keepWalking()：一段路最多多走三次
 
     /*
      * x 是中心，貓寬 1/16，所以理論上限是 15.5/16 = 0.969。
@@ -710,7 +725,13 @@
       cat.targetY = FLOOR.front;
     } else if (Cat.moves(next)) {
       cat.targetX = 0.06 + rand() * 0.88;
-      cat.targetY = FLOOR.back + rand() * (FLOOR.front - FLOOR.back);
+      const y = FLOOR.back + rand() * (FLOOR.front - FLOOR.back);
+      /*
+       * 目的地不能是「停下來會看不見」的地方（紙箱後面那一塊）。
+       * 夾的是**目的地**不是每一幀的位置：路過照樣會不見，
+       * 那是縱深；停在裡面睡 20~90 秒才是「貓不見了」。
+       */
+      cat.targetY = Cat.avoidHidden(NO_STOP, cat.targetX, y, FLOOR.back, FLOOR.front);
     }
 
     catEl.setAttribute("data-anim", next);
@@ -791,6 +812,32 @@
     bleed.scrollLeft = camAt;
   }
 
+  /*
+   * 要停下來了，但腳下這塊是看不見的——那就再走幾步。
+   *
+   * enter() 夾的是**目的地**，可是貓常常走不到：walk 只有 2~5 秒，
+   * 橫越整片地板要 6.7 秒。時間到了牠就停在半路上，而半路可能正好
+   * 是紙箱後面那一塊。接著 pickNext 抽到 sleep，畫面上就是一隻消失 20~90 秒的貓
+   * ——這正是夾目的地要擋掉的那件事，只是從另一條路發生。
+   *
+   * 做法是延長現在這段路、把目標往房間裡面挪，不是把貓瞬移出來。
+   * 看起來就是牠多走了兩步才坐下，沒有任何一格是跳的。
+   *
+   * 三次是**上限不是預期**：正常情況一次就夠（禁區只有 14px 深，
+   * 1.5 秒走得完）。有上限是為了讓「永遠走不出去」這件事不可能發生——
+   * 那會是一隻永遠不會坐下的貓，比一隻躲起來的貓糟得多。
+   */
+  function keepWalking(t) {
+    if (motion !== "full" || !Cat.moves(cat.state)) return false;
+    if ((cat.nudges || 0) >= 3) return false;
+    const out = Cat.avoidHidden(NO_STOP, cat.x, cat.y, FLOOR.back, FLOOR.front);
+    if (out === cat.y) return false;
+    cat.nudges = (cat.nudges || 0) + 1;
+    cat.targetY = out;
+    cat.duration = t - cat.startedAt + 1500;
+    return true;
+  }
+
   function step(t) {
     if (cat.pending) {
       const arrived = Math.abs(cat.targetX - cat.x) <= 0.006;
@@ -798,7 +845,7 @@
        * 逾時也要放行：reduced-motion 模式整段不位移，
        * 光等「走到」的話牠會永遠站在那裡等一件不會發生的事。
        */
-      if (arrived || t - cat.startedAt > cat.duration) {
+      if ((arrived || t - cat.startedAt > cat.duration) && !keepWalking(t)) {
         const next = cat.pending;
         /*
          * 抵達之後把面向轉向目的地。
@@ -812,7 +859,7 @@
         cat.pending = null;
         enter(next, t);
       }
-    } else if (t - cat.startedAt > cat.duration) {
+    } else if (t - cat.startedAt > cat.duration && !keepWalking(t)) {
       const next = Cat.pickNext(cat.state, World.energy(new Date()), state.cat.bond, rand);
       enter(next, t);
     }
@@ -830,6 +877,10 @@
        * 前後走。速度比左右慢一半，因為地板的縱深（4 列）比寬度（20 欄）短得多——
        * 同樣的速度會讓牠看起來一直在往前衝。
        * facing 不跟著 y 動：往前往後在側面圖上不該翻身。
+       */
+      /*
+       * 這個 0.005 的死區是 cat.js 的 EDGE（0.012）必須比它大的原因：
+       * 把貓推出禁區的目標如果落在死區裡面，牠就會停在看不見的地方不動。
        */
       const dy = cat.targetY - cat.y;
       if (Math.abs(dy) > 0.005) {
@@ -862,6 +913,26 @@
     catEl.style.transform =
       "translate3d(" + px.toFixed(1) + "px, " + py.toFixed(1) + "px, 0) " +
       "scaleX(" + flip + ")";
+
+    /*
+     * 貓現在沉在哪幾件家具後面（待辦第 4 項）。
+     *
+     * 每件遮擋物是一個**各自獨立的布林**：貓的腳比它的落地點淺就開。
+     * 不用算 x——那一層跟背景圖底下位元相同，所以在貓不在附近的時候
+     * 開著是完全看不出來的。這是整件事只花一個比較的原因。
+     *
+     * 比對過才寫是必要的：這裡一秒跑 60 次，每次都寫屬性等於每一幀
+     * 讓瀏覽器重算一次選擇器，而真正會變的大概每幾秒才一次。
+     */
+    let behind = "";
+    for (let i = 0; i < OCCLUDERS.length; i++) {
+      const n = OCCLUDERS[i];
+      if (cat.y < RD.occluders[n]) behind += (behind ? " " : "") + n;
+    }
+    if (behind !== lastBehind) {
+      lastBehind = behind;
+      room.setAttribute("data-behind", behind);
+    }
 
     if (Sprites.ready()) {
       const m = Sprites.manifest;

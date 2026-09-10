@@ -396,6 +396,144 @@ def build_gifts():
     save_asset(gifts_image(), "gifts.png")
 
 
+# ------------------------------------------------------------ 擋得住貓的那幾層
+#
+# 待辦第 4 項。名單與「為什麼只有那兩件」寫在 room.py 的 OCCLUDERS 上面。
+
+# 貓停下來的地方至少要看得見這麼多隻。0.30 是量出來挑的不是手感挑的：
+# 紙箱那條縫的可見度是連續的 100% -> 0%，30% 那一刀切在「頭跟耳朵還露在
+# 箱口上面」——再低一階（20%）就只剩兩隻耳朵尖，睡 20~90 秒的話
+# 畫面上等於沒有貓。**路過不受這條管**，走過去該不見就不見。
+CAT_KEEP = 0.30
+
+_OWNER = {}
+
+
+def top_owner(name="pano"):
+    """每個像素是**哪一件**物件畫的。後畫的蓋掉先畫的，跟 room_image() 同一個順序。
+
+    不能只看單一物件自己的字元表：place 是有順序的，後面那件會壓在前面那件上
+    （吉他的琴頭壓在書櫃上、桌燈壓在桌面上、吉他的琴身也擦到紙箱）。
+    疊到貓前面的那一層必須**只含它真的露在畫面上的像素**，否則
+    吉他壓在紙箱上的那幾格會跟著紙箱一起被畫到貓前面——
+    而吉他是比紙箱更裡面的東西，那幾格就會變成飄在貓身上的碎片。
+    """
+    if name in _OWNER:
+        return _OWNER[name]
+    spec = room.ROOMS[name]
+    own = {}
+    for oname, ox, oy in spec["place"]:
+        o = room.OBJECTS[oname]
+        for i, tile in enumerate(o["tiles"]):
+            tx, ty = (ox + i % o["w"]) * TILE, (oy + i // o["w"]) * TILE
+            for y, line in enumerate(tile):
+                for x, ch in enumerate(line):
+                    if ch != ".":
+                        own[(tx + x, ty + y)] = oname
+    _OWNER[name] = own
+    return own
+
+
+def object_mask(name, oname):
+    """某件物件真的露在畫面上的那些像素（絕對座標的集合）。"""
+    return set(p for p, n in top_owner(name).items() if n == oname)
+
+
+def front_image(name, oname):
+    """一件遮擋物自己那一層：透明底，只有它自己。
+
+    顏色直接抄底圖同一格，所以這張**跟 pano 底下位元相同**。
+    這件事是整個做法的地基：貓不在附近的時候多開一層是完全看不出來的，
+    於是每件遮擋物就退化成一個各自獨立的布林（貓的腳比它的落地點淺就開），
+    不用算 x、不用管彼此的順序、也不用把家具從背景圖裡挖掉。
+    """
+    base = room_image(name)
+    img = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    src, dst = base.load(), img.load()
+    for x, y in object_mask(name, oname):
+        dst[x, y] = src[x, y] + (255,)
+    return img
+
+
+def build_room_front(name="pano"):
+    for oname in sorted(room.OCCLUDERS):
+        save_asset(front_image(name, oname), "room-front-%s.png" % oname)
+
+
+def cat_mask():
+    """貓那一格裡不透明的像素，相對牠自己的左上角。
+
+    量的是**真的那隻貓**不是 24x24 的方框：牠只有 351 格是實心的，
+    拿方框去算會把「露出一隻耳朵」算成「露出一整排」。
+    """
+    im = cat_image()
+    return [(x, y) for y in range(CELL) for x in range(CELL)
+            if im.getpixel((x, y))[3] > 0]
+
+
+def occlude_scan(name="pano"):
+    """把貓放遍地板上每一格，量牠看得見多少。
+
+    x 掃的是 script.js 的 enter() 真的會挑到的範圍（0.06~0.94），
+    y 掃的是 walk_rows。位置的定義跟遊戲裡一模一樣：x 是貓的中心、y 是腳。
+
+    回傳 (profile, bad)：
+        profile  每件遮擋物 -> (擋得到的縫多深, 可見度最低, 可見度最高)
+        bad      可見度低於 CAT_KEEP 的 (中心 x, 腳 y)，絕對像素
+    """
+    spec = room.ROOMS[name]
+    W = spec["cols"] * TILE
+    ry0, ry1 = [int(round(r * TILE)) for r in spec["walk_rows"]]
+    px = cat_mask()
+    total = float(len(px))
+    masks = dict((n, object_mask(name, n)) for n in room.OCCLUDERS)
+    span = dict((n, (min(x for x, _ in m), max(x for x, _ in m)))
+                for n, m in masks.items())
+
+    profile, bad = {}, []
+    for cx in range(int(0.06 * W), int(0.94 * W) + 1):
+        left = cx - CELL // 2
+        for foot in range(ry0, ry1 + 1):
+            top = foot - CELL
+            body = [(left + x, top + y) for x, y in px]
+            hidden = set()
+            for n, m in masks.items():
+                if foot >= room.OCCLUDERS[n]:
+                    continue          # 貓在它前面，這一層是關的
+                lo, hi = span[n]
+                if left + CELL - 1 < lo or left > hi:
+                    continue
+                mine = set(i for i, p in enumerate(body) if p in m)
+                if not mine:
+                    continue
+                seen = 1.0 - len(mine) / total
+                d, vlo, vhi = profile.get(n, (0, 1.0, 0.0))
+                profile[n] = (d + 1, min(vlo, seen), max(vhi, seen))
+                hidden |= mine
+            if hidden and 1.0 - len(hidden) / total < CAT_KEEP:
+                bad.append((cx, foot))
+    return profile, bad
+
+
+def no_stop_rect(name="pano", bad=None):
+    """把「停在這裡會看不見」的那堆格子框成一個矩形，換算成比例。
+
+    框一個矩形不是一格一格帶出去：這串座標是要送進遊戲裡的，
+    每一幀都在比對它。而且框大一點是**往安全的方向錯**——
+    多擋掉幾個其實還看得見的位置，總比漏掉一個會吞貓的位置好。
+    """
+    spec = room.ROOMS[name]
+    W, H = spec["cols"] * TILE, spec["rows"] * TILE
+    if bad is None:
+        bad = occlude_scan(name)[1]
+    if not bad:
+        return None
+    xs = [x for x, _ in bad]
+    ys = [y for _, y in bad]
+    return (min(xs) / float(W), min(ys) / float(H),
+            max(xs) / float(W), max(ys) / float(H))
+
+
 def write_room_data(name="pano"):
     """把房間的幾何吐成一支 JS。頁面從此不用自己抄一份座標。
 
@@ -413,6 +551,11 @@ def write_room_data(name="pano"):
         '    "%s": [%d, %d, %d, %d]' % (n, x, y,
                                         room.OBJECTS[n]["w"], room.OBJECTS[n]["h"])
         for n, x, y in spec["place"])
+    height = float(rows * TILE)
+    occ = ",\n".join('    "%s": %.4f' % (n, room.OCCLUDERS[n] / height)
+                     for n in sorted(room.OCCLUDERS))
+    rect = no_stop_rect(name)
+    stop = "" if rect is None else "\n    [%.4f, %.4f, %.4f, %.4f]\n  " % rect
     js = '''/*
  * 房間的幾何。**這支是 art/pixel.py 產的，不要手改**——
  * 改 art/room.py 再跑一次 `python pixel.py`，這裡就會跟著對。
@@ -434,10 +577,30 @@ window.RoomData = {
   // 名字: [欄, 列, 寬, 高]，單位是磚。左上角對齊那一格
   objects: {
 %s
-  }
+  },
+
+  /*
+   * 擋得住貓的家具（待辦第 4 項）。值是它的**落地點**，一樣用佔房間高度的比例，
+   * 所以直接拿 cat.y 去比：cat.y 比它小 = 貓站得比它裡面 = 貓在它後面，
+   * 那就要把 art/room-front-<名字>.png 那一層疊到貓上面。
+   *
+   * 名單是 art/room.py 的 OCCLUDERS，那裡也寫著為什麼床和書櫃不在裡面。
+   */
+  occluders: {
+%s
+  },
+
+  /*
+   * 不准**停**在這裡：停下來會看不見。[x0, y0, x1, y1]，x 是貓的中心、y 是腳。
+   *
+   * 只管停，不管走——路過紙箱後面該不見就不見，那正是縱深的意思。
+   * 擋的是「挑一個看不見的地方站著睡 20~90 秒」，那個看起來不像躲起來，
+   * 看起來像貓不見了。
+   */
+  noStop: [%s]
 };
 ''' % (spec["cols"], rows, TILE, top, bottom,
-       float(top) / rows, float(bottom) / rows, objs)
+       float(top) / rows, float(bottom) / rows, objs, occ, stop)
     path = os.path.join(os.path.dirname(HERE), "room-data.js")
     old = ""
     if os.path.exists(path):
@@ -1098,6 +1261,65 @@ def lint_gifts():
     return msgs
 
 
+def lint_occlude(name="pano"):
+    """遮擋物要做出縱深，不能做出洞。
+
+    **這條把「為什麼只有紙箱跟書桌」變成一條會跑的檢查**，而不是註解裡的一段話。
+    以後有人把床或書櫃加進 room.py 的 OCCLUDERS（那是很自然的下一步：
+    看起來就是「再多幾件更立體」），這裡會當場擋下來。
+
+    兩件事：
+
+    1. **一定要有露一半的時候。** 床和書櫃背後那條可走的縫是 11px 和 5px，
+       比貓自己還矮（24px）——貓一走到後面就是整隻不見，沒有中間狀態。
+       量出來是「可見度整條都 0%」，那不是縱深，是一個會吞貓的洞。
+    2. **兩件遮擋物的 x 不能重疊。** 疊上去的每一層都在貓前面（同一個
+       z-index、DOM 順序在後），所以貓沒辦法被排到兩層中間。x 不重疊的話
+       這件事根本不會發生；重疊的話就會有一個位置是畫不出來的。
+       吉他被擋在門外的第二個理由就是這個（它跟紙箱重疊 5px）。
+    """
+    msgs = []
+    profile, bad = occlude_scan(name)
+    for oname in sorted(room.OCCLUDERS):
+        if oname not in profile:
+            msgs.append("OCCLUDE: %s 擋不到貓的任何一格，放進 OCCLUDERS 沒有意義"
+                        % oname)
+            continue
+        cells, vlo, vhi = profile[oname]
+        msgs.append("occlude %-5s %5d spots, cat %3.0f%%~%3.0f%% visible behind it"
+                    % (oname, cells, vlo * 100, vhi * 100))
+        if vhi < CAT_KEEP:
+            msgs.append("OCCLUDE: %s 後面看得見的貓最多只有 %.0f%%（要 %.0f%%），"
+                        "那是一個洞不是縱深" % (oname, vhi * 100, CAT_KEEP * 100))
+
+    spans = {}
+    for oname in room.OCCLUDERS:
+        xs = [x for x, _ in object_mask(name, oname)]
+        spans[oname] = (min(xs), max(xs))
+    names = sorted(spans)
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            a0, a1 = spans[a]
+            b0, b1 = spans[b]
+            if a0 <= b1 and b0 <= a1:
+                msgs.append("OCCLUDE: %s 跟 %s 的 x 重疊（%d~%d vs %d~%d），"
+                            "貓插不進兩層中間" % (a, b, a0, a1, b0, b1))
+
+    rect = no_stop_rect(name, bad)
+    spec = room.ROOMS[name]
+    if rect is None:
+        msgs.append("occlude: 沒有任何位置會把貓蓋到 %.0f%% 以下" % (CAT_KEEP * 100))
+    else:
+        rows = spec["rows"]
+        msgs.append("occlude no-stop x %.3f~%.3f  y %.3f~%.3f  (%d spots)"
+                    % (rect[0], rect[2], rect[1], rect[3], len(bad)))
+        # 夾的方向是**往房間裡面推**（貓的頭從箱口上面露出來）。
+        # 禁區的上緣要是貼著可走範圍的上緣，就沒有地方可以推了
+        if rect[1] <= spec["walk_rows"][0] / rows:
+            msgs.append("OCCLUDE: 禁停區頂到可走範圍的最裡面，貓沒有地方可以退")
+    return msgs
+
+
 def lint_clip():
     """有沒有物件想畫到自己的格子外面去。
 
@@ -1435,7 +1657,8 @@ if __name__ == "__main__":
 
     print("\n--- room ---")
     room_problems = (lint_room() + lint_hud_palette() + lint_glow()
-                     + lint_emissive_owner() + lint_clip() + lint_gifts())
+                     + lint_emissive_owner() + lint_clip() + lint_gifts()
+                     + lint_occlude())
     print("\n".join(room_problems))
 
     # 這幾個關鍵字是「圖會壞掉」的錯，不是「圖不好看」。
@@ -1446,7 +1669,8 @@ if __name__ == "__main__":
              or "SKY_TOD" in m or m.startswith("FACE ")
              or m.startswith("BLINK ") or m.startswith("HUD palette:")
              or m.startswith("GLOW: ") or m.startswith("EMISSIVE: ")
-             or m.startswith("CLIP: ") or m.startswith("GIFTS: ")]
+             or m.startswith("CLIP: ") or m.startswith("GIFTS: ")
+             or m.startswith("OCCLUDE: ")]
     if fatal:
         sys.exit("\nfix the map first, nothing rendered")
 
@@ -1459,6 +1683,7 @@ if __name__ == "__main__":
     build_room_lights()
     build_room_screen()
     build_room_sky()
+    build_room_front()
     build_gifts()
     bumped = write_room_data()
     build_room_tiles()
@@ -1469,8 +1694,9 @@ if __name__ == "__main__":
     skies = " ".join("room-sky-%s.png" % t for t in room.SKY_TOD)
     print("\nwrote " + SHEET_PNG + " / proof.png / squint.png / " + gifs)
     lamps = " ".join("room-%s.png" % o for o in room.LIGHTS)
+    fronts = " ".join("room-front-%s.png" % o for o in sorted(room.OCCLUDERS))
     print("wrote " + rooms + " / room-light.png / " + lamps
-          + " / room-screen.png / " + skies)
+          + " / room-screen.png / " + skies + " / " + fronts)
     print("wrote gifts.png (%d)" % len(gifts.GIFTS))
     print("wrote room-tiles.png / room-view.png / room-tod.png")
     print("wrote ../room-data.js")

@@ -32,8 +32,8 @@
   <main class="container" id="out"></main>
   <footer class="container"><p><a href="./">← 回工具</a></p></footer>
 
-  <script src="world.js?v=8"></script>
-  <script src="cat.js?v=1"></script>
+  <script src="world.js?v=9"></script>
+  <script src="cat.js?v=2"></script>
   <script src="save.js?v=3"></script>
   <script src="sprites.js?v=6"></script>
   <script>
@@ -563,6 +563,46 @@
       check("睡覺不會", Cat.moves("sleep"), false);
       check("理毛不會", Cat.moves("groom"), false);
       check("不存在的狀態當作不會", Cat.moves("nonsense"), false);
+    }
+
+    group("行為：不要停在看不見的地方（待辦第 4 項）");
+    {
+      // 假的禁區。真的那個是 art/pixel.py 拿真的貓逐格量出來寫進 room-data.js 的，
+      // 這裡要驗的是「夾這件事本身」，不是那幾個數字
+      const R = [[0.60, 0.85, 0.75, 0.95]];
+      const back = 0.68;
+      const front = 0.99;
+      check("不在禁區裡就原封不動",
+            Cat.avoidHidden(R, 0.5, 0.9, back, front), 0.9);
+      check("x 在禁區外、y 在範圍內也不動",
+            Cat.avoidHidden(R, 0.9, 0.9, back, front), 0.9);
+      check("停在禁區裡會被推到上緣外面（往房間裡面退）",
+            Cat.avoidHidden(R, 0.7, 0.9, back, front) < 0.85, true);
+      check("推完就不在禁區裡了",
+            Cat.avoidHidden(R, 0.7, 0.9, back, front) < R[0][1], true);
+      check("邊界上算在裡面",
+            Cat.avoidHidden(R, 0.60, 0.85, back, front) < 0.85, true);
+      // 退無可退的時候往前推，不要把貓塞進牆裡
+      check("禁區頂到最裡面就改往前推",
+            Cat.avoidHidden([[0.1, 0.68, 0.9, 0.80]], 0.5, 0.7, back, front) > 0.80, true);
+      // 前後都出不去 -> 原地不動。給一個壞掉的禁區也不能把貓弄丟
+      check("整條地板都是禁區就放棄，維持原位",
+            Cat.avoidHidden([[0, 0, 1, 1]], 0.5, 0.9, back, front), 0.9);
+      check("沒有禁區就是原值", Cat.avoidHidden([], 0.7, 0.9, back, front), 0.9);
+      check("沒有那份資料也不能爆",
+            Cat.avoidHidden(undefined, 0.7, 0.9, back, front), 0.9);
+      /*
+       * 推出去要離邊界夠遠。script.js 每一幀只有在「還差 0.005 以上」
+       * 才移動貓，目標落在那個死區裡的話貓會停在看不見的地方不動——
+       * 而且是靜止的，看起來就是貓不見了。這條把那個間距釘住。
+       */
+      let closest = 1;
+      for (let i = 0; i <= 100; i++) {
+        const y = R[0][1] + (R[0][3] - R[0][1]) * (i / 100);
+        closest = Math.min(closest, R[0][1] - Cat.avoidHidden(R, 0.7, y, back, front));
+      }
+      check("禁區裡的每一個 y 推出去都離邊界 > 0.005（script.js 的死區）",
+            closest > 0.005, true);
     }
 
     group("行為：狀態長度");
