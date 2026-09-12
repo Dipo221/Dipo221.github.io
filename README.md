@@ -60,7 +60,7 @@ token 只負責存檔，不決定要不要顯示編輯介面，這樣平常滑�
 大家看到的一樣；`shared`（今天被摸幾次）記給所有人、只顯示給我；
 `private`（bond、禮物、離開多久的訊息）留在各自的瀏覽器。
 
-**測試**：打開 `tools/cat-room/test.html` 就會跑，目前 210 條。
+**測試**：打開 `tools/cat-room/test.html` 就會跑，目前 271 條。
 邏輯都在 `world.js` / `cat.js` / `save.js` / `sprites.js`，這四支不碰 DOM
 所以測得到；`script.js` 只負責接到頁面上。
 
@@ -92,6 +92,19 @@ bond 只增不減，配上一個可以無限按的東西就是一台點擊機器
 兩盞燈各關各的）、書桌那兩塊螢幕（`room-screen.png`，永遠亮著但夜裡最搶眼）。
 合成一張只會有一個不透明度——半夜關個燈會把窗外的夜色一起關掉，
 而夜裡的時段色片會把螢幕上那隻橘色的小生物乘成一坨爛泥。
+
+**窗外跟著淡水真實的天氣變**（Open-Meteo，免金鑰，快取半小時）。
+晴天有太陽、陰天太陽不見、下雨會有雨絲在動、雷雨更大更斜、起霧整片洗白。
+抓不到天氣就退回只看時間的房間，貓照常跑——**整頁離線也要能玩**。
+
+要檢查某一種天氣不用等它真的發生，用網址參數：
+
+```
+tools/cat-room/?wx=storm        clear / overcast / rain / storm / fog
+```
+
+強制的值**不會寫進快取**，所以不會污染接下來半小時的正常造訪；
+不認得的值（`?wx=香蕉`）會安靜地退回真實天氣。
 
 兩盞燈**用同一組發光色**，所以產圖的時候會照物件的格子把對方圈掉；
 不圈的話關掉一盞會把另一盞一起關掉，而那個 bug 只有在「剛好只關一盞」
@@ -154,9 +167,12 @@ multiply 推不出比底色更亮的東西，夜裡的窗、燈、螢幕全靠 s
 cd tools/cat-room/art && python pixel.py     （要 Pillow）
 ```
 
-進版控的有十一張圖加一支 JS：`disi-24.png`、`room-pano.png`、`room-light.png`、
+進版控的有二十張圖加一支 JS：`disi-24.png`、`room-pano.png`、`room-light.png`、
 `room-lamp.png`、`room-desklamp.png`、`room-screen.png`、
-四張 `room-sky-<時段>.png`、`gifts.png` 是網頁真的會載入的素材，
+四張 `room-sky-<時段>.png`、兩張 `room-front-<家具>.png`（擋得住貓的那兩件）、
+`room-weather-dim.png`、`room-weather-fog.png`、兩張 `room-weather-<雨種>.png`
+（橫著排的四格圖帶）、三張 `room-sun-<時段>.png`、`gifts.png`
+是網頁真的會載入的素材，
 `room-data.js` 是**房間幾何的單一事實來源**
 （格數、地板前後界、每個物件佔哪幾格）。`script.js` 和 `style.css` 都從它算，
 所以**沒有任何座標被手抄兩次**。那支開頭就寫著不要手改，改 `room.py` 再跑一次。

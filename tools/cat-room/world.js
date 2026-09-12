@@ -325,6 +325,7 @@ const World = (function () {
    * 新到舊排，跟 CHANGELOG.md 的順序一樣（test.html 押著日期要新到舊，加反了會紅）。
    */
   const UPDATES = [
+    { date: "2026-09-12", text: "窗外新增天氣，根據淡水的天氣變化。" },
     { date: "2026-09-11", text: "Disi可以被家具擋住，不會永遠走在前面。" },
     { date: "2026-09-09", text: "選單裡加入遊戲介紹、更新日誌。" },
     { date: "2026-09-08", text: "設計電腦版木牌，加入側邊選單功能。" },
@@ -434,6 +435,75 @@ const World = (function () {
     };
   }
 
+  /* ---------------------------------------------------------------- */
+
+  /*
+   * 窗外的天氣（待辦第 6 項）。
+   *
+   * **天氣要用淡水的，不是看的人所在地的。** 跟時區同一個道理：
+   * Disi 住在淡水的房間，牠窗外下不下雨跟你在哪裡看沒有關係。
+   *
+   * API 選 Open-Meteo 是硬條件不是偏好——這是純靜態站，任何金鑰都會直接
+   * 寫在原始碼裡被看光。中央氣象署的資料更權威，但要申請授權碼，公開 repo
+   * 放不了。Open-Meteo 免費、無金鑰、帶 Origin 會回 `*`，所以打得到。
+   *
+   * 這一段全是純函式：組網址、把代碼翻成房間的狀態、判斷快取過期了沒。
+   * 真正的 fetch 在 script.js，所以這裡測得到。
+   */
+  const TAMSUI = { lat: 25.18, lon: 121.44 };
+
+  function weatherUrl() {
+    return "https://api.open-meteo.com/v1/forecast"
+      + "?latitude=" + TAMSUI.lat
+      + "&longitude=" + TAMSUI.lon
+      + "&current=weather_code"
+      + "&timezone=Asia%2FTaipei";
+  }
+
+  /*
+   * WMO 的天氣代碼 → 房間的五種天氣。
+   *
+   * 只分五種是因為窗戶只有 40x48 格：一格玻璃 19 格寬，
+   * 「小雨」跟「中雨」在那個尺寸上畫出來是同一張圖，分了也看不出來。
+   *
+   * **雪（71-77、85-86）對到雨，而且那是為了函式完整，不是功能**——
+   * 淡水在海邊、亞熱帶，沒有下過雪，這幾條永遠不會被打中。
+   * 不寫的話 pickWeather 會在那幾個代碼上回 undefined，
+   * 那種洞平常看不到，真的哪天下雪才炸。
+   */
+  const WMO = {
+    clear: [0, 1],
+    overcast: [2, 3],
+    fog: [45, 48],
+    rain: [51, 53, 55, 56, 57, 61, 63, 65, 66, 67,
+           71, 73, 75, 77, 80, 81, 82, 85, 86],
+    storm: [95, 96, 99]
+  };
+
+  function weatherFromCode(code) {
+    const keys = Object.keys(WMO);
+    for (let i = 0; i < keys.length; i++) {
+      if (WMO[keys[i]].indexOf(code) >= 0) return keys[i];
+    }
+    // 沒認出來就當晴天。**不要當成壞掉**：多一個沒看過的代碼
+    // 不該讓窗戶變成一片怪東西，安靜地不下雨就好
+    return "clear";
+  }
+
+  /*
+   * 快取還新鮮嗎。天氣本來就不會分鐘級地變，每次開頁都打一次 API
+   * 是浪費也不禮貌。
+   *
+   * 時鐘被往回調（或存檔是從別台機器來的）時 age 會是負的——
+   * 那種情況當成過期重抓，比信一份來自未來的快取安全。
+   */
+  const WEATHER_TTL = 30 * MINUTE;
+
+  function weatherFresh(savedAt, now) {
+    const age = (now === undefined ? Date.now() : now) - savedAt;
+    return age >= 0 && age < WEATHER_TTL;
+  }
+
   return {
     rng: rng,
     seedFrom: seedFrom,
@@ -452,6 +522,11 @@ const World = (function () {
     isAway: isAway,
     awayNote: awayNote,
     dailyMood: dailyMood,
+    weatherUrl: weatherUrl,
+    weatherFromCode: weatherFromCode,
+    weatherFresh: weatherFresh,
+    WMO: WMO,
+    WEATHER_TTL: WEATHER_TTL,
     CAT_NAME: CAT_NAME,
     ARRIVED: ARRIVED,
     GIFTS: GIFTS,

@@ -32,7 +32,7 @@
   <main class="container" id="out"></main>
   <footer class="container"><p><a href="./">← 回工具</a></p></footer>
 
-  <script src="world.js?v=10"></script>
+  <script src="world.js?v=11"></script>
   <script src="cat.js?v=2"></script>
   <script src="save.js?v=3"></script>
   <script src="sprites.js?v=6"></script>
@@ -603,6 +603,63 @@
       }
       check("禁區裡的每一個 y 推出去都離邊界 > 0.005（script.js 的死區）",
             closest > 0.005, true);
+    }
+
+    group("窗外的天氣（待辦第 6 項）");
+    {
+      /*
+       * 天氣是這一頁唯一一個「外面的服務說了算」的東西，
+       * 所以這組驗的是**翻譯跟退路**，不是那份資料本身：
+       * 代碼有沒有翻對、沒看過的代碼會不會弄壞畫面、快取什麼時候算過期。
+       */
+      check("0 是晴天", World.weatherFromCode(0), "clear");
+      check("1（大致晴）也算晴天", World.weatherFromCode(1), "clear");
+      check("3 是陰天", World.weatherFromCode(3), "overcast");
+      check("45 是霧", World.weatherFromCode(45), "fog");
+      check("61 是雨", World.weatherFromCode(61), "rain");
+      check("80 陣雨也是雨", World.weatherFromCode(80), "rain");
+      check("95 是雷雨", World.weatherFromCode(95), "storm");
+      check("99 冰雹雷雨也是雷雨", World.weatherFromCode(99), "storm");
+      /*
+       * 淡水不會下雪，但函式要是全的——不寫的話那幾個代碼會回 undefined，
+       * 那種洞平常看不到，真的哪天下雪才炸。
+       */
+      check("下雪當成下雨（淡水不會下雪，這條是為了函式完整）",
+            World.weatherFromCode(75), "rain");
+      /*
+       * 沒認出來的代碼要當晴天，不是當壞掉。Open-Meteo 哪天多一個代碼，
+       * 最糟的情況只能是「窗外沒有在下雨」，不能是窗戶變成一片怪東西。
+       */
+      check("沒看過的代碼退回晴天", World.weatherFromCode(12345), "clear");
+      check("不是數字也退回晴天", World.weatherFromCode(null), "clear");
+
+      /*
+       * 這五個名字是三個地方的接縫：style.css 的 [data-wx="..."]、
+       * art/room.py 的 DIM_OPACITY / RAIN_KINDS、還有 ?wx= 那個檢查開關
+       * （script.js 的 forcedWeather 直接拿這份名單當白名單）。
+       * **改名字要三個地方一起改**，所以這條寫死，改了就要紅。
+       */
+      const kinds = Object.keys(World.WMO);
+      check("五種天氣，名字是 CSS 跟 ?wx= 共用的那五個",
+            kinds.slice().sort().join(","), "clear,fog,overcast,rain,storm");
+      const codes = [];
+      kinds.forEach((k) => World.WMO[k].forEach((c) => codes.push(c)));
+      check("沒有一個代碼被登記兩次",
+            codes.length, new Set(codes).size);
+
+      check("網址指著淡水", World.weatherUrl().indexOf("latitude=25.18") > 0, true);
+      check("網址不帶任何金鑰（純靜態站放不了）",
+            /key|token|appid/i.test(World.weatherUrl()), false);
+
+      const now = 1000000;
+      check("剛抓到的是新鮮的", World.weatherFresh(now, now), true);
+      check("29 分鐘還新鮮", World.weatherFresh(now - 29 * World.MINUTE, now), true);
+      check("31 分鐘就過期", World.weatherFresh(now - 31 * World.MINUTE, now), false);
+      /*
+       * 時鐘被往回調、或存檔是從別台機器搬過來的時候 age 會是負的。
+       * 信一份來自未來的快取會卡住不更新，重抓比較安全。
+       */
+      check("來自未來的快取當成過期", World.weatherFresh(now + World.HOUR, now), false);
     }
 
     group("行為：狀態長度");

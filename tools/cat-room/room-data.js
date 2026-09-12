@@ -54,5 +54,19 @@ window.RoomData = {
    */
   noStop: [
     [0.6312, 0.8750, 0.7281, 0.9489]
-  ]
+  ],
+
+  /*
+   * 窗外的天氣（待辦第 6 項）。只有雨要動，所以這裡只帶播放用的兩個數字。
+   *
+   * frames 是圖帶有幾格，來源是 art/room.py 的 RAIN_PERIOD / RAIN_STEP——
+   * **雨滴走完一個週期剛好接回第一格**，所以格數不是挑的，是除出來的。
+   * ms 跟貓奔跑同一級（sprites.js 的 run），這個房間裡的東西都是 10fps 上下。
+   *
+   * 濃度不在這裡，在 style.css 的 --wx-dim（pixel.py 的 lint_weather 押著兩邊一樣）。
+   */
+  weather: {
+    frames: 4,
+    ms: 100
+  }
 };

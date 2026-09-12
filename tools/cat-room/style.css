@@ -541,6 +541,114 @@ main {
 .room[data-tod="night"] .room-sky[data-when="night"] { opacity: 1; }
 
 /*
+ * 窗外的天氣（待辦第 6 項）。天空層管「現在幾點」，這兩層管「今天什麼天氣」。
+ *
+ * **為什麼是兩層。** 待辦本來寫的是「一種天氣一張疊圖」，做下去發現陰天
+ * 過不了：一層灰蓋在白天的藍天上會變暗變濁（對的），同一層灰蓋在夜晚的
+ * 深藍上會把它**提亮**——陰天的夜晚比晴朗的夜晚還亮，那是錯的。
+ * 所以照房間對時段已經在用的那一套拆成 multiply + 一般疊加。
+ *
+ *   .room-weather-dim   平灰、multiply。**按比例**壓暗，所以四個時段自動都對。
+ *                       一張圖吃掉陰 / 雨 / 雷雨，差別只在 --wx-dim 開多濃。
+ *   .room-weather       材質（雨絲或霧），正常蓋上去。
+ *
+ * 晴天兩層都是 0，所以晴天不用畫圖。
+ *
+ * z-index 6 疊在天空（5）上面。**跟 .hotspot 同分是刻意的**，跟 .room-front
+ * 那次同一個理由：這兩層 pointer-events: none 又排在熱區前面，所以熱區照樣
+ * 壓在上面、照樣點得到，不用為了它們把整疊 z-index 重編一次。
+ *
+ * 圖一樣是整張房間大小、只有玻璃不透明，跟天空層同一份形狀來源
+ * （art/pixel.py 的 sky_cells），所以這裡 inset: 0 就對位了，
+ * 一個窗的座標都沒有被抄進 CSS。
+ *
+ * 數值的單一事實來源是 art/room.py 的 DIM / DIM_OPACITY / FOG / RAIN，
+ * 底下那三個 --wx-dim 由 pixel.py 的 lint_weather 押著跟 room.py 一致。
+ */
+.room-weather-dim,
+.room-weather {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  opacity: 0;
+  /* 跟時段同一個時間。天氣是慢慢轉的，跳一下會像換了一張圖 */
+  transition: opacity 1.2s linear;
+  pointer-events: none;
+}
+
+.room-weather-dim {
+  background-image: url("art/room-weather-dim.png?v=1");
+  mix-blend-mode: multiply;
+  opacity: var(--wx-dim, 0);
+}
+
+/*
+ * 雨是一條橫的圖帶，播法跟貓的 sprite 一樣：放大 N 倍再移 background-position。
+ * **格數寫在 room-data.js 的 weather.frames**，script.js 從那裡讀，
+ * 所以這裡的 background-size 也是 JS 設的，不是寫死在 CSS 裡。
+ *
+ * 霧沒有動，所以霧走一般的 100% 100%。
+ */
+.room[data-wx="fog"] .room-weather {
+  background-image: url("art/room-weather-fog.png?v=1");
+  opacity: 1;
+}
+
+.room[data-wx="rain"] .room-weather {
+  background-image: url("art/room-weather-rain.png?v=1");
+  opacity: 1;
+}
+
+.room[data-wx="storm"] .room-weather {
+  background-image: url("art/room-weather-storm.png?v=1");
+  opacity: 1;
+}
+
+.room[data-wx="overcast"] { --wx-dim: 0.35; }
+.room[data-wx="rain"] { --wx-dim: 0.50; }
+.room[data-wx="storm"] { --wx-dim: 0.68; }
+
+/*
+ * 晴天的太陽。
+ *
+ * **晴天本來是「什麼都不畫」，2026-09-11 改掉了。** 原因是明陽看比較圖時
+ * 指出的：陰天跟晴天並排才分得出來，單獨看分不出來。而問題不在陰天不夠陰
+ * （再壓暗白天的窗就髒了），在**晴天沒有記號**——「有沒有太陽」是有／沒有的
+ * 差別，比「亮一點／暗一點」好認太多，而且它同時把陰天的意思講清楚了：
+ * 陰天就是太陽不見了。
+ *
+ * 結構照 .room-sky 抄：一個時段一個元素、各自一張圖、用 opacity 交叉淡入。
+ * **不做成一個元素換 background-image**，換圖是硬切的，時段轉場那 1.2 秒
+ * 整個房間都在溶，只有太陽會跳一下。
+ *
+ * 只有三個時段，**沒有夜晚**——夜裡沒有太陽。也就是說夜裡的晴天跟陰天
+ * 還是分不出來，那是刻意接受的（真實世界不看星星也分不出來）。
+ * 顏色與位置的單一事實來源是 art/room.py 的 SUN。
+ */
+.room-sun {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  opacity: 0;
+  transition: opacity 1.2s linear;
+  pointer-events: none;
+}
+
+.room-sun[data-when="dawn"] { background-image: url("art/room-sun-dawn.png?v=1"); }
+.room-sun[data-when="day"] { background-image: url("art/room-sun-day.png?v=1"); }
+.room-sun[data-when="dusk"] { background-image: url("art/room-sun-dusk.png?v=1"); }
+
+.room[data-wx="clear"][data-tod="dawn"] .room-sun[data-when="dawn"] { opacity: 1; }
+.room[data-wx="clear"][data-tod="day"] .room-sun[data-when="day"] { opacity: 1; }
+.room[data-wx="clear"][data-tod="dusk"] .room-sun[data-when="dusk"] { opacity: 1; }
+
+/*
  * 擋得住貓的家具（待辦第 4 項）。
  *
  * 貓以前永遠畫在所有東西前面，走到桌子後面會**穿過**桌子。

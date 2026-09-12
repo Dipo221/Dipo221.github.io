@@ -23,6 +23,7 @@ lint 抓的是機械錯誤（行長不齊、色盤外的字元、孤兒像素、
 """
 import io
 import os
+import random
 import re
 import sys
 
@@ -376,6 +377,155 @@ def build_room_sky(name="pano"):
         save_asset(build_sky_rgba(name, tod), "room-sky-%s.png" % tod)
 
 
+# ---------------------------------------------------------------- 窗外的天氣
+#
+# 全部長在玻璃的遮罩上，跟 build_sky_rgba() 同一份形狀來源，
+# 所以窗改形狀、屋頂開天窗，這幾張自己就跟著改，CSS 一格座標都不用抄。
+
+_SKY_CELLS = {}
+
+
+def sky_cells(name="pano"):
+    """玻璃的每一格。天空層、天氣層共用的唯一形狀來源。"""
+    if name not in _SKY_CELLS:
+        _SKY_CELLS[name] = [(x, y)
+                            for y, row in enumerate(room_chars(name))
+                            for x, ch in enumerate(row)
+                            if ch in room.SKY_CHARS]
+    return _SKY_CELLS[name]
+
+
+def _glass_rgba(name, rgb, alpha):
+    """一張只有玻璃有東西的疊圖。"""
+    rows = room_chars(name)
+    img = Image.new("RGBA", (len(rows[0]), len(rows)), (0, 0, 0, 0))
+    px = img.load()
+    for x, y in sky_cells(name):
+        px[x, y] = rgb + (alpha,)
+    return img
+
+
+def weather_dim_image(name="pano"):
+    """陰天壓暗用的平灰。**濃度不在這張圖裡**，在 CSS 的 --wx-dim。
+
+    一張圖吃掉陰 / 雨 / 雷雨三種天氣，理由見 room.py 的 DIM。
+    """
+    return _glass_rgba(name, room.DIM, 255)
+
+
+def weather_fog_image(name="pano"):
+    return _glass_rgba(name, room.FOG, int(round(room.FOG_ALPHA * 255)))
+
+
+def rain_drops(kind, name="pano"):
+    """某一種雨的每一滴：(x, 相位, 長度, 傾斜)。相位是 0..RAIN_PERIOD-1。
+
+    **分層取樣，不是逐欄擲骰。** 逐欄擲骰會結塊——玻璃只有 38 欄、
+    又被中梃切成兩半，一邊擠滿一邊空白看起來不像雨，像雜訊。
+    照 stride 走、每一滴只在自己那一段裡抖動，密度才均勻。
+
+    用固定種子而不是 random：素材要能重現，同一份程式跑兩次
+    產出的圖必須逐位元組相同，不然每次跑 pixel.py 都會多一筆假的改動。
+    """
+    spec = room.RAIN_KINDS[kind]
+    rnd = random.Random(spec["seed"])
+    cols = sorted(set(x for x, _ in sky_cells(name)))
+    stride = max(1, int(round(1.0 / spec["density"])))
+    drops = []
+    for i in range(0, len(cols), stride):
+        seg = cols[i:i + stride]
+        x = seg[rnd.randrange(len(seg))]
+        # 偶爾同一欄兩滴，錯開半個週期，不然看起來像一條虛線
+        n = 1 if rnd.random() < 0.72 else 2
+        base = rnd.randrange(room.RAIN_PERIOD)
+        for j in range(n):
+            drops.append((x, (base + j * room.RAIN_PERIOD // 2) % room.RAIN_PERIOD,
+                          spec["length"], spec["slant"]))
+    return drops
+
+
+def weather_rain_strip(kind, name="pano"):
+    """一種雨的整條圖帶：RAIN_PERIOD / RAIN_STEP 格橫著排。
+
+    做成圖帶而不是一格一張，是為了跟貓的 sprite 用同一套播法
+    （`background-size` 放大幾倍 + 移 `background-position`），
+    script.js 那邊就不用為了天氣多寫一種載圖的邏輯。
+    """
+    cells = set(sky_cells(name))
+    ys = [y for _, y in cells]
+    y0, y1 = min(ys), max(ys)
+    w, h = len(room_chars(name)[0]), len(room_chars(name))
+    frames = room.RAIN_PERIOD // room.RAIN_STEP
+    strip = Image.new("RGBA", (w * frames, h), (0, 0, 0, 0))
+    px = strip.load()
+    alpha = int(round(room.RAIN_ALPHA * 255))
+    drops = rain_drops(kind, name)
+    for f in range(frames):
+        ox = f * w
+        off = f * room.RAIN_STEP
+        for x, phase, length, slant in drops:
+            start = y0 + ((phase + off) % room.RAIN_PERIOD)
+            while start <= y1 + room.RAIN_PERIOD:
+                for i in range(length):
+                    yy = start + i
+                    xx = x + (i * slant) // 2
+                    # 遮罩就是玻璃本身，所以雨永遠不會跨過窗框跑到牆上
+                    if (xx, yy) in cells:
+                        px[ox + xx, yy] = room.RAIN + (alpha,)
+                start += room.RAIN_PERIOD
+    return strip
+
+
+def glass_box(name="pano"):
+    """玻璃的外框 (x0, y0, w, h)。太陽的位置是照這個框的比例存的。"""
+    cells = sky_cells(name)
+    xs = [x for x, _ in cells]
+    ys = [y for _, y in cells]
+    return min(xs), min(ys), max(xs) - min(xs) + 1, max(ys) - min(ys) + 1
+
+
+def weather_sun_image(tod, name="pano"):
+    """某個時段的太陽。一顆有芯有緣的圓盤，一樣只畫在玻璃上。
+
+    **圓是算出來的不是手打的**，照 room.py 開頭那條界線：有形狀的東西手打，
+    有規則的東西用函式。半徑 4 的圓手打九行，改半徑就要整張重畫。
+
+    被窗框的中梃或橫檔切到是**對的**，不用閃——從窗戶看出去的太陽本來
+    就會被窗格擋掉一塊。遮罩是玻璃本身，所以那件事自己就會發生。
+    """
+    spec = room.SUN[tod]
+    gx, gy, gw, gh = glass_box(name)
+    cx = gx + spec["at"][0] * (gw - 1)
+    cy = gy + spec["at"][1] * (gh - 1)
+    r = room.SUN_R
+    cells = set(sky_cells(name))
+    rows = room_chars(name)
+    img = Image.new("RGBA", (len(rows[0]), len(rows)), (0, 0, 0, 0))
+    px = img.load()
+    for dy in range(-r, r + 1):
+        for dx in range(-r, r + 1):
+            d2 = dx * dx + dy * dy
+            # 門檻是 r^2 + 0.5 不是 r^2 + r/2。**多那半格會在上下左右各長出
+            # 一根一格的凸起**，圓看起來就變成有角的——經典的點陣圓就是這條
+            if d2 > r * r + 0.5:
+                continue
+            x, y = int(round(cx)) + dx, int(round(cy)) + dy
+            if (x, y) not in cells:
+                continue
+            # 芯比緣亮一階。只有一階的圓盤看起來像貼紙，不像光
+            px[x, y] = (spec["core"] if d2 <= (r - 1.6) ** 2 else spec["rim"]) + (255,)
+    return img
+
+
+def build_room_weather(name="pano"):
+    save_asset(weather_dim_image(name), "room-weather-dim.png")
+    save_asset(weather_fog_image(name), "room-weather-fog.png")
+    for kind in sorted(room.RAIN_KINDS):
+        save_asset(weather_rain_strip(kind, name), "room-weather-%s.png" % kind)
+    for tod in sorted(room.SUN):
+        save_asset(weather_sun_image(tod, name), "room-sun-%s.png" % tod)
+
+
 def gifts_image():
     """禮物圖示排成一條 16px 高的帶子，一樣禮物一格。
 
@@ -597,10 +747,25 @@ window.RoomData = {
    * 擋的是「挑一個看不見的地方站著睡 20~90 秒」，那個看起來不像躲起來，
    * 看起來像貓不見了。
    */
-  noStop: [%s]
+  noStop: [%s],
+
+  /*
+   * 窗外的天氣（待辦第 6 項）。只有雨要動，所以這裡只帶播放用的兩個數字。
+   *
+   * frames 是圖帶有幾格，來源是 art/room.py 的 RAIN_PERIOD / RAIN_STEP——
+   * **雨滴走完一個週期剛好接回第一格**，所以格數不是挑的，是除出來的。
+   * ms 跟貓奔跑同一級（sprites.js 的 run），這個房間裡的東西都是 10fps 上下。
+   *
+   * 濃度不在這裡，在 style.css 的 --wx-dim（pixel.py 的 lint_weather 押著兩邊一樣）。
+   */
+  weather: {
+    frames: %d,
+    ms: %d
+  }
 };
 ''' % (spec["cols"], rows, TILE, top, bottom,
-       float(top) / rows, float(bottom) / rows, objs, occ, stop)
+       float(top) / rows, float(bottom) / rows, objs, occ, stop,
+       room.RAIN_PERIOD // room.RAIN_STEP, room.RAIN_MS)
     path = os.path.join(os.path.dirname(HERE), "room-data.js")
     old = ""
     if os.path.exists(path):
@@ -1320,6 +1485,89 @@ def lint_occlude(name="pano"):
     return msgs
 
 
+def lint_weather(name="pano"):
+    """天氣那幾張圖，三條，都對應一種「圖出得來但畫面是壞的」。
+
+    1. **雨的週期一定要被每格的位移整除。** 不整除的話最後一格接回第一格
+       會跳一下——而那一下只有盯著看的人會發現，靜態圖上完全看不出來。
+    2. **三個濃度在 style.css 也有一份**，跟 `lint_glow` 同一個理由：
+       兩邊分家的話症狀是「陰天看起來跟晴天一樣」，不會有任何錯誤訊息。
+    3. **雨不准畫到玻璃外面。** 傾斜的雨是往右偏的，偏出窗框就變成牆上有雨。
+       這條由 `weather_rain_strip` 的遮罩保證，這裡是實際掃一遍確認。
+    """
+    msgs = []
+    if room.RAIN_PERIOD % room.RAIN_STEP:
+        msgs.append("WEATHER: RAIN_PERIOD %d 不能被 RAIN_STEP %d 整除，接不回去"
+                    % (room.RAIN_PERIOD, room.RAIN_STEP))
+
+    try:
+        css = open(os.path.join(HERE, os.pardir, "style.css"), encoding="utf-8").read()
+    except OSError as e:
+        return msgs + ["WEATHER: 讀不到 style.css（%s）" % e]
+
+    for kind, want in sorted(room.DIM_OPACITY.items()):
+        hit = re.search(r'\.room\[data-wx="%s"\][^{]*\{[^}]*?--wx-dim:\s*([\d.]+)'
+                        % kind, css, re.S)
+        if not hit:
+            msgs.append("WEATHER: style.css 沒有 %s 的 --wx-dim" % kind)
+        elif abs(float(hit.group(1)) - want) > 1e-9:
+            msgs.append("WEATHER: %s 的 --wx-dim 在 CSS 是 %s，room.py 說 %.2f"
+                        % (kind, hit.group(1), want))
+
+    cells = set(sky_cells(name))
+    w = len(room_chars(name)[0])
+    frames = room.RAIN_PERIOD // room.RAIN_STEP
+    for kind in sorted(room.RAIN_KINDS):
+        strip = weather_rain_strip(kind, name)
+        px = strip.load()
+        stray = 0
+        wet = 0
+        for f in range(frames):
+            for x in range(w):
+                for y in range(strip.height):
+                    if px[f * w + x, y][3]:
+                        wet += 1
+                        if (x, y) not in cells:
+                            stray += 1
+        if stray:
+            msgs.append("WEATHER: %s 有 %d 格雨畫在玻璃外面" % (kind, stray))
+        msgs.append("weather %-5s %d drops, %d wet px over %d frames"
+                    % (kind, len(rain_drops(kind, name)), wet, frames))
+
+    # 太陽。三條：
+    #
+    # 1. **每個時段都要有 CSS 選得到它的規則。** 在 SUN 加一個時段、
+    #    忘了補 CSS 的話，圖產得出來但永遠不會顯示——沒有任何錯誤訊息。
+    # 2. **不准有夜晚的太陽。** 夜裡沒有太陽，而且 CSS 那邊也沒有那一層。
+    # 3. **圓盤要幾乎整顆落在玻璃上。** 位置是照玻璃外框的比例算的，
+    #    但窗框的中梃跟橫檔在框裡面，比例挑得不好會讓太陽剩下一小塊。
+    for tod in sorted(room.SUN):
+        if tod == "night":
+            msgs.append("WEATHER: SUN 不能有 night，夜裡沒有太陽")
+        sel = '.room[data-wx="clear"][data-tod="%s"] .room-sun' % tod
+        if css.find(sel) < 0:
+            msgs.append("WEATHER: style.css 沒有 %s 的太陽規則，圖產了也不會顯示" % tod)
+        # 透明的那一格數在直方圖的第 0 格，其餘全是畫到的
+        hist = weather_sun_image(tod, name).getchannel("A").histogram()
+        lit = sum(hist) - hist[0]
+        r = room.SUN_R
+        whole = sum(1 for dy in range(-r, r + 1) for dx in range(-r, r + 1)
+                    if dx * dx + dy * dy <= r * r + 0.5)
+        if lit < whole * 0.75:
+            msgs.append("WEATHER: %s 的太陽只有 %d/%d 格落在玻璃上，被窗框吃掉太多"
+                        % (tod, lit, whole))
+        else:
+            msgs.append("sun %-5s %d/%d px on glass" % (tod, lit, whole))
+
+    msgs.append("weather dim %s x%s  fog %s @%.2f  rain %dpx/%dframes @%dms"
+                % (room.DIM,
+                   "/".join("%.2f" % room.DIM_OPACITY[k]
+                            for k in sorted(room.DIM_OPACITY)),
+                   room.FOG, room.FOG_ALPHA,
+                   room.RAIN_STEP, frames, room.RAIN_MS))
+    return msgs
+
+
 def lint_clip():
     """有沒有物件想畫到自己的格子外面去。
 
@@ -1658,7 +1906,7 @@ if __name__ == "__main__":
     print("\n--- room ---")
     room_problems = (lint_room() + lint_hud_palette() + lint_glow()
                      + lint_emissive_owner() + lint_clip() + lint_gifts()
-                     + lint_occlude())
+                     + lint_occlude() + lint_weather())
     print("\n".join(room_problems))
 
     # 這幾個關鍵字是「圖會壞掉」的錯，不是「圖不好看」。
@@ -1670,7 +1918,7 @@ if __name__ == "__main__":
              or m.startswith("BLINK ") or m.startswith("HUD palette:")
              or m.startswith("GLOW: ") or m.startswith("EMISSIVE: ")
              or m.startswith("CLIP: ") or m.startswith("GIFTS: ")
-             or m.startswith("OCCLUDE: ")]
+             or m.startswith("OCCLUDE: ") or m.startswith("WEATHER: ")]
     if fatal:
         sys.exit("\nfix the map first, nothing rendered")
 
@@ -1684,6 +1932,7 @@ if __name__ == "__main__":
     build_room_screen()
     build_room_sky()
     build_room_front()
+    build_room_weather()
     build_gifts()
     bumped = write_room_data()
     build_room_tiles()
@@ -1695,8 +1944,11 @@ if __name__ == "__main__":
     print("\nwrote " + SHEET_PNG + " / proof.png / squint.png / " + gifs)
     lamps = " ".join("room-%s.png" % o for o in room.LIGHTS)
     fronts = " ".join("room-front-%s.png" % o for o in sorted(room.OCCLUDERS))
+    wx = ("room-weather-dim.png room-weather-fog.png "
+          + " ".join("room-weather-%s.png" % k for k in sorted(room.RAIN_KINDS))
+          + " " + " ".join("room-sun-%s.png" % t for t in sorted(room.SUN)))
     print("wrote " + rooms + " / room-light.png / " + lamps
-          + " / room-screen.png / " + skies + " / " + fronts)
+          + " / room-screen.png / " + skies + " / " + fronts + " / " + wx)
     print("wrote gifts.png (%d)" % len(gifts.GIFTS))
     print("wrote room-tiles.png / room-view.png / room-tod.png")
     print("wrote ../room-data.js")

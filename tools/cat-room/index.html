@@ -28,7 +28,7 @@
   <link rel="preload" as="font" type="font/woff2" href="../../fonts/cubic-11.woff2" crossorigin />
   <script src="../../theme.js?v=1"></script>
   <link rel="stylesheet" href="../../style.css?v=10" />
-  <link rel="stylesheet" href="style.css?v=34" />
+  <link rel="stylesheet" href="style.css?v=35" />
 </head>
 <body>
   <!--
@@ -111,6 +111,30 @@
         <div class="room-sky" data-when="dawn" aria-hidden="true"></div>
         <div class="room-sky" data-when="dusk" aria-hidden="true"></div>
         <div class="room-sky" data-when="night" aria-hidden="true"></div>
+        <!--
+          窗外的天氣（待辦第 6 項）。**兩層，因為陰天不是一張貼紙**——
+          一層灰蓋在白天的藍天上會變暗（對的），蓋在夜晚的深藍上會把它提亮
+          （錯的）。所以壓暗那層走 multiply（按比例，四個時段自動都對），
+          雨絲／霧那層正常疊上去。完整的理由在 style.css 的 .room-weather-dim。
+
+          跟天空那四層一樣沒有座標，靠 inset: 0 對位，圖是 art/pixel.py 照
+          同一份玻璃遮罩產的。開關寫在 .room 的 data-wx 上（script.js 的
+          applyWeather()），晴天不留屬性、兩層都不開。
+
+          **這兩個要排在熱區前面。** 它們 z-index 6 跟 .hotspot 同分，
+          同分的時候比的是誰寫在後面——搬到熱區後面會蓋住熱區的焦點框。
+        -->
+        <div class="room-weather-dim" aria-hidden="true"></div>
+        <div class="room-weather" aria-hidden="true"></div>
+        <!--
+          晴天的太陽。**只有晴天畫，而且沒有夜晚那張**——夜裡沒有太陽。
+          它的存在是為了讓陰天看得出來：陰天就是太陽不見了。
+          結構照上面那四層天空抄（一個時段一個元素、交叉淡入），
+          不是一個元素換圖——換圖是硬切的，轉場時只有太陽會跳一下。
+        -->
+        <div class="room-sun" data-when="dawn" aria-hidden="true"></div>
+        <div class="room-sun" data-when="day" aria-hidden="true"></div>
+        <div class="room-sun" data-when="dusk" aria-hidden="true"></div>
         <!--
           吊燈打出來的光。**跟上面那層發光層是分開的兩張圖**，因為燈點得下去
           可以關掉，而窗不行——合成一張只會有一個不透明度，半夜關個燈
@@ -302,7 +326,7 @@
     改動橫跨兩支的時候兩支都要加。眨眼就是這樣：欄數在 sprites.js、
     往右跳幾欄在 script.js，只到一半的話會拿舊的欄數去除新的圖。
   -->
-  <script src="world.js?v=10"></script>
+  <script src="world.js?v=11"></script>
   <script src="cat.js?v=2"></script>
   <script src="save.js?v=3"></script>
   <script src="sprites.js?v=6"></script>
@@ -316,7 +340,7 @@
     畫面看起來是對的，只有座標默默錯掉。`python pixel.py` 會在這支
     真的變了的時候印一行提醒（見 write_room_data()）。
   -->
-  <script src="room-data.js?v=12"></script>
-  <script src="script.js?v=23"></script>
+  <script src="room-data.js?v=13"></script>
+  <script src="script.js?v=24"></script>
 </body>
 </html>

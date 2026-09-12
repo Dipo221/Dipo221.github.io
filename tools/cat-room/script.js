@@ -22,6 +22,9 @@
    * 2026-09-10 頁尾整塊刪掉，這裡跟著收成一顆。
    */
   const motionBtnMenu = document.getElementById("motion-menu-item");
+  // 窗外的天氣：雨絲／霧那一層（待辦第 6 項）。壓暗的那一層純靠 CSS，
+  // 不用抓——它只跟著 data-wx 改不透明度，沒有東西要用 JS 推
+  const weatherEl = document.querySelector(".room-weather");
 
   const MOTION_KEY = "cat-room:motion";
 
@@ -648,6 +651,128 @@
   const OCCLUDERS = (RD && RD.occluders) ? Object.keys(RD.occluders) : [];
   const NO_STOP = (RD && RD.noStop) || [];
 
+  /* ---------------------------------------------------------------- */
+  /* 窗外的天氣（待辦第 6 項）                                          */
+
+  /*
+   * 窗外跟著淡水真實的天氣變。兩條規矩，跟接 Abacus 那次同一套：
+   *
+   * 1. **服務掛掉不能影響遊戲。** 抓不到就維持晴天，貓照常跑。
+   *    整頁離線也要能玩，那本來就是這個東西的優點。
+   * 2. **要快取。** 每次開頁都打一次 API 是浪費也不禮貌。
+   *    存 localStorage 半小時，天氣本來就不會分鐘級地變。
+   *
+   * 純邏輯（組網址、翻代碼、判斷過期）全在 world.js，那支測得到。
+   * 這裡只有 fetch、localStorage 跟碰 DOM 這三件測不到的事。
+   *
+   * **這一段排在 RD 後面是必要的，不是隨手放的**：快取命中的時候
+   * syncWeather() 會同步呼叫 applyWeather()，而那支要讀 WX 的格數。
+   * 搬到 RD 前面的話，開頁第一下就會踩到 const 的暫時死區。
+   */
+  const WEATHER_KEY = "cat-room:weather";
+  const WX = (RD && RD.weather) || { frames: 1, ms: 100 };
+  let lastRainFrame = -1;
+
+  function cachedWeather() {
+    try {
+      const raw = localStorage.getItem(WEATHER_KEY);
+      if (!raw) return null;
+      const c = JSON.parse(raw);
+      if (!c || typeof c.at !== "number" || typeof c.kind !== "string") return null;
+      return World.weatherFresh(c.at, Date.now()) ? c.kind : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function rememberWeather(kind) {
+    try {
+      localStorage.setItem(WEATHER_KEY, JSON.stringify({ kind: kind, at: Date.now() }));
+    } catch (err) {
+      // 存不進去就每次重抓，功能還在，只是沒省到那一次請求
+    }
+  }
+
+  function applyWeather(kind) {
+    /*
+     * 晴天也要寫上去，不能像以前那樣把屬性拿掉——太陽那三層是靠
+     * `[data-wx="clear"]` 選出來的（見 style.css 的 .room-sun）。
+     *
+     * **抓不到天氣的時候屬性照樣是空的**，那是刻意的：那時候我們不知道
+     * 外面是晴是雨，掛一顆太陽上去是在騙人。空的 = 退回只看時間的房間。
+     */
+    room.setAttribute("data-wx", kind || "clear");
+
+    /*
+     * 雨是一條 WX.frames 格的橫圖帶，霧只有一張。
+     * 圖帶要先把 background-size 撐成 N 倍寬，移 position 才是在換格。
+     * 霧走 CSS 原本的 100% 100%，所以這裡把行內值清掉就好。
+     */
+    const strip = kind === "rain" || kind === "storm";
+    if (weatherEl) {
+      weatherEl.style.backgroundSize = strip ? (WX.frames * 100) + "% 100%" : "";
+      lastRainFrame = -1;
+    }
+  }
+
+  /*
+   * `?wx=storm` 之類的網址參數，強制指定天氣。
+   *
+   * **這是檢查用的開關，不是給訪客的功能**，但它是必要的：五種天氣裡
+   * 有四種平常根本看不到——淡水大部分時候是晴天，不加這個的話以後每次
+   * 動到這一層都要等真的下雨才驗得了。
+   *
+   * 兩條規矩：
+   *
+   * 1. **不寫進快取。** 強制的值進了快取，接下來半小時的正常造訪都會
+   *    看到假天氣，而且清不掉（除非手動刪 localStorage）。
+   * 2. **不認得的值就當沒寫。** `?wx=香蕉` 要退回真的天氣，
+   *    不是退回一扇壞掉的窗。名單直接取 world.js 的那份，不另外抄一份。
+   */
+  function forcedWeather() {
+    let want = null;
+    try {
+      want = new URLSearchParams(location.search).get("wx");
+    } catch (err) {
+      return null;
+    }
+    return want && World.WMO[want] ? want : null;
+  }
+
+  function syncWeather() {
+    const forced = forcedWeather();
+    if (forced) {
+      applyWeather(forced);
+      return;
+    }
+
+    const hit = cachedWeather();
+    if (hit) {
+      applyWeather(hit);
+      return;
+    }
+    fetch(World.weatherUrl())
+      .then(function (r) {
+        if (!r.ok) throw new Error("weather " + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        const code = data && data.current && data.current.weather_code;
+        if (typeof code !== "number") throw new Error("weather: no code");
+        const kind = World.weatherFromCode(code);
+        rememberWeather(kind);
+        applyWeather(kind);
+      })
+      .catch(function () {
+        // 沒有天氣就沒有天氣。**不要在畫面上講**——
+        // 訪客沒有要求看天氣預報，一個錯誤訊息比一扇沒下雨的窗更礙眼
+      });
+  }
+
+  syncWeather();
+  // 分頁掛整天的話，天氣也要跟著換。跟 syncLight 同一個作風
+  setInterval(syncWeather, World.WEATHER_TTL);
+
   /*
    * 房間與貓的**來源像素**。畫面上的位置全部是「來源像素的比例 x 現在多大」，
    * 所以視窗怎麼縮都不用重算，也不用去量 DOM。
@@ -956,6 +1081,27 @@
       const fy = m.rows > 1 ? (f.row / (m.rows - 1)) * 100 : 0;
       spriteEl.style.backgroundPosition = fx + "% " + fy + "%";
     }
+
+    stepRain(t);
+  }
+
+  /*
+   * 讓雨往下掉。播法跟貓的 sprite 一樣：一條橫的圖帶，移 background-position。
+   *
+   * **格數跟幀速都讀 room-data.js，不寫死。** 那兩個數字是
+   * art/room.py 的 RAIN_PERIOD / RAIN_STEP 除出來的——雨滴走完一個週期
+   * 剛好接回第一格，所以格數改了這裡不用動。
+   *
+   * 吃絕對時間 t，跟貓的狀態無關：雨不會因為貓換了動作而跳一下。
+   * reduced-motion 時停在第 0 格——雨還在，只是不動。
+   * 那比整個拿掉好：使用者要的是不要動的東西，不是不知道外面在下雨。
+   */
+  function stepRain(t) {
+    if (!weatherEl || WX.frames < 2) return;
+    const f = motion === "full" ? Math.floor(t / WX.ms) % WX.frames : 0;
+    if (f === lastRainFrame) return;
+    lastRainFrame = f;
+    weatherEl.style.backgroundPosition = (f / (WX.frames - 1)) * 100 + "% 0";
   }
 
   /*
