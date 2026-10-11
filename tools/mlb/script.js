@@ -1317,11 +1317,27 @@ const MLB = (function () {
     });
 
     if (!rows.length) {
+      const label = isHit ? "連續安打" : "連續上壘";
+      /*
+       * 榜空著有兩種原因，講錯了比不講還糟。
+       *
+       * 「沒有人達到 5 場」聽起來像還在數、只是剛好沒人上榜。但這個榜算的是
+       * 還在延續中的例行賽連續場次（理由見 hitstreaks.py），例行賽一打完
+       * 它必然空到明年開季——那時候要說的是「例行賽結束了」，不是「沒人達標」。
+       *
+       * phase 是後來才加的欄位，舊的 data.json 沒有；那就退回原本的說法。
+       */
+      const phase = data.phase;
+      if (phase === "post" || phase === "off") {
+        return notice("例行賽已經結束，" + label + "只計例行賽的場次");
+      }
+      if (phase === "pre") {
+        return notice("例行賽還沒開始，" + label + "只計例行賽的場次");
+      }
       return notice(
         activeTeam
           ? "這一隊目前沒有人在榜上"
-          : "目前沒有人的" + (isHit ? "連續安打" : "連續上壘") +
-            "達到 " + streakMin(view) + " 場"
+          : "目前沒有人的" + label + "達到 " + streakMin(view) + " 場"
       );
     }
 

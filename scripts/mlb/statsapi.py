@@ -91,6 +91,29 @@ def standings(season):
     return rows
 
 
+def season_dates(season):
+    """
+    這一季的行事曆：例行賽與季後賽的起訖日。
+
+    健檢要靠它分辨「榜是空的因為根本沒有比賽」跟「榜是空的因為 API 壞了」。
+    用月份猜會錯，而且是錯在最需要它的時候：十月既是例行賽尾聲也是季後賽，
+    一月的 season 連賽程都還沒開始。
+
+    還沒公佈的年份回 None（endpoint 給的是 200 加一個空陣列，不是 404），
+    由呼叫端決定怎麼退場——不要在這裡編一個假日期出來。
+    """
+    rows = get("/v1/seasons", sportId=1, season=season).get("seasons") or []
+    if not rows:
+        return None
+    s = rows[0]
+    return {
+        "regularStart": s.get("regularSeasonStartDate"),
+        "regularEnd": s.get("regularSeasonEndDate"),
+        "postStart": s.get("postSeasonStartDate"),
+        "postEnd": s.get("postSeasonEndDate"),
+    }
+
+
 def transactions(start, end):
     """區間內所有異動。整季一次抓實測 4.3MB / 3.8 秒。"""
     data = get("/v1/transactions", sportId=1, startDate=start, endDate=end)

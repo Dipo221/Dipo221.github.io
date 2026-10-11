@@ -42,6 +42,11 @@ CALLUP_DAYS = 14     # 新秀登板看近 14 天
 # IL 相關的名單狀態碼（roster 快照用）
 IL_CODES = ("D7", "D10", "D15", "D60")
 
+# 例行賽開打多久以後才開始檢查連續場次的榜。
+# 門檻是 5 場與 10 場，開季頭幾天全聯盟都還沒打到 10 場，那時候空的是對的。
+# 30 天以後每隊都打了快 30 場，兩個榜都空就是真的壞了。
+STREAK_GRACE_DAYS = 30
+
 
 def log(msg):
     print(msg, flush=True)
@@ -51,12 +56,41 @@ def iso(d):
     return d.isoformat() if d else None
 
 
+def phase_of(cal, today):
+    """
+    今天落在球季的哪一段：pre／regular／post／off。
+
+    這個值取代原本「月份在 4 到 10 之間就算球季中」的判斷。那個寫法在十月是錯的：
+    例行賽九月底就打完了，季後賽只剩八隊在打，連續安打與連續上壘的榜
+    必然是空的（榜只算例行賽，理由見 hitstreaks.py），健檢卻還當成故障讓整輪失敗。
+
+    行事曆查不到就回 None，健檢那邊會跳過跟球季有關的那幾條。
+    """
+    if not cal:
+        return None
+    t = iso(today)
+    if cal.get("regularStart") and t < cal["regularStart"]:
+        return "pre"
+    if cal.get("regularEnd") and t <= cal["regularEnd"]:
+        return "regular"
+    if cal.get("postEnd") and t <= cal["postEnd"]:
+        return "post"
+    return "off"
+
+
 def build(today=None):
     api = statsapi
     today = today or date.today()
     season = today.year
 
     log("MLB 追蹤器：開始（%s）" % today)
+
+    log("  球季行事曆…")
+    cal = api.season_dates(season)
+    phase = phase_of(cal, today)
+    log("    %s 年是 %s（例行賽 %s ~ %s）"
+        % (season, phase or "不知道（行事曆還沒公佈）",
+           (cal or {}).get("regularStart") or "?", (cal or {}).get("regularEnd") or "?"))
 
     log("  球隊…")
     teams = api.teams()
@@ -274,6 +308,11 @@ def build(today=None):
     payload = {
         "generatedAt": now,
         "season": season,
+        # 球季階段與行事曆。健檢靠它判斷哪些榜現在空著是正常的，
+        # 前端靠它把「目前沒有人達到 5 場」換成「例行賽已經結束」——
+        # 同一句話在九月是對的，在十月就是在騙人。
+        "phase": phase,
+        "seasonDates": cal,
         "windows": {
             "moves": MOVE_DAYS,
             "hardHit": HARDHIT_DAYS,
@@ -318,12 +357,16 @@ def health_check(payload, players_payload):
     """
     寫檔前的健檢。API 掛掉或改格式時，寧可整輪失敗保留上一份好資料，
     也不要 commit 一份半空的檔案上去把畫面洗掉。
+
+    要守住的分界是「空的因為壞了」跟「空的因為本來就沒有」。
+    分錯的兩種代價不一樣，但都是真的壞：
+      判太嚴 → 季後賽與季外每小時寄一封失敗通知，久了就不會再看通知
+      判太鬆 → 真的壞掉時悄悄 commit 一份空檔案，畫面被洗掉卻沒人知道
+    所以除了球隊數與球員索引是無條件檢查，其餘都問過 payload["phase"] 才決定要不要守。
     """
     problems = []
     if len(payload.get("teams", [])) != 30:
         problems.append("球隊數不是 30（%d）" % len(payload.get("teams", [])))
-    if not payload.get("streaks", {}).get("wins") and not payload.get("streaks", {}).get("losses"):
-        problems.append("連勝連敗兩邊都空的")
 
     # 30 隊各 40 人，扣掉空缺怎麼樣都有 1000 以上。少於這個數字表示
     # roster 迴圈中間有隊失敗了，索引缺一塊會讓前端的位置篩選悄悄漏人。
@@ -331,20 +374,47 @@ def health_check(payload, players_payload):
     if n_players < 1000:
         problems.append("球員索引只有 %d 人，太少了" % n_players)
 
-    # 球季中傷兵一定不會少於 50 人；季外沒有比賽就不強制
-    month = int(payload["generatedAt"][5:7])
-    in_season = 4 <= month <= 10
-    if in_season and len(payload.get("ilBoard", [])) < 50:
-        problems.append("球季中傷兵只有 %d 人，太少了" % len(payload.get("ilBoard", [])))
-    # 球季中 14 天窗一定有人上榜；空的表示快取壞了或 playByPlay 全數失敗
-    if in_season and not payload.get("hardHits", {}).get("d14"):
-        problems.append("球季中強擊球 14 天榜是空的")
+    """
+    剩下的幾條都是「榜不該是空的」，而這件事只在有比賽可打的時候成立。
+    判斷依據是 statsapi 的行事曆，不是月份——月份猜錯的代價是每小時寄一封
+    失敗通知，而且錯的那段剛好是季後賽，正是最想看這個看板的時候。
+
+    行事曆查不到（phase 是 None）就全部跳過：那是「不知道現在算哪一段」，
+    不是「現在沒有比賽」，寧可放過一輪也不要亂擋。
+    """
+    phase = payload.get("phase")
+    regular = phase == "regular"
+    has_games = phase in ("regular", "post")
+
+    # 有比賽的期間傷兵一定不會少於 50 人。季外會陸續被啟動，不強制。
+    if has_games and len(payload.get("ilBoard", [])) < 50:
+        problems.append("%s 期間傷兵只有 %d 人，太少了"
+                        % (phase, len(payload.get("ilBoard", []))))
+
+    # 14 天窗裡有比賽就一定有人上榜；空的表示快取壞了或 playByPlay 全數失敗。
+    # 季後賽的場次也算在這個榜裡，所以這條在十月照樣守得住。
+    if has_games and not payload.get("hardHits", {}).get("d14"):
+        problems.append("%s 期間強擊球 14 天榜是空的" % phase)
+
+    # 連勝連敗讀的是 regularSeason standings：球季還沒開打的年份它回空陣列
+    #（實測 2027 年在 2026 年底查就是 0 筆），那時候空的是對的。
+    if phase != "pre" and not payload.get("streaks", {}).get("wins") \
+            and not payload.get("streaks", {}).get("losses"):
+        problems.append("連勝連敗兩邊都空的")
 
     streaks = payload.get("hitStreaks") or {}
-    # 五月起才檢查：門檻是 5 場與 10 場，四月頭幾天全聯盟都還沒打到 10 場，
-    # 那時候空的是對的。五月一號每隊都打了快 30 場，兩個榜都空就是壞了。
-    if month >= 5 and in_season and not streaks.get("hit") and not streaks.get("onBase"):
-        problems.append("球季中連續安打與連續上壘兩個榜都是空的")
+    """
+    連續安打與連續上壘只有例行賽中才該有人在榜上，兩個條件都要成立：
+
+      1. 現在是例行賽。榜算的是「還在延續中」而且只採計例行賽場次，
+         所以例行賽最後一天過完，這兩個榜必然空到明年開季——這是定義，不是故障。
+      2. 已經開打一段時間。門檻是 5 場與 10 場，開季頭幾天還沒人打滿。
+    """
+    start = parse.parse_iso((payload.get("seasonDates") or {}).get("regularStart"))
+    today = parse.parse_iso(payload["generatedAt"][:10])
+    warmed = bool(start and today and (today - start).days >= STREAK_GRACE_DAYS)
+    if regular and warmed and not streaks.get("hit") and not streaks.get("onBase"):
+        problems.append("例行賽中連續安打與連續上壘兩個榜都是空的")
 
     # 每一場都要有安打（上壘）才算連續，所以總數不可能少於場次。
     # 少了就表示兩個榜的欄位串了，或是窗內與整季兩份資料在接縫上重複算了場次。
