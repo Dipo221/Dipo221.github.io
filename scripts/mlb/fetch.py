@@ -58,24 +58,79 @@ def iso(d):
 
 def phase_of(cal, today):
     """
-    今天落在球季的哪一段：pre／regular／post／off。
+    今天落在球季的哪一段：off／spring／regular／post。
 
     這個值取代原本「月份在 4 到 10 之間就算球季中」的判斷。那個寫法在十月是錯的：
     例行賽九月底就打完了，季後賽只剩八隊在打，連續安打與連續上壘的榜
     必然是空的（榜只算例行賽，理由見 hitstreaks.py），健檢卻還當成故障讓整輪失敗。
 
-    行事曆查不到就回 None，健檢那邊會跳過跟球季有關的那幾條。
+    春訓單獨切一段，因為休賽期停更之後是從春訓開打那天恢復的（見 UPDATING）。
+
+    行事曆查不到就回 None，那是「不知道現在算哪一段」而不是「現在沒有比賽」，
+    下游一律選最保守的那條路：照常更新、健檢放寬。
     """
     if not cal:
         return None
     t = iso(today)
+    # 季後賽結束到隔年春訓開打之間都是休賽期。跨年所以不能只比日期字串：
+    # 11 月時 postEnd 是今年的，隔年 1 月時 springStart 已經換成新一季的。
+    if cal.get("postEnd") and t > cal["postEnd"]:
+        return "off"
+    if cal.get("springStart") and t < cal["springStart"]:
+        return "off"
     if cal.get("regularStart") and t < cal["regularStart"]:
-        return "pre"
+        return "spring"
     if cal.get("regularEnd") and t <= cal["regularEnd"]:
         return "regular"
-    if cal.get("postEnd") and t <= cal["postEnd"]:
-        return "post"
-    return "off"
+    return "post"
+
+
+"""
+每個階段這一輪要更新哪幾組資料。
+
+休賽期（季後賽結束到春訓開打）停更，是因為那時候更新也沒有東西會變，
+但新聞與異動照跑——MLB 最熱鬧的交易與自由球員就是在冬天。
+
+  batting    強擊球、barrel、近期成績排行。整輪最貴的部分（逐場 playByPlay），
+             春訓到例行賽結束之間才抓。
+  streaks    連續安打與連續上壘。只採計例行賽場次，所以也只在例行賽更新——
+             春訓就開始算的話會把春訓的比賽混進連續場次裡。
+  standings  連勝連敗。讀的是 regularSeason standings，例行賽一結束就凍住，
+             繼續更新只會顯示九月底的舊數字裝成現在的。
+
+沒列在這裡的（球隊、球員索引、傷兵名單、名單異動、新聞）每一輪都更新。
+"""
+UPDATING = {
+    "off":     {"batting": False, "streaks": False, "standings": False},
+    "spring":  {"batting": True,  "streaks": False, "standings": False},
+    "regular": {"batting": True,  "streaks": True,  "standings": True},
+    "post":    {"batting": False, "streaks": False, "standings": False},
+}
+
+# 行事曆查不到的時候照常全部更新：寧可多做一輪，不要在不確定的時候悄悄停更
+UPDATING_ALL = {"batting": True, "streaks": True, "standings": True}
+
+
+def resume_dates(api, cal, phase, season, today):
+    """
+    停更的組別什麼時候恢復，回 {"spring": ..., "regular": ...}。
+
+    不能直接拿 cal 裡的日期：season 是 today.year，所以季後賽到十二月之間
+    查到的是今年的行事曆，而今年的春訓與開幕戰早就過去了。
+    照抄的話畫面上會寫「2026-02-20 春訓開打後恢復」——一個去年的日期，
+    比不寫還糟。那段期間要問的是下一季。
+
+    隔年一月 season 自己就會翻成新的一年，那時候 cal 已經是對的，不用多問。
+    下一季還沒公佈就回 None（2028 在 2026 年底查就是空的），
+    前端只會少掉「X/X 恢復」那半句，不會壞掉。
+    """
+    nxt = cal
+    if phase in ("post", "off") and (not cal or (cal.get("springStart") or "") <= iso(today)):
+        nxt = api.season_dates(season + 1)
+    return {
+        "spring": (nxt or {}).get("springStart"),
+        "regular": (nxt or {}).get("regularStart"),
+    }
 
 
 def build(today=None):
@@ -88,15 +143,26 @@ def build(today=None):
     log("  球季行事曆…")
     cal = api.season_dates(season)
     phase = phase_of(cal, today)
+    updating = UPDATING.get(phase, UPDATING_ALL)
+    resume = resume_dates(api, cal, phase, season, today)
     log("    %s 年是 %s（例行賽 %s ~ %s）"
         % (season, phase or "不知道（行事曆還沒公佈）",
            (cal or {}).get("regularStart") or "?", (cal or {}).get("regularEnd") or "?"))
+    paused = [k for k, v in sorted(updating.items()) if not v]
+    if paused:
+        log("    這輪停更：%s（春訓 %s 恢復，開幕戰 %s 恢復）"
+            % ("、".join(paused), resume["spring"] or "?", resume["regular"] or "?"))
 
     log("  球隊…")
     teams = api.teams()
 
-    log("  戰績與連勝連敗…")
-    standings = api.standings(season)
+    if updating["standings"]:
+        log("  戰績與連勝連敗…")
+        standings = api.standings(season)
+    else:
+        # 例行賽結束就凍住了，繼續抓只會把九月底的數字裝成現在的
+        log("  戰績與連勝連敗…停更")
+        standings = []
 
     log("  整季異動…")
     season_start = date(season, 2, 1)
@@ -204,46 +270,65 @@ def build(today=None):
 
     # ---- 強擊球與 barrel（增量）----
     # 快取抓的是最長的那個窗（14 天），三個榜都從同一份快取算，不用多抓任何一場。
-    log("  強擊球與 barrel…")
+    #
+    # 這一段是整輪最貴的部分：逐場打 playByPlay，首次回填要抓一百多場。
+    # 休賽期停更省下的幾乎全是這裡——不是為了省 CI 時間，是沒有比賽可以抓。
     hh_start = today - timedelta(days=HARDHIT_DAYS)
-    games = api.schedule(iso(hh_start), iso(today))
-    cache = hardhit.load_cache(CACHE_PATH)
-    fetched = hardhit.refresh(api, games, cache, log=log)
-    hardhit.save_cache(CACHE_PATH, cache)
-    hard_hits = hardhit.boards(cache, today, "hh")
-    barrels = hardhit.boards(cache, today, "br")
-    log("    強擊球 %s，barrel %s（這輪抓了 %d 場）"
-        % ("／".join("%s %d 人" % (k, len(v)) for k, v in sorted(hard_hits.items())),
-           "／".join("%s %d 人" % (k, len(v)) for k, v in sorted(barrels.items())),
-           fetched))
-
-    # ---- 連續安打與連續上壘 ----
-    # 也是吃同一份快取，但多打一到兩個請求：窗只有 14 天，
-    # 一路數到窗頭還沒斷的人可能有更長的連續場次，那些人要用整季逐場補。
-    # 候選人通常 30 出頭，一個批次請求就問完了，理由寫在 hitstreaks 的 docstring。
-    log("  連續安打與連續上壘…")
-    cands = hitstreaks.candidates(cache)
-    logs = api.game_logs(cands, season) if cands else {}
-    hit_streaks = hitstreaks.boards(cache, logs, today)
-    log("    候選 %d 人（補了 %d 人的整季）；連續安打 %d 人、連續上壘 %d 人"
-        % (len(cands), len(logs), len(hit_streaks["hit"]), len(hit_streaks["onBase"])))
-
-    # ---- 成績排行（次要視圖）----
-    log("  近期成績排行…")
+    hard_hits = {}
+    barrels = {}
+    hit_streaks = {"hit": [], "onBase": []}
     hot = []
-    for split in api.date_range_leaders("hitting", iso(hh_start), iso(today), "homeRuns", 25):
-        st = split.get("stat", {})
-        hot.append(
-            {
-                "playerId": split.get("player", {}).get("id"),
-                "name": split.get("player", {}).get("fullName", ""),
-                "teamId": split.get("team", {}).get("id"),
-                "hr": st.get("homeRuns"),
-                "avg": st.get("avg"),
-                "ops": st.get("ops"),
-                "rbi": st.get("rbi"),
-            }
-        )
+
+    if updating["batting"]:
+        log("  強擊球與 barrel…")
+        games = api.schedule(iso(hh_start), iso(today))
+        cache = hardhit.load_cache(CACHE_PATH)
+        fetched = hardhit.refresh(api, games, cache, log=log)
+        hardhit.save_cache(CACHE_PATH, cache)
+        hard_hits = hardhit.boards(cache, today, "hh")
+        barrels = hardhit.boards(cache, today, "br")
+        log("    強擊球 %s，barrel %s（這輪抓了 %d 場）"
+            % ("／".join("%s %d 人" % (k, len(v)) for k, v in sorted(hard_hits.items())),
+               "／".join("%s %d 人" % (k, len(v)) for k, v in sorted(barrels.items())),
+               fetched))
+
+        # ---- 連續安打與連續上壘 ----
+        # 也是吃同一份快取，但多打一到兩個請求：窗只有 14 天，
+        # 一路數到窗頭還沒斷的人可能有更長的連續場次，那些人要用整季逐場補。
+        # 候選人通常 30 出頭，一個批次請求就問完了，理由寫在 hitstreaks 的 docstring。
+        #
+        # 春訓有比賽但這兩個榜不更新：它們只採計例行賽場次，而候選人是從快取挑的，
+        # 快取在春訓期間裝的全是春訓場次——算下去就是把春訓的連續安打印在畫面上。
+        if updating["streaks"]:
+            log("  連續安打與連續上壘…")
+            cands = hitstreaks.candidates(cache)
+            logs = api.game_logs(cands, season) if cands else {}
+            hit_streaks = hitstreaks.boards(cache, logs, today)
+            log("    候選 %d 人（補了 %d 人的整季）；連續安打 %d 人、連續上壘 %d 人"
+                % (len(cands), len(logs),
+                   len(hit_streaks["hit"]), len(hit_streaks["onBase"])))
+        else:
+            log("  連續安打與連續上壘…停更")
+
+        # ---- 成績排行（次要視圖）----
+        log("  近期成績排行…")
+        for split in api.date_range_leaders(
+            "hitting", iso(hh_start), iso(today), "homeRuns", 25
+        ):
+            st = split.get("stat", {})
+            hot.append(
+                {
+                    "playerId": split.get("player", {}).get("id"),
+                    "name": split.get("player", {}).get("fullName", ""),
+                    "teamId": split.get("team", {}).get("id"),
+                    "hr": st.get("homeRuns"),
+                    "avg": st.get("avg"),
+                    "ops": st.get("ops"),
+                    "rbi": st.get("rbi"),
+                }
+            )
+    else:
+        log("  強擊球、barrel、連續場次、成績排行…停更（沒有例行賽場次可以抓）")
 
     # ---- 新秀登板 ----
     log("  新秀登板…")
@@ -313,6 +398,14 @@ def build(today=None):
         # 同一句話在九月是對的，在十月就是在騙人。
         "phase": phase,
         "seasonDates": cal,
+        # 哪幾組這輪有更新。停更的榜在前端要寫「暫停更新」而不是空榜：
+        # 空榜的意思是「有在算，剛好沒人上榜」，跟「這段時間不算」是兩件事。
+        # 這份旗標跟著資料一起送，政策才只有一個出處——前端自己照月份再判一次
+        # 就是等著跟 UPDATING 走鐘。
+        "updating": updating,
+        # 停更的組別什麼時候恢復。不能讓前端自己從 seasonDates 推：
+        # 季後賽到十二月之間那份行事曆是今年的，春訓日期已經過去了，見 resume_dates。
+        "resume": resume,
         "windows": {
             "moves": MOVE_DAYS,
             "hardHit": HARDHIT_DAYS,
@@ -375,46 +468,59 @@ def health_check(payload, players_payload):
         problems.append("球員索引只有 %d 人，太少了" % n_players)
 
     """
-    剩下的幾條都是「榜不該是空的」，而這件事只在有比賽可打的時候成立。
-    判斷依據是 statsapi 的行事曆，不是月份——月份猜錯的代價是每小時寄一封
-    失敗通知，而且錯的那段剛好是季後賽，正是最想看這個看板的時候。
+    剩下的幾條都是「榜不該是空的」，而那只對「這輪真的有更新」的組別成立。
+    停更的組別本來就會是空的，那是設定，不是故障。
 
-    行事曆查不到（phase 是 None）就全部跳過：那是「不知道現在算哪一段」，
-    不是「現在沒有比賽」，寧可放過一輪也不要亂擋。
+    刻意讀 payload["updating"] 而不是自己照 phase 再推一次：
+    停更政策的正本是 UPDATING，健檢再推一次就等著兩邊走鐘——
+    真正危險的是走鐘的方向剛好是「健檢以為該有資料、build 卻沒抓」，
+    那會變成每小時一封失敗通知，也就是這整件事一開始的病灶。
     """
-    phase = payload.get("phase")
-    regular = phase == "regular"
-    has_games = phase in ("regular", "post")
+    updating = payload.get("updating") or UPDATING_ALL
 
-    # 有比賽的期間傷兵一定不會少於 50 人。季外會陸續被啟動，不強制。
-    if has_games and len(payload.get("ilBoard", [])) < 50:
-        problems.append("%s 期間傷兵只有 %d 人，太少了"
-                        % (phase, len(payload.get("ilBoard", []))))
+    # 傷兵名單每一輪都更新，所以不分階段都該有人。50 人是球季中的保守下限，
+    # 休賽期會陸續被啟動，那時候只要不是整個空掉就好。
+    il = len(payload.get("ilBoard", []))
+    floor = 50 if updating.get("batting") else 1
+    if il < floor:
+        problems.append("傷兵只有 %d 人，太少了（下限 %d）" % (il, floor))
 
-    # 14 天窗裡有比賽就一定有人上榜；空的表示快取壞了或 playByPlay 全數失敗。
-    # 季後賽的場次也算在這個榜裡，所以這條在十月照樣守得住。
-    if has_games and not payload.get("hardHits", {}).get("d14"):
-        problems.append("%s 期間強擊球 14 天榜是空的" % phase)
+    # 14 天窗裡有比賽就一定有人上榜；空的表示快取壞了或 playByPlay 全數失敗
+    if updating.get("batting") and not payload.get("hardHits", {}).get("d14"):
+        problems.append("強擊球 14 天榜是空的")
 
-    # 連勝連敗讀的是 regularSeason standings：球季還沒開打的年份它回空陣列
-    #（實測 2027 年在 2026 年底查就是 0 筆），那時候空的是對的。
-    if phase != "pre" and not payload.get("streaks", {}).get("wins") \
+    if updating.get("standings") and not payload.get("streaks", {}).get("wins") \
             and not payload.get("streaks", {}).get("losses"):
         problems.append("連勝連敗兩邊都空的")
 
     streaks = payload.get("hitStreaks") or {}
     """
-    連續安打與連續上壘只有例行賽中才該有人在榜上，兩個條件都要成立：
-
-      1. 現在是例行賽。榜算的是「還在延續中」而且只採計例行賽場次，
-         所以例行賽最後一天過完，這兩個榜必然空到明年開季——這是定義，不是故障。
-      2. 已經開打一段時間。門檻是 5 場與 10 場，開季頭幾天還沒人打滿。
+    連續場次的榜還要多一個條件：開季頭幾天全聯盟都還沒人打滿 10 場，
+    那時候空的是對的（門檻見 hitstreaks.MIN_GAMES）。
     """
     start = parse.parse_iso((payload.get("seasonDates") or {}).get("regularStart"))
     today = parse.parse_iso(payload["generatedAt"][:10])
     warmed = bool(start and today and (today - start).days >= STREAK_GRACE_DAYS)
-    if regular and warmed and not streaks.get("hit") and not streaks.get("onBase"):
+    if updating.get("streaks") and warmed \
+            and not streaks.get("hit") and not streaks.get("onBase"):
         problems.append("例行賽中連續安打與連續上壘兩個榜都是空的")
+
+    """
+    反過來也要守：停更的組別不該留著資料。
+
+    漏掉這個方向的話，build 裡少關一個分支就會把上一輪的資料留在檔案裡，
+    畫面上看起來是正常的榜，實際上沒人知道那是哪一天抓的。
+    停更期間「空榜」是唯一正確的狀態，前端才有辦法標示成暫停更新。
+    """
+    wl = payload.get("streaks") or {}
+    stale = {
+        "batting": payload.get("hardHits") or payload.get("barrels") or payload.get("hotStats"),
+        "streaks": streaks.get("hit") or streaks.get("onBase"),
+        "standings": wl.get("wins") or wl.get("losses"),
+    }
+    for key, leftover in sorted(stale.items()):
+        if not updating.get(key) and leftover:
+            problems.append("%s 停更了，卻還是有資料跑進去" % key)
 
     # 每一場都要有安打（上壘）才算連續，所以總數不可能少於場次。
     # 少了就表示兩個榜的欄位串了，或是窗內與整季兩份資料在接縫上重複算了場次。

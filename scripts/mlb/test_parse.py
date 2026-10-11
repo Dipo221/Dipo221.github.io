@@ -839,57 +839,149 @@ check("連續上壘", [r for r in allb["onBase"] if r["onBase"] < r["games"]], [
 import fetch  # noqa: E402
 
 CAL_2026 = {
+    "springStart": "2026-02-20",
     "regularStart": "2026-03-25",
     "regularEnd": "2026-09-27",
     "postStart": "2026-09-28",
     "postEnd": "2026-10-31",
 }
+# 跨年用的：十一月查到的是 2026 的行事曆，隔年一月 season 就換成 2027 了。
+# 日期照 /v1/seasons 實際回的 2027 行事曆，不要自己編——
+# 恢復日會印在畫面上，測試裡的假日期跟真的不一樣就看不出印錯了
+CAL_2027 = {
+    "springStart": "2027-02-19",
+    "regularStart": "2027-03-25",
+    "regularEnd": "2027-09-26",
+    "postStart": "2027-09-27",
+    "postEnd": "2027-10-31",
+}
 
 group("球季階段：邊界日都算在裡面")
-check("開季前一天", fetch.phase_of(CAL_2026, date(2026, 3, 24)), "pre")
-check("開季當天", fetch.phase_of(CAL_2026, date(2026, 3, 25)), "regular")
+check("春訓前一天", fetch.phase_of(CAL_2026, date(2026, 2, 19)), "off")
+check("春訓開打當天", fetch.phase_of(CAL_2026, date(2026, 2, 20)), "spring")
+check("開幕戰前一天還是春訓", fetch.phase_of(CAL_2026, date(2026, 3, 24)), "spring")
+check("開幕戰當天", fetch.phase_of(CAL_2026, date(2026, 3, 25)), "regular")
 check("例行賽最後一天", fetch.phase_of(CAL_2026, date(2026, 9, 27)), "regular")
 check("季後賽第一天", fetch.phase_of(CAL_2026, date(2026, 9, 28)), "post")
 # 翻車的那一天：舊的月份判斷在這裡會說「球季中」
 check("出事的 10/11 是季後賽不是例行賽", fetch.phase_of(CAL_2026, date(2026, 10, 11)), "post")
 check("季後賽最後一天", fetch.phase_of(CAL_2026, date(2026, 10, 31)), "post")
-check("季後賽結束隔天", fetch.phase_of(CAL_2026, date(2026, 11, 1)), "off")
-check("隔年一月還是季外", fetch.phase_of(CAL_2026, date(2027, 1, 15)), "off")
+check("季後賽結束隔天進休賽期", fetch.phase_of(CAL_2026, date(2026, 11, 1)), "off")
+# 隔年一月 fetch 查的是 2027 的行事曆，春訓還沒到所以仍然是休賽期
+check("隔年一月（2027 行事曆）還是休賽期", fetch.phase_of(CAL_2027, date(2027, 1, 15)), "off")
+check("隔年春訓開打就恢復", fetch.phase_of(CAL_2027, date(2027, 2, 19)), "spring")
 check("行事曆還沒公佈", fetch.phase_of(None, date(2031, 5, 1)), None)
+
+group("停更表：每個階段要更新哪幾組")
+# 這張表是停更政策的正本，改動它就是改產品行為，所以逐格釘住
+check("休賽期全部停更", fetch.UPDATING["off"],
+      {"batting": False, "streaks": False, "standings": False})
+# 春訓有比賽所以強擊球恢復，但連續場次與連勝連敗只採計例行賽，要等開幕戰
+check("春訓只恢復強擊球", fetch.UPDATING["spring"],
+      {"batting": True, "streaks": False, "standings": False})
+check("例行賽全部更新", fetch.UPDATING["regular"],
+      {"batting": True, "streaks": True, "standings": True})
+check("季後賽全部停更", fetch.UPDATING["post"],
+      {"batting": False, "streaks": False, "standings": False})
+# 行事曆查不到的時候照常全抓：寧可多做一輪，不要在不確定的時候悄悄停更
+check("不知道階段就全部更新", fetch.UPDATING.get(None, fetch.UPDATING_ALL),
+      {"batting": True, "streaks": True, "standings": True})
+
+
+group("恢復日：季後賽到年底要問下一季，不能照抄今年的")
+
+
+class FakeApi(object):
+    """只有 season_dates 的假 api，記下被問了哪幾年。"""
+
+    def __init__(self, table):
+        self.table = table
+        self.asked = []
+
+    def season_dates(self, season):
+        self.asked.append(season)
+        return self.table.get(season)
+
+
+PUBLISHED = {2026: CAL_2026, 2027: CAL_2027}
+
+
+def resume(phase, day, season=None, table=PUBLISHED):
+    api = FakeApi(table)
+    season = season or day.year
+    out = fetch.resume_dates(api, table.get(season), phase, season, day)
+    return out, api.asked
+
+
+# 例行賽與春訓期間沒有東西在等恢復，不該多打一個請求去問下一季
+check("例行賽用今年的行事曆", resume("regular", date(2026, 6, 1)),
+      ({"spring": "2026-02-20", "regular": "2026-03-25"}, []))
+check("春訓也不問下一季", resume("spring", date(2026, 3, 1)),
+      ({"spring": "2026-02-20", "regular": "2026-03-25"}, []))
+
+# 這兩筆是這次修的錯：season 是 2026，照抄就會在畫面上寫一個已經過去的 2/20
+check("季後賽問下一季", resume("post", date(2026, 10, 12)),
+      ({"spring": "2027-02-19", "regular": "2027-03-25"}, [2027]))
+check("休賽期十一月問下一季", resume("off", date(2026, 11, 15)),
+      ({"spring": "2027-02-19", "regular": "2027-03-25"}, [2027]))
+
+# 隔年一月 season 自己就翻成 2027 了，那時候手上的行事曆已經是對的
+check("隔年一月不用多問", resume("off", date(2027, 1, 15)),
+      ({"spring": "2027-02-19", "regular": "2027-03-25"}, []))
+
+# 下一季還沒公佈就少掉「X/X 恢復」那半句，不要編一個日期出來
+check("下一季還沒公佈就回 None",
+      resume("post", date(2026, 10, 12), table={2026: CAL_2026}),
+      ({"spring": None, "regular": None}, [2027]))
+check("連今年行事曆都查不到", resume("off", date(2026, 11, 15), table={}),
+      ({"spring": None, "regular": None}, [2027]))
 
 
 def payload(phase, day, **over):
-    """健檢用的最小 payload：預設是一份健康的資料，要測哪條就覆蓋哪條。"""
+    """
+    健檢用的最小 payload：預設是「這個階段該有的樣子」，要測哪條就覆蓋哪條。
+
+    updating 跟著 phase 走而不是另外傳，因為 build() 就是這樣算的——
+    測試要是自己湊一組不可能出現的組合，就不是在測真的會發生的事。
+    """
+    updating = fetch.UPDATING.get(phase, fetch.UPDATING_ALL)
     p = {
         "generatedAt": day + "T12:00:00Z",
         "phase": phase,
         "seasonDates": CAL_2026,
+        "updating": updating,
         "teams": [{}] * 30,
         "ilBoard": [{}] * 171,
-        "hardHits": {"d14": [{}] * 30},
-        "streaks": {"wins": [{}], "losses": [{}]},
-        "hitStreaks": {"hit": [{}], "onBase": [{}]},
+        # 停更的組別預設就是空的，不然會踩到「停更卻有資料」那條
+        "hardHits": {"d14": [{}] * 30} if updating["batting"] else {},
+        "barrels": {"d14": [{}] * 30} if updating["batting"] else {},
+        "hotStats": [{}] * 25 if updating["batting"] else [],
+        "streaks": ({"wins": [{}], "losses": [{}]} if updating["standings"]
+                    else {"wins": [], "losses": []}),
+        "hitStreaks": ({"hit": [{}], "onBase": [{}]} if updating["streaks"]
+                       else {"hit": [], "onBase": []}),
     }
     p.update(over)
     return p
 
 
 ROSTER = {"players": [()] * 1359}
+ALL_PHASES = (("regular", "2026-06-01"), ("spring", "2026-03-01"),
+              ("post", "2026-10-11"), ("off", "2026-11-15"))
 
-group("健檢：健康的資料每個階段都要過")
-for ph, day in (("regular", "2026-06-01"), ("post", "2026-10-11"),
-                ("off", "2026-11-15"), ("pre", "2027-02-01")):
+group("健檢：每個階段該有的樣子都要過")
+# 這一組是回歸測試的核心：季後賽與休賽期那兩筆就是 2026-10-11 當機的情境
+for ph, day in ALL_PHASES:
     check(ph, fetch.health_check(payload(ph, day), ROSTER), [])
 
-group("健檢：連續場次的榜空著")
+group("健檢：停更的組別空著是對的，更新中空著要擋")
+# 同一件事（榜是空的）在不同階段是兩種意思，這組就是在釘那個分界
 EMPTY_STREAKS = {"hitStreaks": {"hit": [], "onBase": []}}
-# 這就是 2026-10-11 的實況：例行賽打完了，兩個榜空著是對的，不該擋下來
-check("季後賽空著是正常的",
-      fetch.health_check(payload("post", "2026-10-11", **EMPTY_STREAKS), ROSTER), [])
-check("季外空著是正常的",
-      fetch.health_check(payload("off", "2026-11-15", **EMPTY_STREAKS), ROSTER), [])
+for ph, day in (("post", "2026-10-11"), ("off", "2026-11-15"), ("spring", "2026-03-01")):
+    check(ph + "：連續場次空著不擋",
+          fetch.health_check(payload(ph, day, **EMPTY_STREAKS), ROSTER), [])
 # 但例行賽中空著仍然要擋——這條檢查的價值全在這裡，不能為了修 bug 把它拆掉
-check("例行賽中空著要擋下來",
+check("例行賽中連續場次空著要擋",
       len(fetch.health_check(payload("regular", "2026-06-01", **EMPTY_STREAKS), ROSTER)), 1)
 # 開季 30 天內還沒人打滿 10 場
 check("開季第 29 天空著是正常的",
@@ -897,37 +989,64 @@ check("開季第 29 天空著是正常的",
 check("開季第 30 天起要擋",
       len(fetch.health_check(payload("regular", "2026-04-24", **EMPTY_STREAKS), ROSTER)), 1)
 
-group("健檢：其餘幾條跟著階段開關")
-check("季後賽強擊球榜空了還是要擋",
-      len(fetch.health_check(payload("post", "2026-10-11", hardHits={}), ROSTER)), 1)
-check("季外強擊球榜空了不擋（沒有比賽）",
-      fetch.health_check(payload("off", "2026-11-15", hardHits={}), ROSTER), [])
-check("季後賽傷兵剩 3 人要擋",
-      len(fetch.health_check(payload("post", "2026-10-11", ilBoard=[{}] * 3), ROSTER)), 1)
-check("季外傷兵剩 3 人不擋（陸續被啟動）",
-      fetch.health_check(payload("off", "2026-11-15", ilBoard=[{}] * 3), ROSTER), [])
-# 開季前查新賽季的 standings 會回 0 筆，那時候空的是對的
+EMPTY_HH = {"hardHits": {}, "barrels": {}, "hotStats": []}
+check("例行賽強擊球榜空了要擋",
+      len(fetch.health_check(payload("regular", "2026-06-01", **EMPTY_HH), ROSTER)), 1)
+check("春訓強擊球榜空了也要擋（春訓有比賽）",
+      len(fetch.health_check(payload("spring", "2026-03-01", **EMPTY_HH), ROSTER)), 1)
+check("季後賽強擊球榜空著不擋（停更了）",
+      fetch.health_check(payload("post", "2026-10-11", **EMPTY_HH), ROSTER), [])
+
 EMPTY_WL = {"streaks": {"wins": [], "losses": []}}
-check("開季前連勝連敗空著是正常的",
-      fetch.health_check(payload("pre", "2027-02-01", **EMPTY_WL), ROSTER), [])
-check("例行賽中連勝連敗空著要擋",
+check("例行賽連勝連敗空著要擋",
       len(fetch.health_check(payload("regular", "2026-06-01", **EMPTY_WL), ROSTER)), 1)
+# 開幕戰前查新賽季的 standings 會回 0 筆（實測 2027 年在 2026 年底查就是），
+# 這也是為什麼連勝連敗在春訓就要停更：抓了也只有空的
+check("春訓連勝連敗空著不擋",
+      fetch.health_check(payload("spring", "2026-03-01", **EMPTY_WL), ROSTER), [])
+check("休賽期連勝連敗空著不擋",
+      fetch.health_check(payload("off", "2026-11-15", **EMPTY_WL), ROSTER), [])
+
+group("健檢：停更了卻有資料也要擋")
+"""
+反方向的檢查。build() 裡少關一個分支的話，上一輪的資料會留在檔案裡，
+畫面上看起來是正常的榜，實際上沒人知道那是哪一天抓的。
+"""
+check("季後賽卻有強擊球資料",
+      len(fetch.health_check(
+          payload("post", "2026-10-11", hardHits={"d14": [{}] * 30}), ROSTER)), 1)
+check("春訓卻有連續場次資料",
+      len(fetch.health_check(
+          payload("spring", "2026-03-01", hitStreaks={"hit": [{}], "onBase": []}), ROSTER)), 1)
+check("休賽期卻有連勝連敗資料",
+      len(fetch.health_check(
+          payload("off", "2026-11-15", streaks={"wins": [{}], "losses": []}), ROSTER)), 1)
+
+group("健檢：傷兵名單每輪都更新，所以不分階段都該有人")
+check("例行賽剩 3 人要擋",
+      len(fetch.health_check(payload("regular", "2026-06-01", ilBoard=[{}] * 3), ROSTER)), 1)
+# 休賽期會陸續被啟動，剩幾個人是正常的，但整個空掉就是 roster 抓壞了
+check("休賽期剩 3 人不擋",
+      fetch.health_check(payload("off", "2026-11-15", ilBoard=[{}] * 3), ROSTER), [])
+check("休賽期整個空掉還是要擋",
+      len(fetch.health_check(payload("off", "2026-11-15", ilBoard=[]), ROSTER)), 1)
 
 group("健檢：無條件檢查不受階段影響")
 # 球隊數與球員索引是「API 整個壞掉」的信號，任何階段都該擋
-for ph, day in (("regular", "2026-06-01"), ("post", "2026-10-11"), ("off", "2026-11-15")):
+for ph, day in ALL_PHASES:
     check(ph + "：球隊數不對",
           len(fetch.health_check(payload(ph, day, teams=[{}] * 12), ROSTER)), 1)
     check(ph + "：球員索引太少",
           len(fetch.health_check(payload(ph, day), {"players": [()] * 400})), 1)
 
-group("健檢：行事曆查不到就跳過跟球季有關的")
-# phase 是 None 代表「不知道現在算哪一段」，不是「現在沒有比賽」，寧可放過一輪
-check("全部空著也不擋",
-      fetch.health_check(
-          payload(None, "2026-10-11", hardHits={}, ilBoard=[], **EMPTY_STREAKS), ROSTER),
-      [])
-check("但球隊數還是要擋",
+group("健檢：行事曆查不到就當成全部都在更新")
+# phase 是 None 代表「不知道現在算哪一段」，不是「現在沒有比賽」。
+# 這時候 updating 全開，所以空榜照樣會被擋——保守的方向是寧可擋，不是寧可放。
+check("全部空著要擋",
+      len(fetch.health_check(
+          payload(None, "2026-10-11", **dict(EMPTY_HH, **EMPTY_STREAKS))
+          , ROSTER)) > 0, True)
+check("球隊數還是要擋",
       len(fetch.health_check(payload(None, "2026-10-11", teams=[]), ROSTER)), 1)
 
 print("\n%d passed, %d failed" % (passed, failed))

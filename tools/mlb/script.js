@@ -239,6 +239,61 @@ const MLB = (function () {
   }
 
   /*
+   * 停更中的榜要說「暫停更新」，不能留一個空榜在那裡。
+   *
+   * 空榜的意思是「有在算，只是沒人上榜」，停更的意思是「這段時間不算」。
+   * 兩句話長得像，差別卻是會不會被當成故障——季後賽把強擊球榜寫成
+   * 「還沒有足夠的擊球資料」就是在暗示壞了，而那正是當初讓排程每小時
+   * 寄一封失敗通知的同一個誤會（見 fetch.py 的 UPDATING）。
+   *
+   * 所以一定要連「什麼時候恢復」一起講。只說暫停，下一個問題必然是停到什麼時候。
+   */
+  const PAUSE_REASON = { post: "季後賽期間", off: "休賽期", spring: "春訓期間" };
+
+  const RESUME = {
+    batting: { key: "spring", label: "春訓開打" },
+    // 連續場次與連勝連敗都只採計例行賽，所以要等開幕戰，不是春訓
+    streaks: { key: "regular", label: "開幕戰", why: "只計例行賽場次" },
+    standings: { key: "regular", label: "開幕戰" },
+  };
+
+  /*
+   * 恢復日的寫法。隔年的日期要把年份寫出來。
+   *
+   * 其他地方的日期都是最近幾天的事，shortDate 的「2/19」不會被誤讀；
+   * 這裡的日期是四個月後，而且十月看到的「2/19」最自然的讀法是今年二月——
+   * 一個已經過去的日期。跨年就寫成「2027/2/19」。
+   */
+  function resumeDate(iso) {
+    if (!iso) return "";
+    const year = String(iso).slice(0, 4);
+    const short = shortDate(iso);
+    return year === String(new Date().getFullYear()) ? short : year + "/" + short;
+  }
+
+  function pausedNotice(group) {
+    /*
+     * 哪幾組停更由 data.updating 決定，正本在 fetch.py 的 UPDATING。
+     * 前端不照月份或 phase 自己再推一次——兩邊各算一次就是等著走鐘。
+     * 舊的 data.json 沒有這個欄位，那就當成全部都在更新，照原本的空榜文案走。
+     */
+    const updating = data.updating;
+    if (!updating || updating[group] !== false) return null;
+
+    /*
+     * 恢復日讀 data.resume，不要讀 data.seasonDates。
+     * 季後賽到十二月之間 seasonDates 是今年的，春訓日期已經是過去式；
+     * resume 那邊已經換成問下一季了（fetch.py 的 resume_dates）。
+     */
+    const r = RESUME[group] || {};
+    const when = resumeDate((data.resume || {})[r.key]);
+    const parts = [(PAUSE_REASON[data.phase] || "") + "暫停更新"];
+    if (r.why) parts.push(r.why);
+    if (when) parts.push(when + " " + r.label + "後恢復");
+    return notice(parts.join("，"));
+  }
+
+  /*
    * 最快可回歸的說法。這是規則算出來的最早有資格被啟動的日期，
    * 不是預估回歸日，所以字面一定要寫「最快」。
    */
@@ -1186,10 +1241,13 @@ const MLB = (function () {
     });
 
     if (!rows.length) {
-      return notice(
-        activeTeam
-          ? "這一隊在這個時間窗沒有人上榜"
-          : "還沒有足夠的擊球資料（可能是資料還在產生中）"
+      return (
+        pausedNotice("batting") ||
+        notice(
+          activeTeam
+            ? "這一隊在這個時間窗沒有人上榜"
+            : "還沒有足夠的擊球資料（可能是資料還在產生中）"
+        )
       );
     }
 
@@ -1317,27 +1375,14 @@ const MLB = (function () {
     });
 
     if (!rows.length) {
-      const label = isHit ? "連續安打" : "連續上壘";
-      /*
-       * 榜空著有兩種原因，講錯了比不講還糟。
-       *
-       * 「沒有人達到 5 場」聽起來像還在數、只是剛好沒人上榜。但這個榜算的是
-       * 還在延續中的例行賽連續場次（理由見 hitstreaks.py），例行賽一打完
-       * 它必然空到明年開季——那時候要說的是「例行賽結束了」，不是「沒人達標」。
-       *
-       * phase 是後來才加的欄位，舊的 data.json 沒有；那就退回原本的說法。
-       */
-      const phase = data.phase;
-      if (phase === "post" || phase === "off") {
-        return notice("例行賽已經結束，" + label + "只計例行賽的場次");
-      }
-      if (phase === "pre") {
-        return notice("例行賽還沒開始，" + label + "只計例行賽的場次");
-      }
-      return notice(
-        activeTeam
-          ? "這一隊目前沒有人在榜上"
-          : "目前沒有人的" + label + "達到 " + streakMin(view) + " 場"
+      return (
+        pausedNotice("streaks") ||
+        notice(
+          activeTeam
+            ? "這一隊目前沒有人在榜上"
+            : "目前沒有人的" + (isHit ? "連續安打" : "連續上壘") +
+              "達到 " + streakMin(view) + " 場"
+        )
       );
     }
 
@@ -1487,6 +1532,9 @@ const MLB = (function () {
   }
 
   function renderStreaks() {
+    const paused = pausedNotice("standings");
+    if (paused) return paused;
+
     const s = data.streaks || { wins: [], losses: [] };
     const wins = (s.wins || []).filter(function (r) {
       return matchesTeam(r.teamId);

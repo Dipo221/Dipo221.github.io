@@ -107,6 +107,8 @@ def season_dates(season):
         return None
     s = rows[0]
     return {
+        # 春訓也要：休賽期停更之後，是靠這個日子決定哪一天恢復
+        "springStart": s.get("springStartDate"),
         "regularStart": s.get("regularSeasonStartDate"),
         "regularEnd": s.get("regularSeasonEndDate"),
         "postStart": s.get("postSeasonStartDate"),
