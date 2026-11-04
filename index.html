@@ -67,12 +67,13 @@
     </section>
 
     <!--
-      日後工具變多要拆「趣味 / 實驗室」的話，
-      在 .tool-grid 前面插 <h3 class="tool-group">趣味</h3> 就分好了，
-      每組各包一個 .tool-grid，CSS 已經備著。
+      分兩組：「實用」是真的會拿來查東西的，「趣味」是玩的。
+      新工具就放進對應那組的 .tool-grid；要開新組就再補一個 h3 + .tool-grid。
+      實驗室工具不放這裡，照 ICLab 那區上面的註解放到 ICLab 底下。
     -->
     <section id="tools">
       <h2>小工具</h2>
+      <h3 class="tool-group">實用</h3>
       <div class="tool-grid">
         <a class="tool-card" href="tools/open-now/">
           <span class="tool-icon" aria-hidden="true">🍜</span>
@@ -81,6 +82,16 @@
             <span class="tool-desc">淡水現在還有哪些店開著</span>
           </span>
         </a>
+        <a class="tool-card" href="tools/mlb/">
+          <span class="tool-icon" aria-hidden="true">⚾</span>
+          <span>
+            <span class="tool-name">MLB 追蹤</span>
+            <span class="tool-desc">Fantasy Baseball小工具</span>
+          </span>
+        </a>
+      </div>
+      <h3 class="tool-group">趣味</h3>
+      <div class="tool-grid">
         <a class="tool-card" href="tools/uiia-cat/">
           <span class="tool-icon" aria-hidden="true">🐈</span>
           <span>
@@ -93,13 +104,6 @@
           <span>
             <span class="tool-name">Disi</span>
             <span class="tool-desc">Disi住在這裡</span>
-          </span>
-        </a>
-        <a class="tool-card" href="tools/mlb/">
-          <span class="tool-icon" aria-hidden="true">⚾</span>
-          <span>
-            <span class="tool-name">MLB 追蹤</span>
-            <span class="tool-desc">Fantasy Baseball小工具</span>
           </span>
         </a>
         <!-- 遊戲放在另一個 repo（GitHub Pages 專案頁），同網域所以照樣用卡片、不開新分頁 -->

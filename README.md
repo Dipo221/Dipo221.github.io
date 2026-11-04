@@ -14,7 +14,7 @@ MingYang 的個人首頁，透過 GitHub Pages 發布於 <https://dipo221.github
 | 標頭 | 名字、一句 tagline，右上角一顆主題切換鈕（只有首頁有這顆） |
 | 關於我 | 研究：TKU 人工智慧機器人碩士班／工讀：味全龍 商品部 |
 | ICLab | 實驗室的 GitHub repo（`ros2_kid`、`ros2_adult`）與兩篇 Notion 筆記 |
-| 小工具 | 四張卡片，分別進到 `tools/` 底下自己寫的頁面 |
+| 小工具 | 分「實用」「趣味」兩組卡片，大多進到 `tools/` 底下自己寫的頁面；Time Locker Remake 是另一個 repo 的遊戲 |
 | 連結 | GitHub、Email |
 
 **ICLab 用膠囊、小工具用卡片，是刻意分的**：在這個站，卡片代表「點下去會進到
