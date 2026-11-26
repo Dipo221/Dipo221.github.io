@@ -13,7 +13,7 @@
   <!-- crossorigin 不能省：字體一律走 CORS 模式，漏掉會變成抓兩次 -->
   <link rel="preload" as="font" type="font/woff2" href="fonts/space-grotesk-latin.woff2" crossorigin />
   <script src="theme.js?v=1"></script>
-  <link rel="stylesheet" href="style.css?v=10" />
+  <link rel="stylesheet" href="style.css?v=11" />
 </head>
 <body>
   <header class="hero hero-home">
@@ -34,42 +34,27 @@
     </section>
 
     <!--
-      實驗室這區刻意只有「往外的連結」，用膠囊不用卡片——
-      卡片在這個站等於「點下去會進到我自己寫的頁面」，混用的話
-      訪客分不出哪個會把他踢出站外。之後真的做出實驗室工具，
-      在下面補一個 <h3 class="tool-group">實驗室工具</h3> + .tool-grid，
-      那時候卡片和膠囊的分工才有意義。
+      實驗室的內容（repo、筆記、以後的實驗室工具）都在 lab/ 那一頁，
+      這裡只留一張卡片進去。卡片 = 進到站內頁面，跟小工具同一套語彙。
     -->
     <section id="lab">
       <h2>ICLab</h2>
       <p class="lab-lead">Not making ICs. It's Intelligent Control.</p>
-      <ul class="fact-list lab-links">
-        <li>
-          <span class="fact-key">程式碼</span>
-          <ul class="link-list">
-            <li><a href="https://github.com/tkuiclabwhite/ros2_kid" target="_blank" rel="noopener">kid</a></li>
-            <li><a href="https://github.com/tkuiclabwhite/ros2_adult" target="_blank" rel="noopener">adult</a></li>
-          </ul>
-        </li>
-        <li>
-          <span class="fact-key">筆記</span>
-          <ul class="link-list">
-            <!--
-              一定要用 notion.site 的網址，不能用 Notion 裡「複製連結」給的
-              app.notion.com/p/…——那是工作區內部連結，沒登入的人點開只有登入牆。
-              notion.site 的網址是按下 Publish 之後才會產生的。
-            -->
-            <li><a href="https://deserted-dolphin-f51.notion.site/src-3cd24f0bca048180aaa1c5e91508f07c" target="_blank" rel="noopener">src 架構</a></li>
-            <li><a href="https://deserted-dolphin-f51.notion.site/hurocup_interface-3c724f0bca0481098808d5a287695ffa" target="_blank" rel="noopener">hurocup_interface</a></li>
-          </ul>
-        </li>
-      </ul>
+      <div class="tool-grid">
+        <a class="tool-card" href="lab/">
+          <span class="tool-icon" aria-hidden="true">🤖</span>
+          <span>
+            <span class="tool-name">ICLab</span>
+            <span class="tool-desc">實驗室的程式碼與研究筆記</span>
+          </span>
+        </a>
+      </div>
     </section>
 
     <!--
       分兩組：「實用」是真的會拿來查東西的，「趣味」是玩的。
       新工具就放進對應那組的 .tool-grid；要開新組就再補一個 h3 + .tool-grid。
-      實驗室工具不放這裡，照 ICLab 那區上面的註解放到 ICLab 底下。
+      實驗室工具不放這裡，放 lab/<名稱>/，從 lab/ 那頁連過去。
     -->
     <section id="tools">
       <h2>小工具</h2>
@@ -130,6 +115,6 @@
     <p>&copy; <span id="year"></span> MingYang</p>
   </footer>
 
-  <script src="script.js?v=2"></script>
+  <script src="script.js?v=3"></script>
 </body>
 </html>

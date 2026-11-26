@@ -1,0 +1,237 @@
+/* ============================================================
+   ICLab 頁
+
+   排版走「研究室」：標題靠左、等寬字的網址和英文小標、細線分隔的連結清單。
+   效果沿用首頁的發光：極光、流動漸層標題、漸層發光線。
+   顏色、字體全吃根目錄 style.css 的 token，這裡只補這頁特有的東西。
+   ============================================================ */
+
+/* ---------- 頁首 ---------- */
+
+.lab-hero {
+  position: relative; /* 少了它兩團極光會以整頁定位，overflow 裁不到 */
+  overflow: hidden;
+  padding: 56px 0 32px;
+  text-align: left;
+}
+
+/* 極光：跟首頁同一組動畫參數，位置往左偏，配合靠左的標題 */
+.lab-hero::before,
+.lab-hero::after {
+  content: "";
+  position: absolute;
+  top: -60%;
+  width: 70%;
+  height: 180%;
+  border-radius: 50%;
+  filter: blur(50px);
+  pointer-events: none;
+}
+
+.lab-hero::before {
+  left: -20%;
+  background: radial-gradient(circle, var(--aurora-1), transparent 65%);
+  animation: aurora-a 14s ease-in-out infinite alternate;
+}
+
+.lab-hero::after {
+  right: -15%;
+  background: radial-gradient(circle, var(--aurora-2), transparent 65%);
+  animation: aurora-b 18s ease-in-out infinite alternate;
+}
+
+.lab-hero .container {
+  z-index: 1;
+}
+
+.lab-path {
+  margin: 0 0 14px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.lab-path b {
+  font-weight: 400;
+  color: var(--accent);
+  text-shadow: 0 0 10px var(--glow);
+}
+
+/* aurora-a / aurora-b / title-flow 這三組 keyframes 定義在根目錄 style.css */
+.lab-hero h1 {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent));
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 18px var(--glow));
+  animation: title-flow 8s linear infinite;
+}
+
+.lab-hero .tagline {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+/* ---------- 區塊標題：中文標題 + 等寬英文小標 + 底下一條發光漸層線 ---------- */
+
+.lab-hero ~ main h2 {
+  position: relative;
+  border-left: 0;
+  padding: 0 0 8px;
+  font-size: var(--fs-lead);
+}
+
+.lab-hero ~ main h2::after {
+  content: attr(data-en);
+  margin-left: 10px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.lab-hero ~ main h2::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2) 35%, var(--border) 70%);
+  box-shadow: 0 0 8px var(--glow);
+}
+
+.lab-placeholder {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+/* ---------- 連結清單：一列一個，左邊標來源、右邊 ↗，一看就知道會離開這個站 ---------- */
+
+.lab-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lab-link {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 12px 2px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.lab-link > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* 跟著游標的淡淡聚光；游標位置由 script.js 寫進 --mx / --my */
+.lab-link::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: radial-gradient(220px circle at var(--mx, 50%) var(--my, 50%),
+    var(--accent-soft), transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--speed);
+}
+
+/* hover 時從左邊亮起的發光底線 */
+.lab-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  height: 1px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 8px var(--glow);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s ease-out;
+}
+
+.lab-link-kind {
+  flex: none;
+  width: 3.5em;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.lab-link-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  transition: color var(--speed);
+}
+
+.lab-link-out {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  transition: color var(--speed);
+}
+
+.lab-link:hover::before {
+  opacity: 1;
+}
+
+.lab-link:hover::after {
+  transform: scaleX(1);
+}
+
+.lab-link:hover .lab-link-name {
+  color: var(--accent);
+  text-shadow: 0 0 12px var(--glow);
+}
+
+.lab-link:hover .lab-link-out {
+  color: var(--accent);
+}
+
+.lab-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 窄螢幕把 repo 前面的組織名收掉，不然 320px 會斷成兩行 */
+@media (max-width: 400px) {
+  .lab-org {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lab-hero::before,
+  .lab-hero::after,
+  .lab-hero h1 {
+    animation: none;
+  }
+
+  .lab-link::before,
+  .lab-link::after,
+  .lab-link-name,
+  .lab-link-out {
+    transition: none;
+  }
+}

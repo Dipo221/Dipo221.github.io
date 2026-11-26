@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ICLab · MingYang</title>
+  <meta name="description" content="淡江大學 ICLab：實驗室的程式碼與研究筆記" />
+  <!--
+    theme.js 要排在樣式表前面，而且不能加 defer——
+    data-theme 必須在第一次 paint 之前設好，晚一步就會閃一下深色。
+    這頁沒有切換鈕，只是跟著首頁選好的主題走。
+    ?v= 是給瀏覽器快取用的版本號，改到這些檔案時記得一起加一。
+  -->
+  <link rel="preload" as="font" type="font/woff2" href="../fonts/space-grotesk-latin.woff2" crossorigin />
+  <script src="../theme.js?v=1"></script>
+  <link rel="stylesheet" href="../style.css?v=11" />
+  <link rel="stylesheet" href="style.css?v=1" />
+</head>
+<body>
+  <header class="hero lab-hero">
+    <div class="container">
+      <p class="lab-path" aria-hidden="true">dipo221.github.io/<b>lab</b>/</p>
+      <h1>ICLab</h1>
+      <p class="tagline">Not making ICs. It's Intelligent Control.</p>
+    </div>
+  </header>
+
+  <!--
+    這頁給兩種人看：上面兩區是給外人的介紹，下面兩區是實驗室的人會用的連結。
+    每個 h2 的 data-en 是後面那個等寬英文小標，由 style.css 的 ::after 畫出來。
+
+    之後做出實驗室工具，在「筆記」後面開一個 <section>，
+    h2 用「工具」/ data-en="tools"，裡面用首頁的 .tool-grid + .tool-card——
+    卡片 = 進到站內頁面，連結列 = 離開這個站，跟首頁同一套分工。
+    工具本身放 lab/<名稱>/。
+  -->
+  <main class="container">
+    <section id="research">
+      <h2 data-en="research">在做什麼</h2>
+      <!-- 研究介紹，兩三句。內容由 MingYang 提供，沒有就維持 placeholder，不要代筆 -->
+      <p class="lab-placeholder">研究方向的介紹，之後補上。</p>
+    </section>
+
+    <section id="about">
+      <h2 data-en="about">實驗室資訊</h2>
+      <ul class="fact-list">
+        <li><span class="fact-key">學校</span>淡江大學 人工智慧機器人碩士班</li>
+        <!--
+          位置還沒確認要不要公開，確認了再拿掉註解：
+          <li><span class="fact-key">位置</span>E315（入內請按電鈴）</li>
+        -->
+      </ul>
+    </section>
+
+    <section id="code">
+      <h2 data-en="code">程式碼</h2>
+      <ul class="lab-links">
+        <li>
+          <a class="lab-link" href="https://github.com/tkuiclabwhite/ros2_kid" target="_blank" rel="noopener">
+            <span class="lab-link-kind">GitHub</span>
+            <span class="lab-link-name mono"><span class="lab-org">tkuiclabwhite/</span>ros2_kid</span>
+            <span class="lab-link-out" aria-hidden="true">↗</span>
+          </a>
+        </li>
+        <li>
+          <a class="lab-link" href="https://github.com/tkuiclabwhite/ros2_adult" target="_blank" rel="noopener">
+            <span class="lab-link-kind">GitHub</span>
+            <span class="lab-link-name mono"><span class="lab-org">tkuiclabwhite/</span>ros2_adult</span>
+            <span class="lab-link-out" aria-hidden="true">↗</span>
+          </a>
+        </li>
+      </ul>
+    </section>
+
+    <section id="notes">
+      <h2 data-en="notes">筆記</h2>
+      <!--
+        一定要用 notion.site 的網址，不能用 Notion 裡「複製連結」給的
+        app.notion.com/p/…——那是工作區內部連結，沒登入的人點開只有登入牆。
+        notion.site 的網址是按下 Publish 之後才會產生的。
+      -->
+      <ul class="lab-links">
+        <li>
+          <a class="lab-link" href="https://deserted-dolphin-f51.notion.site/src-3cd24f0bca048180aaa1c5e91508f07c" target="_blank" rel="noopener">
+            <span class="lab-link-kind">Notion</span>
+            <span class="lab-link-name">src 架構</span>
+            <span class="lab-link-out" aria-hidden="true">↗</span>
+          </a>
+        </li>
+        <li>
+          <a class="lab-link" href="https://deserted-dolphin-f51.notion.site/hurocup_interface-3c724f0bca0481098808d5a287695ffa" target="_blank" rel="noopener">
+            <span class="lab-link-kind">Notion</span>
+            <span class="lab-link-name mono">hurocup_interface</span>
+            <span class="lab-link-out" aria-hidden="true">↗</span>
+          </a>
+        </li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="container">
+    <p><a href="../">← 回首頁</a></p>
+  </footer>
+
+  <script src="script.js?v=1"></script>
+</body>
+</html>

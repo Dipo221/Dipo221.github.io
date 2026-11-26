@@ -13,14 +13,21 @@ MingYang 的個人首頁，透過 GitHub Pages 發布於 <https://dipo221.github
 |---|---|
 | 標頭 | 名字、一句 tagline，右上角一顆主題切換鈕（只有首頁有這顆） |
 | 關於我 | 研究：TKU 人工智慧機器人碩士班／工讀：味全龍 商品部 |
-| ICLab | 實驗室的 GitHub repo（`ros2_kid`、`ros2_adult`）與兩篇 Notion 筆記 |
+| ICLab | 一句說明加一張卡片，進到實驗室自己的頁面 `lab/` |
 | 小工具 | 分「實用」「趣味」兩組卡片，大多進到 `tools/` 底下自己寫的頁面；Time Locker Remake 是另一個 repo 的遊戲 |
 | 連結 | GitHub、Email |
 
-**ICLab 用膠囊、小工具用卡片，是刻意分的**：在這個站，卡片代表「點下去會進到
-我自己寫的頁面」，膠囊代表會離開這個站。混用訪客就分不出哪個會把他踢出站外。
-以後真的做出實驗室工具，那區再補一個 `<h3 class="tool-group">` 加一個 `.tool-grid`，
-那時候卡片和膠囊的分工才有意義。
+**卡片和連結是刻意分的**：在這個站，卡片代表「點下去會進到我自己寫的頁面」，
+膠囊或連結列代表會離開這個站。混用訪客就分不出哪個會把他踢出站外。
+
+## ICLab 頁（`lab/`）
+
+實驗室獨立一頁，網址 <https://dipo221.github.io/lab/>，可以直接丟給實驗室的人。
+給兩種人看：上面是給外人的介紹（在做什麼、實驗室資訊），下面是實驗室的人會用的
+GitHub repo（`ros2_kid`、`ros2_adult`）與 Notion 筆記。
+
+排版走研究室風（標題靠左、等寬字的網址與英文小標、細線分隔的連結列），
+效果沿用首頁的發光。以後做出實驗室工具放 `lab/<名稱>/`，在那頁開一區用卡片連過去。
 
 Notion 的連結一定要用 `notion.site` 的網址——那是按下 Publish 之後才產生的。
 Notion 裡「複製連結」給的 `app.notion.com/p/…` 是工作區內部連結，
@@ -89,8 +96,9 @@ variable woff2，22 KB）當顯示字體，中文靠 CSS 的逐字元 fallback �
 ├── index.html          首頁
 ├── style.css           設計 token + 全站版面
 ├── theme.js            明暗主題（要在 paint 前跑）
-├── script.js           頁尾年份等
+├── script.js           首頁的頁尾年份、卡片邊框光
 ├── fonts/              自己託管的字體 + 授權全文
+├── lab/                ICLab 頁
 ├── tools/<名稱>/       一個工具一個資料夾，各帶自己的 index.html / style.css / script.js
 ├── scripts/mlb/        抓 MLB 資料的 Python（只在 CI 跑，不是網頁的一部分）
 └── .github/workflows/  mlb.yml
