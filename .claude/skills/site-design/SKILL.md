@@ -149,7 +149,7 @@ localStorage key 一律 `<範圍>:<功能>`，例如 `open-now:github-token`、`
    theme.js 要排在樣式表前面且不能加 `defer`，否則重整會閃一下深色
 3. 結構：`<header class="hero">` → `<main class="container">` → `<footer>` 放 `← 回首頁`
 4. 自己的 `style.css` **只補這個工具特有的東西**，基礎色吃根目錄的
-5. 首頁 `index.html` 的 `.tool-grid` 裡加一張卡：
+5. 首頁 `index.html` 對應分類那區（`#useful` 實用／`#baseball` 棒球／`#fun` 趣味）的 `.tool-grid` 裡加一張卡：
    ```html
    <a class="tool-card" href="tools/<名稱>/">
      <span class="tool-icon" aria-hidden="true">🔧</span>
@@ -162,6 +162,8 @@ localStorage key 一律 `<範圍>:<功能>`，例如 `open-now:github-token`、`
 6. 更新所有動到的檔案的 `?v=`
 7. 兩個主題各看一次
 
-**工具超過 4 個就提醒使用者分組** —— `.tool-group` 的樣式已經寫好了，
-在 `.tool-grid` 前面插 `<h3 class="tool-group">趣味</h3>`，每組各包一個 `.tool-grid` 就分開了。
-現在的分組是「實用」和「趣味」。實驗室工具不進這裡，放 `lab/<名稱>/`，從 `lab/` 那頁用卡片連過去。
+**小工具按分類各自一區，分類名稱直接當 h2**，沒有「小工具」這層總標題。
+現在是「實用」「棒球」「趣味」三區；要開新分類就補一個 `<section>` + `<h2>` + `.tool-grid`。
+站外網域的卡片加 `target="_blank" rel="noopener"` 開新分頁，名稱後面不掛 ↗（使用者不要）。
+同網域（`dipo221.github.io/<別的 repo>/`）不算站外，照一般卡片。
+實驗室工具不進這裡，放 `lab/<名稱>/`，從 `lab/` 那頁用卡片連過去。

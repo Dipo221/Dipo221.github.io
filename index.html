@@ -13,7 +13,7 @@
   <!-- crossorigin 不能省：字體一律走 CORS 模式，漏掉會變成抓兩次 -->
   <link rel="preload" as="font" type="font/woff2" href="fonts/space-grotesk-latin.woff2" crossorigin />
   <script src="theme.js?v=1"></script>
-  <link rel="stylesheet" href="style.css?v=11" />
+  <link rel="stylesheet" href="style.css?v=12" />
 </head>
 <body>
   <header class="hero hero-home">
@@ -52,13 +52,13 @@
     </section>
 
     <!--
-      分兩組：「實用」是真的會拿來查東西的，「趣味」是玩的。
-      新工具就放進對應那組的 .tool-grid；要開新組就再補一個 h3 + .tool-grid。
+      小工具按分類各自一區，分類名稱直接當 h2，沒有「小工具」這層總標題。
+      「實用」是真的會拿來查東西的，「棒球」是 MLB / fantasy 相關的，「趣味」是玩的。
+      新工具放進對應那區的 .tool-grid；要開新分類就再補一個 <section> + h2 + .tool-grid。
       實驗室工具不放這裡，放 lab/<名稱>/，從 lab/ 那頁連過去。
     -->
-    <section id="tools">
-      <h2>小工具</h2>
-      <h3 class="tool-group">實用</h3>
+    <section id="useful">
+      <h2>實用</h2>
       <div class="tool-grid">
         <a class="tool-card" href="tools/open-now/">
           <span class="tool-icon" aria-hidden="true">🍜</span>
@@ -67,6 +67,12 @@
             <span class="tool-desc">淡水現在還有哪些店開著</span>
           </span>
         </a>
+      </div>
+    </section>
+
+    <section id="baseball">
+      <h2>棒球</h2>
+      <div class="tool-grid">
         <a class="tool-card" href="tools/mlb/">
           <span class="tool-icon" aria-hidden="true">⚾</span>
           <span>
@@ -74,8 +80,27 @@
             <span class="tool-desc">Fantasy Baseball小工具</span>
           </span>
         </a>
+        <!-- 另一個 repo 的 GitHub Pages 專案頁，同網域，跟 Time Locker 一樣不開新分頁 -->
+        <a class="tool-card" href="https://dipo221.github.io/mlb-player-notes/">
+          <span class="tool-icon" aria-hidden="true">📒</span>
+          <span>
+            <span class="tool-name">MLB 球員筆記</span>
+            <span class="tool-desc">自製球員個人頁面</span>
+          </span>
+        </a>
+        <!-- 放在 Hugging Face 的 Gradio app，是站外網域，所以開新分頁 -->
+        <a class="tool-card" href="https://dipo221-fantasy-baseball-league.hf.space/" target="_blank" rel="noopener">
+          <span class="tool-icon" aria-hidden="true">🧠</span>
+          <span>
+            <span class="tool-name">Fantasy Baseball Agent</span>
+            <span class="tool-desc">Fantasy Baseball 專用AI Agent</span>
+          </span>
+        </a>
       </div>
-      <h3 class="tool-group">趣味</h3>
+    </section>
+
+    <section id="fun">
+      <h2>趣味</h2>
       <div class="tool-grid">
         <a class="tool-card" href="tools/uiia-cat/">
           <span class="tool-icon" aria-hidden="true">🐈</span>

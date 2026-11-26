@@ -14,7 +14,9 @@ MingYang 的個人首頁，透過 GitHub Pages 發布於 <https://dipo221.github
 | 標頭 | 名字、一句 tagline，右上角一顆主題切換鈕（只有首頁有這顆） |
 | 關於我 | 研究：TKU 人工智慧機器人碩士班／工讀：味全龍 商品部 |
 | ICLab | 一句說明加一張卡片，進到實驗室自己的頁面 `lab/` |
-| 小工具 | 分「實用」「趣味」兩組卡片，大多進到 `tools/` 底下自己寫的頁面；Time Locker Remake 是另一個 repo 的遊戲 |
+| 實用 | 真的會拿來查東西的小工具：現在吃什麼 |
+| 棒球 | MLB 追蹤、MLB 球員筆記（另一個 repo）、Fantasy Baseball Agent（Hugging Face 上的 app，開新分頁） |
+| 趣味 | 玩的：uiia cat、Disi、Time Locker Remake（另一個 repo 的遊戲） |
 | 連結 | GitHub、Email |
 
 **卡片和連結是刻意分的**：在這個站，卡片代表「點下去會進到我自己寫的頁面」，

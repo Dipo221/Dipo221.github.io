@@ -321,23 +321,6 @@ h2 {
   box-shadow: 0 0 10px var(--glow);
 }
 
-/*
- * 工具日後要拆「趣味 / 實驗室」兩組時用的小標題。
- * 現在還沒拆，樣式先備著——到時候在 .tool-grid 前面插一個 <h3> 就分好了。
- */
-.tool-group {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin: 26px 0 10px;
-}
-
-.tool-group:first-of-type {
-  margin-top: 0;
-}
-
 /* ============================================================
    關於我
    ============================================================ */
